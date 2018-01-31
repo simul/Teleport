@@ -1,0 +1,1 @@
+..\..\4.18\Engine\Binaries\Win64\UE4Editor.exe %cd%\RemotePlay.uproject /Game/1?listen -server -log

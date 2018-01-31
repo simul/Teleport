@@ -1,0 +1,1 @@
+..\..\4.18\Engine\Binaries\Win64\UE4Editor.exe %cd%\RemotePlay.uproject /Game/1?listen -game -log -windowed -ResX=800 -ResY=600 -WinX=20 -WinY=20 -skipcompile
