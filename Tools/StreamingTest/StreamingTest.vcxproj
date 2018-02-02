@@ -59,7 +59,7 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(OutDir)Shaders;$(SolutionDir)ThirdParty\glfw3\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(OutDir)Shaders;$(SolutionDir)ThirdParty\glfw3\Include;$(SolutionDir)ThirdParty\nv\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -82,7 +82,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(OutDir)Shaders;$(SolutionDir)ThirdParty\glfw3\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(OutDir)Shaders;$(SolutionDir)ThirdParty\glfw3\Include;$(SolutionDir)ThirdParty\nv\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
@@ -100,10 +100,12 @@
     </FxCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Source\EncoderNV.cpp" />
     <ClCompile Include="Source\Main.cpp" />
     <ClCompile Include="Source\RendererDX11.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Source\EncoderNV.hpp" />
     <ClInclude Include="Source\Interfaces.hpp" />
     <ClInclude Include="Source\RendererDX11.hpp" />
   </ItemGroup>

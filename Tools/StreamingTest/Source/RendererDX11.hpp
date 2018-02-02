@@ -13,6 +13,11 @@ public:
 	GLFWwindow* initialize(int width, int height) override;
 	void render() override;
 
+	RendererDevice* getDevice() const override
+	{ 
+		return reinterpret_cast<RendererDevice*>(m_device.Get());
+	}
+
 private:
 	void setupPipeline();
 
