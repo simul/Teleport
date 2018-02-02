@@ -40,5 +40,8 @@
     <FxCompile Include="Shaders\TestRender_DX11_PS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="Shaders\Display_DX11_PS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>

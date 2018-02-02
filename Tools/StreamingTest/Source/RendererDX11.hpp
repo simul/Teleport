@@ -22,6 +22,15 @@ private:
 		return createConstantBuffer(data, sizeof(T));
 	}
 
+	struct FrameBuffer
+	{
+		UINT width, height;
+		ComPtr<ID3D11Texture2D> texture;
+		ComPtr<ID3D11ShaderResourceView> srv;
+		ComPtr<ID3D11RenderTargetView> rtv;
+	};
+	FrameBuffer createFrameBuffer(UINT width, UINT height, DXGI_FORMAT format) const;
+
 	ComPtr<ID3D11Device> m_device;
 	ComPtr<ID3D11DeviceContext> m_context;
 	ComPtr<IDXGISwapChain> m_swapChain;
@@ -29,7 +38,11 @@ private:
 
 	ComPtr<ID3D11VertexShader> m_screenQuadVS;
 	ComPtr<ID3D11PixelShader>  m_testRenderPS;
+	ComPtr<ID3D11PixelShader>  m_displayPS;
+
 	ComPtr<ID3D11RasterizerState> m_rasterizerState;
+	ComPtr<ID3D11SamplerState> m_samplerState;
 
 	ComPtr<ID3D11Buffer> m_renderCB;
+	FrameBuffer m_renderFB;
 };

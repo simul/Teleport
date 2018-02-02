@@ -12,6 +12,7 @@
 // Compiled shaders
 #include <ScreenQuad_DX11_VS.hpp>
 #include <TestRender_DX11_PS.hpp>
+#include <Display_DX11_PS.hpp>
 
 struct RenderCB
 {
@@ -82,6 +83,9 @@ GLFWwindow* RendererDX11::initialize(int width, int height)
 	viewport.MaxDepth = 1.0f;
 	m_context->RSSetViewports(1, &viewport);
 
+	m_renderFB = createFrameBuffer(width, height, DXGI_FORMAT_R8G8B8A8_UNORM);
+	m_renderCB = createConstantBuffer<RenderCB>();
+
 	setupPipeline();
 
 	return window;
@@ -95,15 +99,26 @@ void RendererDX11::setupPipeline()
 	if(FAILED(m_device->CreatePixelShader(TestRender_DX11_PS, sizeof(TestRender_DX11_PS), nullptr, &m_testRenderPS))) {
 		throw std::runtime_error("Failed to create test render pixel shader");
 	}
+	if(FAILED(m_device->CreatePixelShader(Display_DX11_PS, sizeof(Display_DX11_PS), nullptr, &m_displayPS))) {
+		throw std::runtime_error("Failed to create display pixel shader");
+	}
 
-	D3D11_RASTERIZER_DESC rasterizerDesc ={};
+	D3D11_RASTERIZER_DESC rasterizerDesc = {};
 	rasterizerDesc.FillMode = D3D11_FILL_SOLID;
 	rasterizerDesc.CullMode = D3D11_CULL_NONE;
 	if(FAILED(m_device->CreateRasterizerState(&rasterizerDesc, &m_rasterizerState))) {
 		throw std::runtime_error("Failed to create default rasterizer state");
 	}
 
-	m_renderCB = createConstantBuffer<RenderCB>();
+	D3D11_SAMPLER_DESC samplerDesc = {};
+	samplerDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
+	samplerDesc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+	samplerDesc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+	samplerDesc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+	samplerDesc.MaxAnisotropy = 1;
+	if(FAILED(m_device->CreateSamplerState(&samplerDesc, &m_samplerState))) {
+		throw std::runtime_error("Failed to create sampler state");
+	}
 }
 
 void RendererDX11::render()
@@ -113,15 +128,21 @@ void RendererDX11::render()
 		renderConstants.iTime = static_cast<float>(glfwGetTime());
 		m_context->UpdateSubresource(m_renderCB.Get(), 0, nullptr, &renderConstants, 0, 0);
 	}
-
-	m_context->OMSetRenderTargets(1, m_backBufferRTV.GetAddressOf(), nullptr);
-	m_context->RSSetState(m_rasterizerState.Get());
-
+	
 	m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
 	m_context->IASetInputLayout(nullptr);
-	m_context->PSSetConstantBuffers(0, 1, m_renderCB.GetAddressOf());
+	m_context->RSSetState(m_rasterizerState.Get());
+
+	m_context->OMSetRenderTargets(1, m_renderFB.rtv.GetAddressOf(), nullptr);
 	m_context->VSSetShader(m_screenQuadVS.Get(), nullptr, 0);
 	m_context->PSSetShader(m_testRenderPS.Get(), nullptr, 0);
+	m_context->PSSetConstantBuffers(0, 1, m_renderCB.GetAddressOf());
+	m_context->Draw(4, 0);
+
+	m_context->OMSetRenderTargets(1, m_backBufferRTV.GetAddressOf(), nullptr);
+	m_context->PSSetShader(m_displayPS.Get(), nullptr, 0);
+	m_context->PSSetShaderResources(0, 1, m_renderFB.srv.GetAddressOf());
+	m_context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
 	m_context->Draw(4, 0);
 
 	m_swapChain->Present(1, 0);
@@ -143,4 +164,41 @@ ComPtr<ID3D11Buffer> RendererDX11::createConstantBuffer(const void* data, UINT s
 		throw std::runtime_error("Failed to create constant buffer");
 	}
 	return buffer;
+}
+RendererDX11::FrameBuffer RendererDX11::createFrameBuffer(UINT width, UINT height, DXGI_FORMAT format) const
+{
+	FrameBuffer fb;
+	fb.width   = width;
+	fb.height  = height;
+
+	D3D11_TEXTURE2D_DESC desc ={};
+	desc.Width = width;
+	desc.Height = height;
+	desc.Format = format;
+	desc.MipLevels = 1;
+	desc.ArraySize = 1;
+	desc.SampleDesc.Count = 1;
+	desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+
+	if(FAILED(m_device->CreateTexture2D(&desc, nullptr, &fb.texture))) {
+		throw std::runtime_error("Failed to create FrameBuffer backing texture");
+	}
+
+	D3D11_RENDER_TARGET_VIEW_DESC rtvDesc ={};
+	rtvDesc.Format = desc.Format;
+	rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+	if(FAILED(m_device->CreateRenderTargetView(fb.texture.Get(), &rtvDesc, &fb.rtv))) {
+		throw std::runtime_error("Failed to create FrameBuffer render target view");
+	}
+
+	D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc ={};
+	srvDesc.Format = desc.Format;
+	srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Texture2D.MostDetailedMip = 0;
+	srvDesc.Texture2D.MipLevels = 1;
+	if(FAILED(m_device->CreateShaderResourceView(fb.texture.Get(), &srvDesc, &fb.srv))) {
+		throw std::runtime_error("Failed to create FrameBuffer shader resource view");
+	}
+
+	return fb;
 }
