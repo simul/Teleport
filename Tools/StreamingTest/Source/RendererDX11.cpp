@@ -1,3 +1,5 @@
+// Copyright (c) 2018 Simul.co
+
 #include <stdexcept>
 
 #include "RendererDX11.hpp"
@@ -83,14 +85,39 @@ GLFWwindow* RendererDX11::initialize(int width, int height)
 	viewport.MaxDepth = 1.0f;
 	m_context->RSSetViewports(1, &viewport);
 
-	m_renderFB = createFrameBuffer(width, height, DXGI_FORMAT_R8G8B8A8_UNORM);
-	m_renderCB = createConstantBuffer<RenderCB>();
+	m_frameWidth = width;
+	m_frameHeight = height;
 
 	setupPipeline();
 
 	return window;
 }
 	
+Surface RendererDX11::createSurface(SurfaceFormat format)
+{
+	DXGI_FORMAT dxgiFormat = DXGI_FORMAT_UNKNOWN;
+	switch(format) {
+	case SurfaceFormat::ABGR: dxgiFormat = DXGI_FORMAT_B8G8R8A8_UNORM; break;
+	case SurfaceFormat::ARGB: dxgiFormat = DXGI_FORMAT_R8G8B8A8_UNORM; break;
+	case SurfaceFormat::NV12: dxgiFormat = DXGI_FORMAT_NV12; break;
+	default:
+		throw std::invalid_argument("Invalid buffer format");
+	}
+
+	m_renderFB = createFrameBuffer(m_frameWidth, m_frameHeight, dxgiFormat);
+
+	ID3D11Resource* pResource = m_renderFB.texture.Get();
+	pResource->AddRef();
+	return {(int)m_renderFB.width, (int)m_renderFB.height, reinterpret_cast<void*>(pResource)};
+}
+	
+void RendererDX11::releaseSurface(Surface& surface)
+{
+	ID3D11Resource* pResource = reinterpret_cast<ID3D11Resource*>(surface.pResource);
+	pResource->Release();
+	surface = {};
+}
+
 void RendererDX11::setupPipeline()
 {
 	if(FAILED(m_device->CreateVertexShader(ScreenQuad_DX11_VS, sizeof(ScreenQuad_DX11_VS), nullptr, &m_screenQuadVS))) {
@@ -119,6 +146,8 @@ void RendererDX11::setupPipeline()
 	if(FAILED(m_device->CreateSamplerState(&samplerDesc, &m_samplerState))) {
 		throw std::runtime_error("Failed to create sampler state");
 	}
+	
+	m_renderCB = createConstantBuffer<RenderCB>();
 }
 
 void RendererDX11::render()

@@ -101,11 +101,13 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Source\EncoderNV.cpp" />
+    <ClCompile Include="Source\FileIO.cpp" />
     <ClCompile Include="Source\Main.cpp" />
     <ClCompile Include="Source\RendererDX11.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\EncoderNV.hpp" />
+    <ClInclude Include="Source\FileIO.hpp" />
     <ClInclude Include="Source\Interfaces.hpp" />
     <ClInclude Include="Source\RendererDX11.hpp" />
   </ItemGroup>

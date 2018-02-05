@@ -1,3 +1,5 @@
+// Copyright (c) 2018 Simul.co
+
 #pragma once
 
 #include <d3d11.h>
@@ -12,6 +14,9 @@ class RendererDX11 final : public RendererInterface
 public:
 	GLFWwindow* initialize(int width, int height) override;
 	void render() override;
+
+	Surface createSurface(SurfaceFormat format) override;
+	void releaseSurface(Surface& surface) override;
 
 	RendererDevice* getDevice() const override
 	{ 
@@ -50,4 +55,7 @@ private:
 
 	ComPtr<ID3D11Buffer> m_renderCB;
 	FrameBuffer m_renderFB;
+
+	UINT m_frameWidth;
+	UINT m_frameHeight;
 };

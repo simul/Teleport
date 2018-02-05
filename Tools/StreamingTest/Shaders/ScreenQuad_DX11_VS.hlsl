@@ -1,3 +1,5 @@
+// Copyright (c) 2018 Simul.co
+
 struct VertexOutput
 {
 	float4 position : SV_POSITION;
