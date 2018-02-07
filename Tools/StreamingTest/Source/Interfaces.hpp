@@ -3,6 +3,7 @@
 #pragma once
 
 #include <cassert>
+#include <cstdint>
 
 struct GLFWwindow;
 struct RendererDevice;
@@ -13,10 +14,16 @@ struct Surface
 	int height;
 	void* pResource;
 };
+
 struct Bitstream
 {
-	void* pPosition;
+	char* pData;
 	size_t numBytes;
+
+	void free()
+	{
+		delete[] pData;
+	}
 };
 
 enum class SurfaceFormat
@@ -55,6 +62,18 @@ public:
 
 	virtual void registerSurface(const Surface& surface) = 0;
 	virtual SurfaceFormat getInputFormat() const = 0;
+};
+
+class DecoderInterface
+{
+public:
+	virtual ~DecoderInterface() = default;
+
+	virtual void initialize(RendererDevice* device, int width, int height) = 0;
+	virtual void shutdown() = 0;
+	virtual void decode(Bitstream& stream) = 0;
+
+	virtual void registerSurface(const Surface& surface) = 0;
 };
 
 class IOInterface

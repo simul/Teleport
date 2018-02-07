@@ -5,26 +5,28 @@
 
 #include "RendererDX11.hpp"
 #include "EncoderNV.hpp"
+#include "DecoderNV.hpp"
 #include "FileIO.hpp"
 
 #include <GLFW/glfw3.h>
+	
+const int g_frameWidth  = 1024;
+const int g_frameHeight = 1024;
 
 int main(int argc, char* argv[])
 {
 	glfwInit();
+	glfwWindowHint(GLFW_RESIZABLE, 0);
 
+#if ENCODE
 	{
-		glfwWindowHint(GLFW_RESIZABLE, 0);
-
 		std::unique_ptr<RendererInterface> renderer(new RendererDX11);
 		std::unique_ptr<EncoderInterface> encoder(new EncoderNV);
 
 		FileWriter writer{"output.raw"};
 
-		const int frameWidth  = 1024;
-		const int frameHeight = 1024;
-		GLFWwindow* window = renderer->initialize(frameWidth, frameHeight);
-		encoder->initialize(renderer->getDevice(), frameWidth, frameHeight);
+		GLFWwindow* window = renderer->initialize(g_frameWidth, g_frameHeight);
+		encoder->initialize(renderer->getDevice(), g_frameWidth, g_frameHeight);
 
 		Surface surface = renderer->createSurface(encoder->getInputFormat());
 		encoder->registerSurface(surface);
@@ -45,6 +47,25 @@ int main(int argc, char* argv[])
 		encoder->shutdown();
 		renderer->releaseSurface(surface);
 	}
+#else
+	{
+		std::unique_ptr<RendererInterface> renderer(new RendererDX11);
+		std::unique_ptr<DecoderInterface> decoder(new DecoderNV);
+
+		FileReader reader{"output.raw", 1024*1024};
+
+		GLFWwindow* window = renderer->initialize(g_frameWidth, g_frameHeight);
+		Surface surface = renderer->createSurface(SurfaceFormat::ARGB);
+
+		decoder->initialize(renderer->getDevice(), g_frameWidth, g_frameHeight);
+		decoder->registerSurface(surface);
+
+		do {
+			Bitstream stream = reader.read();
+			decoder->decode(stream);
+		} while(reader);
+	}
+#endif
 
 	glfwTerminate();
 	return 0;

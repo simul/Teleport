@@ -141,7 +141,7 @@ Bitstream EncoderNV::lock()
 	if(NVFAILED(api.nvEncLockBitstream(m_encoder, &params))) {
 		throw std::runtime_error("Failed to lock output bitstream");
 	}
-	return {params.bitstreamBufferPtr, params.bitstreamSizeInBytes};
+	return {reinterpret_cast<char*>(params.bitstreamBufferPtr), params.bitstreamSizeInBytes};
 }
 
 void EncoderNV::unlock()
