@@ -117,10 +117,13 @@ void DecoderNV::initialize(RendererDevice* device, int width, int height)
 		}
 	}
 
+	const cudaVideoCodec codecType = cudaVideoCodec_H264;
+	const unsigned long numDecodeSurfaces = 20; // Worst case for H264.
+
 	{
 		CUVIDPARSERPARAMS params = {};
-		params.CodecType = cudaVideoCodec_H264;
-		params.ulMaxNumDecodeSurfaces = 1;
+		params.CodecType = codecType;
+		params.ulMaxNumDecodeSurfaces = numDecodeSurfaces;
 		params.pUserData = this;
 		params.pfnSequenceCallback = DecoderNV::onSequence;
 		params.pfnDecodePicture = DecoderNV::onDecode;
@@ -136,11 +139,11 @@ void DecoderNV::initialize(RendererDevice* device, int width, int height)
 		params.ulHeight = (unsigned long)height;
 		params.ulTargetWidth = params.ulWidth;
 		params.ulTargetHeight = params.ulHeight;
-		params.CodecType = cudaVideoCodec_H264;
+		params.CodecType = codecType;
 		params.ChromaFormat = cudaVideoChromaFormat_420;
 		params.OutputFormat = cudaVideoSurfaceFormat_NV12;
 		params.DeinterlaceMode = cudaVideoDeinterlaceMode_Weave;
-		params.ulNumDecodeSurfaces = 1;
+		params.ulNumDecodeSurfaces = numDecodeSurfaces;
 		params.ulNumOutputSurfaces = 1;
 		params.display_area = {0, 0, (short)width, (short)height};
 		if(CUFAILED(cuvidCreateDecoder(&m_decoder, &params))) {
@@ -179,7 +182,7 @@ void DecoderNV::registerSurface(const Surface& surface)
 int DecoderNV::onSequence(void* pThis, CUVIDEOFORMAT* format)
 {
 	//printf("SEQ\n");
-	return 0;
+	return 1;
 }
 	
 int DecoderNV::onDecode(void* pThis, CUVIDPICPARAMS* pic)
@@ -216,11 +219,11 @@ int DecoderNV::onDecode(void* pThis, CUVIDPICPARAMS* pic)
 	}
 
 #endif
-	return 0;
+	return 1;
 }
 	
 int DecoderNV::onDisplay(void* pThis, CUVIDPARSERDISPINFO* dispInfo)
 {
 	//printf("DISPLAY\n");
-	return 0;
+	return 1;
 }

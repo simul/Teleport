@@ -23,7 +23,7 @@ int main(int argc, char* argv[])
 		std::unique_ptr<RendererInterface> renderer(new RendererDX11);
 		std::unique_ptr<EncoderInterface> encoder(new EncoderNV);
 
-		FileWriter writer{"output.raw"};
+		FileWriter writer{"output.h264"};
 
 		GLFWwindow* window = renderer->initialize(g_frameWidth, g_frameHeight);
 		encoder->initialize(renderer->getDevice(), g_frameWidth, g_frameHeight);
@@ -52,7 +52,7 @@ int main(int argc, char* argv[])
 		std::unique_ptr<RendererInterface> renderer(new RendererDX11);
 		std::unique_ptr<DecoderInterface> decoder(new DecoderNV);
 
-		FileReader reader{"output.raw", 1024*1024};
+		FileReader reader{"output.h264", 1024*1024};
 
 		GLFWwindow* window = renderer->initialize(g_frameWidth, g_frameHeight);
 		Surface surface = renderer->createSurface(SurfaceFormat::ARGB);
