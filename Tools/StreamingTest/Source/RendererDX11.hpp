@@ -13,10 +13,15 @@ class RendererDX11 final : public RendererInterface
 {
 public:
 	GLFWwindow* initialize(int width, int height) override;
-	void render() override;
+	void renderScene() override;
+	void renderVideo() override;
+	void renderSurface() override;
 
 	Surface createSurface(SurfaceFormat format) override;
 	void releaseSurface(Surface& surface) override;
+
+	Buffer createVideoBuffer(SurfaceFormat format, int pitch) override;
+	void releaseVideoBuffer(Buffer& buffer) override;
 
 	RendererDevice* getDevice() const override
 	{ 
@@ -31,12 +36,21 @@ private:
 	{
 		return createConstantBuffer(data, sizeof(T));
 	}
+	
+	struct PixelBuffer
+	{
+		UINT pitch;
+		ComPtr<ID3D11Buffer> buffer;
+		ComPtr<ID3D11ShaderResourceView> srv;
+	};
+	PixelBuffer createPixelBuffer(UINT size, UINT stride, DXGI_FORMAT format) const;
 
 	struct FrameBuffer
 	{
 		UINT width, height;
 		ComPtr<ID3D11Texture2D> texture;
 		ComPtr<ID3D11ShaderResourceView> srv;
+		ComPtr<ID3D11UnorderedAccessView> uav;
 		ComPtr<ID3D11RenderTargetView> rtv;
 	};
 	FrameBuffer createFrameBuffer(UINT width, UINT height, DXGI_FORMAT format) const;
@@ -49,12 +63,15 @@ private:
 	ComPtr<ID3D11VertexShader> m_screenQuadVS;
 	ComPtr<ID3D11PixelShader>  m_testRenderPS;
 	ComPtr<ID3D11PixelShader>  m_displayPS;
+	ComPtr<ID3D11ComputeShader> m_nv12ToRgbCS;
 
 	ComPtr<ID3D11RasterizerState> m_rasterizerState;
 	ComPtr<ID3D11SamplerState> m_samplerState;
 
 	ComPtr<ID3D11Buffer> m_renderCB;
+	ComPtr<ID3D11Buffer> m_videoCB;
 	FrameBuffer m_renderFB;
+	PixelBuffer m_videoPB;
 
 	UINT m_frameWidth;
 	UINT m_frameHeight;

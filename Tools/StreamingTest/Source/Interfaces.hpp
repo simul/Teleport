@@ -4,6 +4,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <memory>
 
 struct GLFWwindow;
 struct RendererDevice;
@@ -14,7 +15,11 @@ struct Surface
 	int height;
 	void* pResource;
 };
-
+struct Buffer
+{
+	int size;
+	void* pResource;
+};
 struct Bitstream
 {
 	char* pData;
@@ -40,10 +45,15 @@ public:
 	virtual ~RendererInterface() = default;
 
 	virtual GLFWwindow* initialize(int width, int height) = 0;
-	virtual void render() = 0;
+	virtual void renderScene() = 0;
+	virtual void renderVideo() = 0;
+	virtual void renderSurface() = 0;
 
 	virtual Surface createSurface(SurfaceFormat format) = 0;
 	virtual void releaseSurface(Surface& surface) = 0;
+
+	virtual Buffer createVideoBuffer(SurfaceFormat format, int pitch) = 0;
+	virtual void releaseVideoBuffer(Buffer& buffer) = 0;
 
 	virtual RendererDevice* getDevice() const = 0;
 };
@@ -53,14 +63,13 @@ class EncoderInterface
 public:
 	virtual ~EncoderInterface() = default;
 
-	virtual void initialize(RendererDevice* device, int width, int height) = 0;
+	virtual void initialize(std::shared_ptr<RendererInterface> renderer, int width, int height) = 0;
 	virtual void shutdown() = 0;
 	virtual void encode(uint64_t timestamp) = 0;
 
 	virtual Bitstream lock() = 0;
 	virtual void unlock() = 0;
-
-	virtual void registerSurface(const Surface& surface) = 0;
+	
 	virtual SurfaceFormat getInputFormat() const = 0;
 };
 
@@ -69,11 +78,9 @@ class DecoderInterface
 public:
 	virtual ~DecoderInterface() = default;
 
-	virtual void initialize(RendererDevice* device, int width, int height) = 0;
+	virtual void initialize(std::shared_ptr<RendererInterface> renderer, int width, int height) = 0;
 	virtual void shutdown() = 0;
 	virtual void decode(Bitstream& stream) = 0;
-
-	virtual void registerSurface(const Surface& surface) = 0;
 };
 
 class IOInterface

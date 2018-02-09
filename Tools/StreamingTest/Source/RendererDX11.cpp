@@ -15,10 +15,19 @@
 #include <ScreenQuad_DX11_VS.hpp>
 #include <TestRender_DX11_PS.hpp>
 #include <Display_DX11_PS.hpp>
+#include <NV12toRGBA_CS.hpp>
+
+static ID3D11ShaderResourceView* const nullSRV[] = { nullptr };
+static ID3D11UnorderedAccessView* const nullUAV[] = { nullptr };
 
 struct RenderCB
 {
 	float iTime;
+	float _padding[3];
+};
+struct VideoCB
+{
+	unsigned int pitch;
 	float _padding[3];
 };
 
@@ -117,6 +126,45 @@ void RendererDX11::releaseSurface(Surface& surface)
 	pResource->Release();
 	surface = {};
 }
+	
+Buffer RendererDX11::createVideoBuffer(SurfaceFormat format, int pitch)
+{
+	UINT numBytes;
+	UINT stride;
+	DXGI_FORMAT dxgiFormat;
+
+	switch(format) {
+	case SurfaceFormat::ABGR:
+		numBytes = m_frameHeight * pitch * 4;
+		stride = 4;
+		dxgiFormat = DXGI_FORMAT_B8G8R8A8_UNORM;
+		break;
+	case SurfaceFormat::ARGB:
+		numBytes = m_frameHeight * pitch * 4;
+		stride = 4;
+		dxgiFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+		break;
+	case SurfaceFormat::NV12:
+		numBytes = m_frameHeight * pitch * 3 / 2;
+		stride = 1;
+		dxgiFormat = DXGI_FORMAT_R8_UINT;
+		break;
+	}
+
+	m_videoPB = createPixelBuffer(numBytes, stride, dxgiFormat);
+	m_videoPB.pitch = pitch;
+
+	ID3D11Resource* pResource = m_videoPB.buffer.Get();
+	pResource->AddRef();
+	return Buffer{(int)numBytes, reinterpret_cast<void*>(pResource)};
+}
+
+void RendererDX11::releaseVideoBuffer(Buffer& buffer)
+{
+	ID3D11Resource* pResource = reinterpret_cast<ID3D11Resource*>(buffer.pResource);
+	pResource->Release();
+	buffer = {};
+}
 
 void RendererDX11::setupPipeline()
 {
@@ -128,6 +176,9 @@ void RendererDX11::setupPipeline()
 	}
 	if(FAILED(m_device->CreatePixelShader(Display_DX11_PS, sizeof(Display_DX11_PS), nullptr, &m_displayPS))) {
 		throw std::runtime_error("Failed to create display pixel shader");
+	}
+	if(FAILED(m_device->CreateComputeShader(NV12toRGBA_CS, sizeof(NV12toRGBA_CS), nullptr, &m_nv12ToRgbCS))) {
+		throw std::runtime_error("Failed to create NV12toRGBA compute shader");
 	}
 
 	D3D11_RASTERIZER_DESC rasterizerDesc = {};
@@ -148,9 +199,10 @@ void RendererDX11::setupPipeline()
 	}
 	
 	m_renderCB = createConstantBuffer<RenderCB>();
+	m_videoCB = createConstantBuffer<VideoCB>();
 }
 
-void RendererDX11::render()
+void RendererDX11::renderScene()
 {
 	{
 		RenderCB renderConstants;
@@ -167,12 +219,37 @@ void RendererDX11::render()
 	m_context->PSSetShader(m_testRenderPS.Get(), nullptr, 0);
 	m_context->PSSetConstantBuffers(0, 1, m_renderCB.GetAddressOf());
 	m_context->Draw(4, 0);
+}
+
+void RendererDX11::renderVideo()
+{
+	{
+		VideoCB videoConstants;
+		videoConstants.pitch = m_videoPB.pitch;
+		m_context->UpdateSubresource(m_videoCB.Get(), 0, nullptr, &videoConstants, 0, 0);
+	}
+
+	m_context->CSSetShader(m_nv12ToRgbCS.Get(), nullptr, 0);
+	m_context->CSSetConstantBuffers(0, 1, m_videoCB.GetAddressOf());
+	m_context->CSSetShaderResources(0, 1, m_videoPB.srv.GetAddressOf());
+	m_context->CSSetUnorderedAccessViews(0, 1, m_renderFB.uav.GetAddressOf(), nullptr);
+	m_context->Dispatch(m_frameWidth/32, m_frameHeight/32, 1);
+	m_context->CSSetUnorderedAccessViews(0, 1, nullUAV, nullptr);
+}
+
+void RendererDX11::renderSurface()
+{
+	m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+	m_context->IASetInputLayout(nullptr);
+	m_context->RSSetState(m_rasterizerState.Get());
 
 	m_context->OMSetRenderTargets(1, m_backBufferRTV.GetAddressOf(), nullptr);
+	m_context->VSSetShader(m_screenQuadVS.Get(), nullptr, 0);
 	m_context->PSSetShader(m_displayPS.Get(), nullptr, 0);
 	m_context->PSSetShaderResources(0, 1, m_renderFB.srv.GetAddressOf());
 	m_context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
 	m_context->Draw(4, 0);
+	m_context->PSSetShaderResources(0, 1, nullSRV);
 
 	m_swapChain->Present(1, 0);
 }
@@ -194,6 +271,31 @@ ComPtr<ID3D11Buffer> RendererDX11::createConstantBuffer(const void* data, UINT s
 	}
 	return buffer;
 }
+
+RendererDX11::PixelBuffer RendererDX11::createPixelBuffer(UINT size, UINT stride, DXGI_FORMAT format) const
+{
+	PixelBuffer buf = {};
+
+	D3D11_BUFFER_DESC desc = {};
+	desc.ByteWidth = size;
+	desc.Usage = D3D11_USAGE_DEFAULT;
+	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+	if(FAILED(m_device->CreateBuffer(&desc, nullptr, &buf.buffer))) {
+		throw std::runtime_error("Failed to create structured buffer");
+	}
+
+	D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	srvDesc.Format = format;
+	srvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
+	srvDesc.Buffer.ElementOffset = 0;
+	srvDesc.Buffer.ElementWidth  = size / stride;
+	if(FAILED(m_device->CreateShaderResourceView(buf.buffer.Get(), &srvDesc, &buf.srv))) {
+		throw std::runtime_error("Failed to create structured buffer view");
+	}
+
+	return buf;
+}
+
 RendererDX11::FrameBuffer RendererDX11::createFrameBuffer(UINT width, UINT height, DXGI_FORMAT format) const
 {
 	FrameBuffer fb;
@@ -207,7 +309,7 @@ RendererDX11::FrameBuffer RendererDX11::createFrameBuffer(UINT width, UINT heigh
 	desc.MipLevels = 1;
 	desc.ArraySize = 1;
 	desc.SampleDesc.Count = 1;
-	desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+	desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
 
 	if(FAILED(m_device->CreateTexture2D(&desc, nullptr, &fb.texture))) {
 		throw std::runtime_error("Failed to create FrameBuffer backing texture");
@@ -229,5 +331,12 @@ RendererDX11::FrameBuffer RendererDX11::createFrameBuffer(UINT width, UINT heigh
 		throw std::runtime_error("Failed to create FrameBuffer shader resource view");
 	}
 
+	D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+	uavDesc.Format = desc.Format;
+	uavDesc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
+	uavDesc.Texture2D.MipSlice = 0;
+	if(FAILED(m_device->CreateUnorderedAccessView(fb.texture.Get(), &uavDesc, &fb.uav))) {
+		throw std::runtime_error("Failed to create FrameBuffer unordered access view");
+	}
 	return fb;
 }

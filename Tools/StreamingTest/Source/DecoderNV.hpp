@@ -14,12 +14,10 @@ class DecoderNV final : public DecoderInterface
 public:
 	DecoderNV();
 
-	void initialize(RendererDevice* device, int width, int height) override;
+	void initialize(std::shared_ptr<RendererInterface> renderer, int width, int height) override;
 	void shutdown() override;
 	void decode(Bitstream& stream) override;
 	
-	void registerSurface(const Surface& surface) override;
-
 private:
 	static void initializeCUDA();
 	static void initializeCUVID();
@@ -28,6 +26,8 @@ private:
 	static int onDecode(void* pThis, CUVIDPICPARAMS* pic);
 	static int onDisplay(void* pThis, CUVIDPARSERDISPINFO* dispInfo);
 
+	std::shared_ptr<RendererInterface> m_renderer;
+
 	CUdevice m_device;
 	CUcontext m_context;
 	CUvideoparser m_parser;
@@ -35,5 +35,7 @@ private:
 
 	int m_frameWidth;
 	int m_frameHeight;
-	CUgraphicsResource m_registeredSurface;
+
+	Buffer m_outputBuffer;
+	CUgraphicsResource m_outputBufferResource;
 };

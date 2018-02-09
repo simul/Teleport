@@ -13,17 +13,20 @@ public:
 	EncoderNV();
 	~EncoderNV();
 
-	void initialize(RendererDevice* device, int width, int height) override;
+	void initialize(std::shared_ptr<RendererInterface> renderer, int width, int height) override;
 	void shutdown() override;
 	void encode(uint64_t timestamp) override;
 	
 	Bitstream lock() override;
 	void unlock() override;
-
-	void registerSurface(const Surface& surface) override;
+	
 	SurfaceFormat getInputFormat() const override;
 
 private:
+	void registerSurface(const Surface& surface);
+
+	std::shared_ptr<RendererInterface> m_renderer;
+
 	struct EncodeConfig
 	{
 		GUID encodeGUID;

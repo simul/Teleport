@@ -13,6 +13,8 @@
 const int g_frameWidth  = 1024;
 const int g_frameHeight = 1024;
 
+#define ENCODE 0
+
 int main(int argc, char* argv[])
 {
 	glfwInit();
@@ -20,22 +22,20 @@ int main(int argc, char* argv[])
 
 #if ENCODE
 	{
-		std::unique_ptr<RendererInterface> renderer(new RendererDX11);
+		std::shared_ptr<RendererInterface> renderer(new RendererDX11);
 		std::unique_ptr<EncoderInterface> encoder(new EncoderNV);
 
 		FileWriter writer{"output.h264"};
 
 		GLFWwindow* window = renderer->initialize(g_frameWidth, g_frameHeight);
-		encoder->initialize(renderer->getDevice(), g_frameWidth, g_frameHeight);
-
-		Surface surface = renderer->createSurface(encoder->getInputFormat());
-		encoder->registerSurface(surface);
+		encoder->initialize(renderer, g_frameWidth, g_frameHeight);
 
 		uint64_t frameIndex = 0;
 		glfwSetTime(0.0);
 		while(!glfwWindowShouldClose(window)) {
-			renderer->render();
+			renderer->renderScene();
 			encoder->encode(frameIndex++);
+			renderer->renderSurface();
 
 			const Bitstream bitstream = encoder->lock();
 			writer.write(bitstream);
@@ -45,24 +45,27 @@ int main(int argc, char* argv[])
 		}
 
 		encoder->shutdown();
-		renderer->releaseSurface(surface);
 	}
 #else
 	{
-		std::unique_ptr<RendererInterface> renderer(new RendererDX11);
+		std::shared_ptr<RendererInterface> renderer(new RendererDX11);
 		std::unique_ptr<DecoderInterface> decoder(new DecoderNV);
 
-		FileReader reader{"output.h264", 1024*1024};
+		FileReader reader{"output.h264", 64*1024};
 
 		GLFWwindow* window = renderer->initialize(g_frameWidth, g_frameHeight);
 		Surface surface = renderer->createSurface(SurfaceFormat::ARGB);
 
-		decoder->initialize(renderer->getDevice(), g_frameWidth, g_frameHeight);
-		decoder->registerSurface(surface);
+		decoder->initialize(renderer, g_frameWidth, g_frameHeight);
 
 		do {
 			Bitstream stream = reader.read();
 			decoder->decode(stream);
+
+			renderer->renderVideo();
+			renderer->renderSurface();
+
+			glfwPollEvents();
 		} while(reader);
 	}
 #endif

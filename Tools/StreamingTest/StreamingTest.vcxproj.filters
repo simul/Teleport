@@ -61,5 +61,8 @@
     <FxCompile Include="Shaders\Display_DX11_PS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="Shaders\NV12toRGBA_CS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>

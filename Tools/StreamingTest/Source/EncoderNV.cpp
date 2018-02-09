@@ -44,13 +44,15 @@ EncoderNV::~EncoderNV()
 	}
 }
 
-void EncoderNV::initialize(RendererDevice* device, int width, int height)
+void EncoderNV::initialize(std::shared_ptr<RendererInterface> renderer, int width, int height)
 {
+	m_renderer = renderer;
+
 	{
 		NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS params = {};
 		params.apiVersion = NVENCAPI_VERSION;
 		params.version    = NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS_VER;
-		params.device     = reinterpret_cast<void*>(device);
+		params.device     = reinterpret_cast<void*>(renderer->getDevice());
 		// Assume DirectX device for now.
 		params.deviceType = NV_ENC_DEVICE_TYPE::NV_ENC_DEVICE_TYPE_DIRECTX;
 		
@@ -85,6 +87,8 @@ void EncoderNV::initialize(RendererDevice* device, int width, int height)
 		}
 		m_outputBufferPtr = params.bitstreamBuffer;
 	}
+
+	registerSurface(renderer->createSurface(getInputFormat()));
 }
 
 void EncoderNV::shutdown()
@@ -105,6 +109,8 @@ void EncoderNV::shutdown()
 		m_outputBufferPtr = nullptr;
 	}
 	api.nvEncDestroyEncoder(m_encoder);
+
+	m_renderer->releaseSurface(m_registeredSurface);
 }
 
 void EncoderNV::encode(uint64_t timestamp)
