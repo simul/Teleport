@@ -57,15 +57,15 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;WIN32_LEAN_AND_MEAN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(OutDir)Shaders;$(SolutionDir)ThirdParty\glfw3\Include;$(SolutionDir)ThirdParty\nv\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(OutDir)Shaders;$(SolutionDir)ThirdParty\glfw3\Include;$(SolutionDir)ThirdParty\nv\Include;$(SolutionDir)ThirdParty\enet\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Console</SubSystem>
-      <AdditionalLibraryDirectories>$(SolutionDir)ThirdParty\glfw3\Win64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>glfw3d.lib;d3d11.lib;d3dcompiler.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)ThirdParty\glfw3\Win64;$(SolutionDir)ThirdParty\enet\Win64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>glfw3d.lib;d3d11.lib;d3dcompiler.lib;ws2_32.lib;winmm.lib;enetd.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <FxCompile>
       <ShaderModel>5.0</ShaderModel>
@@ -80,17 +80,17 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;WIN32_LEAN_AND_MEAN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(OutDir)Shaders;$(SolutionDir)ThirdParty\glfw3\Include;$(SolutionDir)ThirdParty\nv\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(OutDir)Shaders;$(SolutionDir)ThirdParty\glfw3\Include;$(SolutionDir)ThirdParty\nv\Include;$(SolutionDir)ThirdParty\enet\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Console</SubSystem>
-      <AdditionalLibraryDirectories>$(SolutionDir)ThirdParty\glfw3\Win64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>glfw3.lib;d3d11.lib;d3dcompiler.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)ThirdParty\glfw3\Win64;$(SolutionDir)ThirdParty\enet\Win64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>glfw3.lib;d3d11.lib;d3dcompiler.lib;ws2_32.lib;winmm.lib;enet.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <FxCompile>
       <ShaderModel>5.0</ShaderModel>
@@ -104,13 +104,16 @@
     <ClCompile Include="Source\EncoderNV.cpp" />
     <ClCompile Include="Source\FileIO.cpp" />
     <ClCompile Include="Source\Main.cpp" />
+    <ClCompile Include="Source\NetworkStream.cpp" />
     <ClCompile Include="Source\RendererDX11.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Source\Bitstream.hpp" />
     <ClInclude Include="Source\DecoderNV.hpp" />
     <ClInclude Include="Source\EncoderNV.hpp" />
     <ClInclude Include="Source\FileIO.hpp" />
     <ClInclude Include="Source\Interfaces.hpp" />
+    <ClInclude Include="Source\NetworkStream.hpp" />
     <ClInclude Include="Source\RendererDX11.hpp" />
   </ItemGroup>
   <ItemGroup>

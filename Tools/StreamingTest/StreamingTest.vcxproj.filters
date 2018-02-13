@@ -33,6 +33,9 @@
     <ClCompile Include="Source\DecoderNV.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Source\NetworkStream.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\Interfaces.hpp">
@@ -48,6 +51,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Source\DecoderNV.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\NetworkStream.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Bitstream.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

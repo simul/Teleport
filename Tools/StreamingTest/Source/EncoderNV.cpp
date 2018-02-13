@@ -44,9 +44,10 @@ EncoderNV::~EncoderNV()
 	}
 }
 
-void EncoderNV::initialize(std::shared_ptr<RendererInterface> renderer, int width, int height)
+void EncoderNV::initialize(std::shared_ptr<RendererInterface> renderer, int width, int height, uint64_t idrFrequency)
 {
 	m_renderer = renderer;
+	m_idrFrequency = idrFrequency;
 
 	{
 		NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS params = {};
@@ -61,8 +62,9 @@ void EncoderNV::initialize(std::shared_ptr<RendererInterface> renderer, int widt
 		}
 	}
 
-	const EncodeConfig config = chooseEncodeConfig(NV_ENC_PRESET_LOW_LATENCY_HQ_GUID);
-	m_bufferFormat = config.format;
+	EncodeConfig config = chooseEncodeConfig(NV_ENC_PRESET_LOW_LATENCY_HQ_GUID);
+	config.config.encodeCodecConfig.h264Config.repeatSPSPPS = 1; // Repeat SPS & PPS for tuning-in mid-stream.
+
 	{
 		NV_ENC_INITIALIZE_PARAMS params = {};
 		params.version = NV_ENC_INITIALIZE_PARAMS_VER;
@@ -72,6 +74,7 @@ void EncoderNV::initialize(std::shared_ptr<RendererInterface> renderer, int widt
 		params.encodeHeight = height;
 		params.enablePTD = true;
 		params.enableEncodeAsync = false;
+		params.encodeConfig = &config.config;
 
 		if(NVFAILED(api.nvEncInitializeEncoder(m_encoder, &params))) {
 			throw std::runtime_error("Failed to initialize NVENC encoder");
@@ -87,6 +90,8 @@ void EncoderNV::initialize(std::shared_ptr<RendererInterface> renderer, int widt
 		}
 		m_outputBufferPtr = params.bitstreamBuffer;
 	}
+
+	m_bufferFormat = config.format;
 
 	registerSurface(renderer->createSurface(getInputFormat()));
 }
@@ -132,6 +137,9 @@ void EncoderNV::encode(uint64_t timestamp)
 	encParams.inputHeight = m_registeredSurface.height;
 	encParams.inputPitch = encParams.inputWidth;
 	encParams.inputTimeStamp = timestamp;
+	if(m_idrFrequency > 0) {
+		encParams.encodePicFlags = (timestamp % m_idrFrequency) == 0 ? NV_ENC_PIC_FLAG_FORCEIDR : 0;
+	}
 	if(NVFAILED(api.nvEncEncodePicture(m_encoder, &encParams))) {
 		throw std::runtime_error("Failed to encode picture frame");
 	}
@@ -147,7 +155,10 @@ Bitstream EncoderNV::lock()
 	if(NVFAILED(api.nvEncLockBitstream(m_encoder, &params))) {
 		throw std::runtime_error("Failed to lock output bitstream");
 	}
-	return {reinterpret_cast<char*>(params.bitstreamBufferPtr), params.bitstreamSizeInBytes};
+	return {
+		reinterpret_cast<char*>(params.bitstreamBufferPtr),
+		params.bitstreamSizeInBytes
+	};
 }
 
 void EncoderNV::unlock()
@@ -248,6 +259,15 @@ EncoderNV::EncodeConfig EncoderNV::chooseEncodeConfig(GUID requestedPresetGUID) 
 		// If no suitable preset found, just select the first one.
 		if(config.presetGUID == GUID{0}) {
 			config.presetGUID = presetGUIDs[0];
+		}
+
+		// Retrieve preset config.
+		{
+			NV_ENC_PRESET_CONFIG presetConfig = {};
+			presetConfig.version = NV_ENC_PRESET_CONFIG_VER;
+			presetConfig.presetCfg.version = NV_ENC_CONFIG_VER;
+			api.nvEncGetEncodePresetConfig(m_encoder, encodeGUID, config.presetGUID, &presetConfig);
+			config.config = presetConfig.presetCfg;
 		}
 
 		rankedConfigs.insert(std::pair<int, EncodeConfig>{rank, config});

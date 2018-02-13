@@ -7,68 +7,88 @@
 #include "EncoderNV.hpp"
 #include "DecoderNV.hpp"
 #include "FileIO.hpp"
+#include "NetworkStream.hpp"
 
 #include <GLFW/glfw3.h>
 	
-const int g_frameWidth  = 1024;
-const int g_frameHeight = 1024;
+const int g_frameWidth   = 1024;
+const int g_frameHeight  = 1024;
+const int g_idrFrequency = 60;
+const int g_port         = 1234;
 
-#define ENCODE 0
+static void serverMain()
+{
+	std::shared_ptr<RendererInterface> renderer(new RendererDX11);
+	std::unique_ptr<EncoderInterface> encoder(new EncoderNV);
+
+	NetworkStream stream;
+	stream.listen(g_port);
+
+	GLFWwindow* window = renderer->initialize("Streaming Server", g_frameWidth, g_frameHeight);
+	encoder->initialize(renderer, g_frameWidth, g_frameHeight, g_idrFrequency);
+
+	uint64_t frameIndex = 0;
+	glfwSetTime(0.0);
+	while(!glfwWindowShouldClose(window)) {
+		renderer->renderScene();
+		encoder->encode(frameIndex++);
+		renderer->renderSurface();
+
+		stream.processServer();
+
+		const Bitstream bitstream = encoder->lock();
+		stream.write(bitstream);
+		encoder->unlock();
+
+		glfwPollEvents();
+	}
+
+	encoder->shutdown();
+}
+
+static void clientMain(const char* hostName)
+{
+	std::shared_ptr<RendererInterface> renderer(new RendererDX11);
+	std::unique_ptr<DecoderInterface> decoder(new DecoderNV);
+
+	NetworkStream stream;
+	stream.connect(hostName, g_port);
+
+	GLFWwindow* window = renderer->initialize("Streaming Client", g_frameWidth, g_frameHeight);
+	Surface surface = renderer->createSurface(SurfaceFormat::ARGB);
+
+	decoder->initialize(renderer, g_frameWidth, g_frameHeight);
+	
+	while(!glfwWindowShouldClose(window) && stream.processClient()) {
+		Bitstream bitstream = stream.read();
+		if(bitstream) {
+			decoder->decode(bitstream);
+		}
+
+		renderer->renderVideo();
+		renderer->renderSurface();
+
+		glfwPollEvents();
+	}
+}
 
 int main(int argc, char* argv[])
 {
 	glfwInit();
 	glfwWindowHint(GLFW_RESIZABLE, 0);
 
-#if ENCODE
-	{
-		std::shared_ptr<RendererInterface> renderer(new RendererDX11);
-		std::unique_ptr<EncoderInterface> encoder(new EncoderNV);
-
-		FileWriter writer{"output.h264"};
-
-		GLFWwindow* window = renderer->initialize(g_frameWidth, g_frameHeight);
-		encoder->initialize(renderer, g_frameWidth, g_frameHeight);
-
-		uint64_t frameIndex = 0;
-		glfwSetTime(0.0);
-		while(!glfwWindowShouldClose(window)) {
-			renderer->renderScene();
-			encoder->encode(frameIndex++);
-			renderer->renderSurface();
-
-			const Bitstream bitstream = encoder->lock();
-			writer.write(bitstream);
-			encoder->unlock();
-
-			glfwPollEvents();
+	try {
+		if(argc > 1 && std::strcmp(argv[1], "-server") == 0) {
+			serverMain();
 		}
-
-		encoder->shutdown();
+		else {
+			clientMain(argc > 1 ? argv[1] : "localhost");
+		}
 	}
-#else
-	{
-		std::shared_ptr<RendererInterface> renderer(new RendererDX11);
-		std::unique_ptr<DecoderInterface> decoder(new DecoderNV);
-
-		FileReader reader{"output.h264", 64*1024};
-
-		GLFWwindow* window = renderer->initialize(g_frameWidth, g_frameHeight);
-		Surface surface = renderer->createSurface(SurfaceFormat::ARGB);
-
-		decoder->initialize(renderer, g_frameWidth, g_frameHeight);
-
-		do {
-			Bitstream stream = reader.read();
-			decoder->decode(stream);
-
-			renderer->renderVideo();
-			renderer->renderSurface();
-
-			glfwPollEvents();
-		} while(reader);
+	catch(const std::exception& e) {
+		std::fprintf(stderr, "Error: %s\n", e.what());
+		return 1;
 	}
-#endif
 
 	glfwTerminate();
 	return 0;

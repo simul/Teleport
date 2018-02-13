@@ -12,7 +12,7 @@ using Microsoft::WRL::ComPtr;
 class RendererDX11 final : public RendererInterface
 {
 public:
-	GLFWwindow* initialize(int width, int height) override;
+	GLFWwindow* initialize(const char* title, int width, int height) override;
 	void renderScene() override;
 	void renderVideo() override;
 	void renderSurface() override;

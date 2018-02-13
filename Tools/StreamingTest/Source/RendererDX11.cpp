@@ -31,10 +31,10 @@ struct VideoCB
 	float _padding[3];
 };
 
-GLFWwindow* RendererDX11::initialize(int width, int height)
+GLFWwindow* RendererDX11::initialize(const char* title, int width, int height)
 {
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-	GLFWwindow* window = glfwCreateWindow(width, height, "Direct3D 11 Renderer", nullptr, nullptr);
+	GLFWwindow* window = glfwCreateWindow(width, height, title, nullptr, nullptr);
 	if(!window) {
 		throw std::runtime_error("Failed to create window");
 	}

@@ -17,7 +17,7 @@ Bitstream FileReader::read()
 {
 	assert(m_stream.is_open());
 
-	Bitstream bitstream{new char[m_packetSize]};
+	Bitstream bitstream{m_packetSize};
 	m_stream.read(bitstream.pData, m_packetSize);
 	bitstream.numBytes = m_stream.gcount();
 	return bitstream;

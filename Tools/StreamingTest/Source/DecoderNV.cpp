@@ -114,7 +114,7 @@ DecoderNV::DecoderNV()
 	initializeCUVID();
 }
 
-void DecoderNV::initialize(std::shared_ptr<RendererInterface> renderer, int width, int height)
+void DecoderNV::initialize(std::shared_ptr<RendererInterface> renderer, int width, int height) 
 {
 	m_renderer    = renderer;
 	m_frameWidth  = width;
@@ -185,7 +185,6 @@ void DecoderNV::decode(Bitstream& stream)
 	if(CUFAILED(cuvidParseVideoData(m_parser, &packet))) {
 		throw std::runtime_error("Failed to parse video stream");
 	}
-	stream.free();
 }
 	
 int DecoderNV::onSequence(void* pThis, CUVIDEOFORMAT* format)
