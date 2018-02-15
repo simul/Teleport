@@ -14,6 +14,11 @@ void ARemotePlayController::BeginPlay()
 	{
 		if(GetWorld()->IsServer())
 		{
+			if(APawn* Pawn = GetPawn())
+			{
+				UnPossess();
+				Pawn->Destroy();
+			}
 			StartSpectatingOnly();
 		}
 		else
