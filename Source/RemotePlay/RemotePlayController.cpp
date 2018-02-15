@@ -2,15 +2,25 @@
 
 #include "RemotePlayController.h"
 #include "RemotePlayGameMode.h"
+#include "RemotePlayFunctionLibrary.h"
+#include "RemotePlayWorldSettings.h"
 #include "RemotePlay.h"
 
 #include "Engine/World.h"
 
 void ARemotePlayController::BeginPlay()
 {
-	if(GetWorld()->IsServer() && IsLocalPlayerController())
+	if(IsLocalPlayerController())
 	{
-		StartSpectatingOnly();
+		if(GetWorld()->IsServer())
+		{
+			StartSpectatingOnly();
+		}
+		else
+		{
+			ARemotePlayWorldSettings* WorldSettings = CastChecked<ARemotePlayWorldSettings>(GetWorld()->GetWorldSettings());
+			URemotePlayFunctionLibrary::SetStreamingLevelVisibility(this, WorldSettings->ServerSideLevelName, false);
+		}
 	}
 }
 

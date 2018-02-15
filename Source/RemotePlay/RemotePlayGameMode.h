@@ -13,11 +13,12 @@ class ARemotePlayGameMode : public AGameModeBase
 public:
 	ARemotePlayGameMode();
 
+	/* Begin AActor interface */
+	virtual void BeginPlay() override;
+	/* End AActor interface */
+
 	DECLARE_MULTICAST_DELEGATE_OneParam(FClientPawnChangedDelegate, APawn*);
 	FClientPawnChangedDelegate OnClientPawnChanged;
 
 	void NotifyClientPawnChanged(APawn* ClientPawn);
 };
-
-
-
