@@ -1,0 +1,30 @@
+// (c) 2018 Simul.co
+
+#include "/Engine/Public/Platform.ush"
+
+static const float PI     = 3.141592;
+static const float HalfPI = 0.5 * PI;
+static const float TwoPI  = 2.0 * PI;
+
+TextureCube CaptureCubemap;
+SamplerState CaptureSampler;
+
+RWTexture2D<float4> RWOutputTexture;
+
+[numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
+void MainCS(uint2 ThreadID : SV_DispatchThreadID)
+{
+	uint OutputW, OutputH;
+	RWOutputTexture.GetDimensions(OutputW, OutputH);
+
+	float2 UV = float2(ThreadID.x / float(OutputW), ThreadID.y / float(OutputH));
+	float Phi = (1.0-UV.x) * TwoPI;
+	float Theta = UV.y * PI;
+
+	float3 CubeSampleVec = float3(
+		sin(Theta) * cos(Phi),
+		sin(Theta) * sin(Phi),
+		cos(Theta)
+	);
+	RWOutputTexture[int2(ThreadID.x, ThreadID.y)] = CaptureCubemap.SampleLevel(CaptureSampler, CubeSampleVec, 0);
+}
