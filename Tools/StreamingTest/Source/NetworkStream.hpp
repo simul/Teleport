@@ -9,17 +9,18 @@
 
 #include "Interfaces.hpp"
 
-class NetworkStream : public IOInterface
+namespace Streaming {
+
+class NetworkStream final : public NetworkIOInterface
 {
 public:
 	NetworkStream();
 	~NetworkStream();
 
-	void listen(int port);
-	void connect(const char* hostName, int port);
-
-	void processServer();
-	bool processClient();
+	void listen(int port) override;
+	void connect(const char* hostName, int port) override;
+	void processServer() override;
+	bool processClient() override;
 
 	Bitstream read() override;
 	void write(const Bitstream& bitstream) override;
@@ -32,3 +33,5 @@ private:
 	std::vector<char> m_buffer;
 	bool m_synced;
 };
+
+} // Streaming

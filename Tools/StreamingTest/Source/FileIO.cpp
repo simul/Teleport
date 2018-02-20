@@ -4,6 +4,8 @@
 
 #include "FileIO.hpp"
 
+using namespace Streaming;
+
 FileReader::FileReader(const char* filename, size_t packetSize)
 	: m_packetSize(packetSize)
 {

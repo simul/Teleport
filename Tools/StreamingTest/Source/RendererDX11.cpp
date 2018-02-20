@@ -17,6 +17,8 @@
 #include <Display_DX11_PS.hpp>
 #include <NV12toRGBA_CS.hpp>
 
+using namespace Streaming;
+
 static ID3D11ShaderResourceView* const nullSRV[] = { nullptr };
 static ID3D11UnorderedAccessView* const nullUAV[] = { nullptr };
 

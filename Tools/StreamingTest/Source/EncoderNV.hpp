@@ -7,6 +7,8 @@
 #include <Windows.h>
 #include <nvEncodeAPI.h>
 
+namespace Streaming {
+
 class EncoderNV final : public EncoderInterface
 {
 public:
@@ -48,3 +50,5 @@ private:
 	
 	NV_ENCODE_API_FUNCTION_LIST api;
 };
+
+} // Streaming

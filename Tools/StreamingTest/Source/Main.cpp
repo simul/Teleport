@@ -10,11 +10,13 @@
 #include "NetworkStream.hpp"
 
 #include <GLFW/glfw3.h>
+
+using namespace Streaming;
 	
 const int g_frameWidth   = 1024;
 const int g_frameHeight  = 1024;
 const int g_idrFrequency = 60;
-const int g_port         = 1234;
+const int g_port         = 31337;
 
 static void serverMain()
 {

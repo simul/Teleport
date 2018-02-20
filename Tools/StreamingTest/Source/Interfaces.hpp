@@ -8,7 +8,12 @@
 
 #include "Bitstream.hpp"
 
+#ifndef LIBSTREAMING
 struct GLFWwindow;
+#endif
+
+namespace Streaming {
+
 struct RendererDevice;
 
 struct Surface
@@ -36,10 +41,12 @@ class RendererInterface
 public:
 	virtual ~RendererInterface() = default;
 
+#ifndef LIBSTREAMING
 	virtual GLFWwindow* initialize(const char* title, int width, int height) = 0;
 	virtual void renderScene() = 0;
 	virtual void renderVideo() = 0;
 	virtual void renderSurface() = 0;
+#endif
 
 	virtual Surface createSurface(SurfaceFormat format) = 0;
 	virtual void releaseSurface(Surface& surface) = 0;
@@ -85,8 +92,21 @@ public:
 		assert(false); // Read operation not supported.
 		return Bitstream{};
 	}
-	virtual void write(const Bitstream& bitstream)
+	virtual void write(const Bitstream&)
 	{
 		assert(false); // Write operation not supported.
 	}
 };
+
+class NetworkIOInterface : public IOInterface
+{
+public:
+	virtual ~NetworkIOInterface() = default;
+
+	virtual void listen(int port) = 0;
+	virtual void connect(const char* hostName, int port) = 0;
+	virtual void processServer() = 0;
+	virtual bool processClient() = 0;
+};
+
+} // Streaming

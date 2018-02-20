@@ -2,6 +2,8 @@
 
 #pragma once
 
+namespace Streaming {
+
 class Bitstream
 {
 public:
@@ -52,3 +54,5 @@ public:
 private:
 	const bool m_mappedMemory;
 };
+
+} // Streaming

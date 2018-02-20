@@ -45,6 +45,8 @@ static tcuvidDecodePicture* cuvidDecodePicture;
 static tcuvidMapVideoFrame* cuvidMapVideoFrame;
 static tcuvidUnmapVideoFrame* cuvidUnmapVideoFrame;
 
+using namespace Streaming;
+
 void DecoderNV::initializeCUDA()
 {
 	static HMODULE hLibrary = nullptr;

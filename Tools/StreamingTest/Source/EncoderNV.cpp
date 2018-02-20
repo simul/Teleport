@@ -9,6 +9,8 @@
 
 #define NVFAILED(x) ((x) != NV_ENC_SUCCESS)
 
+using namespace Streaming;
+
 EncoderNV::EncoderNV()
 	: api({NV_ENCODE_API_FUNCTION_LIST_VER})
 	, m_bufferFormat(NV_ENC_BUFFER_FORMAT::NV_ENC_BUFFER_FORMAT_UNDEFINED)

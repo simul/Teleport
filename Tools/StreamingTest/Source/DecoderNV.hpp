@@ -9,6 +9,8 @@
 #include <dynlink_cudaD3D11.h>
 #include <dynlink_nvcuvid.h>
 
+namespace Streaming {
+
 class DecoderNV final : public DecoderInterface
 {
 public:
@@ -39,3 +41,5 @@ private:
 	Buffer m_outputBuffer;
 	CUgraphicsResource m_outputBufferResource;
 };
+
+} // Streaming

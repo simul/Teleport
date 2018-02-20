@@ -13,6 +13,8 @@ namespace {
 	const enet_uint32 g_timeout = 5000;
 }
 
+using namespace Streaming;
+
 NetworkStream::NetworkStream()
 	: m_host(nullptr)
 	, m_server(nullptr)

@@ -7,6 +7,8 @@
 
 #include "Interfaces.hpp"
 
+namespace Streaming {
+
 using Microsoft::WRL::ComPtr;
 
 class RendererDX11 final : public RendererInterface
@@ -76,3 +78,5 @@ private:
 	UINT m_frameWidth;
 	UINT m_frameHeight;
 };
+
+} // Streaming

@@ -5,6 +5,8 @@
 #include <fstream>
 #include "Interfaces.hpp"
 
+namespace Streaming {
+
 class FileReader final : public IOInterface
 {
 public:
@@ -27,3 +29,5 @@ public:
 private:
 	std::ofstream m_stream;
 };
+
+} // Streaming
