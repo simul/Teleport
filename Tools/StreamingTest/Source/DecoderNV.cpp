@@ -111,12 +111,13 @@ void DecoderNV::initializeCUVID()
 DecoderNV::DecoderNV()
 	: m_outputBuffer({0})
 	, m_outputBufferResource(nullptr)
+	, m_renderer(nullptr)
 {
 	initializeCUDA();
 	initializeCUVID();
 }
 
-void DecoderNV::initialize(std::shared_ptr<RendererInterface> renderer, int width, int height) 
+void DecoderNV::initialize(RendererInterface* renderer, int width, int height) 
 {
 	m_renderer    = renderer;
 	m_frameWidth  = width;

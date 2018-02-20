@@ -4,7 +4,6 @@
 
 #include <cassert>
 #include <cstdint>
-#include <memory>
 
 #include "Bitstream.hpp"
 
@@ -62,7 +61,7 @@ class EncoderInterface
 public:
 	virtual ~EncoderInterface() = default;
 
-	virtual void initialize(std::shared_ptr<RendererInterface> renderer, int width, int height, uint64_t idrFrequency) = 0;
+	virtual void initialize(RendererInterface* renderer, int width, int height, uint64_t idrFrequency) = 0;
 	virtual void shutdown() = 0;
 	virtual void encode(uint64_t timestamp) = 0;
 
@@ -77,7 +76,7 @@ class DecoderInterface
 public:
 	virtual ~DecoderInterface() = default;
 
-	virtual void initialize(std::shared_ptr<RendererInterface> renderer, int width, int height) = 0;
+	virtual void initialize(RendererInterface* renderer, int width, int height) = 0;
 	virtual void shutdown() = 0;
 	virtual void decode(Bitstream& stream) = 0;
 };

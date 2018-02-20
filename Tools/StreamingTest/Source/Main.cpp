@@ -20,14 +20,14 @@ const int g_port         = 31337;
 
 static void serverMain()
 {
-	std::shared_ptr<RendererInterface> renderer(new RendererDX11);
+	std::unique_ptr<RendererInterface> renderer(new RendererDX11);
 	std::unique_ptr<EncoderInterface> encoder(new EncoderNV);
 
 	NetworkStream stream;
 	stream.listen(g_port);
 
 	GLFWwindow* window = renderer->initialize("Streaming Server", g_frameWidth, g_frameHeight);
-	encoder->initialize(renderer, g_frameWidth, g_frameHeight, g_idrFrequency);
+	encoder->initialize(renderer.get(), g_frameWidth, g_frameHeight, g_idrFrequency);
 
 	uint64_t frameIndex = 0;
 	glfwSetTime(0.0);
@@ -50,7 +50,7 @@ static void serverMain()
 
 static void clientMain(const char* hostName)
 {
-	std::shared_ptr<RendererInterface> renderer(new RendererDX11);
+	std::unique_ptr<RendererInterface> renderer(new RendererDX11);
 	std::unique_ptr<DecoderInterface> decoder(new DecoderNV);
 
 	NetworkStream stream;
@@ -59,7 +59,7 @@ static void clientMain(const char* hostName)
 	GLFWwindow* window = renderer->initialize("Streaming Client", g_frameWidth, g_frameHeight);
 	Surface surface = renderer->createSurface(SurfaceFormat::ARGB);
 
-	decoder->initialize(renderer, g_frameWidth, g_frameHeight);
+	decoder->initialize(renderer.get(), g_frameWidth, g_frameHeight);
 	
 	while(!glfwWindowShouldClose(window) && stream.processClient()) {
 		Bitstream bitstream = stream.read();

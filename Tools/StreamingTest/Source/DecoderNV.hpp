@@ -16,7 +16,7 @@ class DecoderNV final : public DecoderInterface
 public:
 	DecoderNV();
 
-	void initialize(std::shared_ptr<RendererInterface> renderer, int width, int height) override;
+	void initialize(RendererInterface* renderer, int width, int height) override;
 	void shutdown() override;
 	void decode(Bitstream& stream) override;
 	
@@ -28,7 +28,7 @@ private:
 	static int onDecode(void* pThis, CUVIDPICPARAMS* pic);
 	static int onDisplay(void* pThis, CUVIDPARSERDISPINFO* dispInfo);
 
-	std::shared_ptr<RendererInterface> m_renderer;
+	RendererInterface* m_renderer;
 
 	CUdevice m_device;
 	CUcontext m_context;

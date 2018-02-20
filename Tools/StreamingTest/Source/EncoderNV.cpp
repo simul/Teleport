@@ -17,6 +17,7 @@ EncoderNV::EncoderNV()
 	, m_inputBufferPtr(nullptr)
 	, m_outputBufferPtr(nullptr)
 	, m_registeredSurface({0, 0, nullptr})
+	, m_renderer(nullptr)
 {
 	m_hLibrary = LoadLibrary(
 #if _WIN64
@@ -46,7 +47,7 @@ EncoderNV::~EncoderNV()
 	}
 }
 
-void EncoderNV::initialize(std::shared_ptr<RendererInterface> renderer, int width, int height, uint64_t idrFrequency)
+void EncoderNV::initialize(RendererInterface* renderer, int width, int height, uint64_t idrFrequency)
 {
 	m_renderer = renderer;
 	m_idrFrequency = idrFrequency;

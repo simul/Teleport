@@ -15,7 +15,7 @@ public:
 	EncoderNV();
 	~EncoderNV();
 
-	void initialize(std::shared_ptr<RendererInterface> renderer, int width, int height, uint64_t idrFrequency) override;
+	void initialize(RendererInterface* renderer, int width, int height, uint64_t idrFrequency) override;
 	void shutdown() override;
 	void encode(uint64_t timestamp) override;
 	
@@ -27,7 +27,7 @@ public:
 private:
 	void registerSurface(const Surface& surface);
 
-	std::shared_ptr<RendererInterface> m_renderer;
+	RendererInterface* m_renderer;
 
 	struct EncodeConfig
 	{
