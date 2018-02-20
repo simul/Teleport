@@ -1,13 +1,14 @@
 // Copyright 1998-2017 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
+using System.IO;
 
 public class RemotePlayPlugin : ModuleRules
 {
 	public RemotePlayPlugin(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
-		
+
 		PublicIncludePaths.AddRange(
 			new string[] {
 				"RemotePlayPlugin/Public"
@@ -19,7 +20,7 @@ public class RemotePlayPlugin : ModuleRules
 		PrivateIncludePaths.AddRange(
 			new string[] {
 				"RemotePlayPlugin/Private",
-				// ... add other private include paths required here ...
+                Path.Combine(ThirdPartyDirectory, "libstreaming/Include"),
 			}
 			);
 			
@@ -43,13 +44,24 @@ public class RemotePlayPlugin : ModuleRules
                 "ShaderCore",
 			}
 			);
-		
-		
-		DynamicallyLoadedModuleNames.AddRange(
-			new string[]
-			{
-				// ... add any modules that your module loads dynamically here ...
-			}
-			);
-	}
+
+        switch (Target.Platform)
+        {
+            case UnrealTargetPlatform.Win64:
+                PublicAdditionalLibraries.Add(Path.Combine(ThirdPartyDirectory, "libstreaming/Win64/libstreaming.lib"));
+                PublicAdditionalLibraries.Add(Path.Combine(ThirdPartyDirectory, "libstreaming/Win64/enet.lib"));
+                break;
+            case UnrealTargetPlatform.Win32:
+                // TODO: Implement.
+                break;
+        }
+   	}
+
+    private string ThirdPartyDirectory
+    {
+        get
+        {
+            return Path.GetFullPath(Path.Combine(ModuleDirectory, "../../ThirdParty/"));
+        }
+    }
 }

@@ -24,14 +24,8 @@ private:
 	void OnViewportDrawn();
 	FDelegateHandle ViewportDrawnDelegateHandle;
 
-	class FCaptureRenderContext* RenderContext;
-
-	static void BeginInitializeRenderContext(class FCaptureRenderContext* InRenderContext);
-	static void BeginReleaseRenderContext(class FCaptureRenderContext* InRenderContext);
-
-	static void ProjectCapture_RenderThread(
-		FRHICommandListImmediate& RHICmdList,
-		class FCaptureRenderContext* RenderContext,
-		FTextureRenderTargetResource* RenderTargetResource,
-		ERHIFeatureLevel::Type FeatureLevel);
+	class FCaptureContext* Context;
+	static void BeginInitializeContext(class FCaptureContext* InContext);
+	static void BeginReleaseContext(class FCaptureContext* InContext);
+	void BeginCapture(class FCaptureContext* InContext) const;
 };

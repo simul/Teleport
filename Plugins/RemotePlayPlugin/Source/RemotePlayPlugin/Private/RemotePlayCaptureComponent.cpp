@@ -2,6 +2,7 @@
 
 #include "RemotePlayCaptureComponent.h"
 #include "RemotePlayPlugin.h"
+#include "RemotePlayRHI.h"
 
 #include "Engine.h"
 #include "Engine/World.h"
@@ -14,6 +15,8 @@
 #include "Public/PipelineStateCache.h"
 #include "Public/ShaderParameters.h"
 #include "Public/ShaderParameterUtils.h"
+
+#include "LibStreaming.hpp"
 
 DECLARE_FLOAT_COUNTER_STAT(TEXT("RemotePlayCapture"), Stat_GPU_RemotePlayCapture, STATGROUP_GPU);
 
@@ -71,68 +74,101 @@ private:
 
 IMPLEMENT_SHADER_TYPE(, FCaptureProjectionCS, TEXT("/Plugin/RemotePlayPlugin/Private/CaptureProjection.usf"), TEXT("MainCS"), SF_Compute)
 
-class FCaptureRenderContext
+class FCaptureContext
 {
 public:
-	void Initialize_RenderThread(FRHICommandListImmediate& RHICmdList)
+	void __declspec(noinline) Initialize_RenderThread(FRHICommandListImmediate& RHICmdList)
 	{
-		FRHIResourceCreateInfo CreateInfo;
-		VideoSurfaceTextureRHI = RHICmdList.CreateTexture2D(kVideoSurfaceSize, kVideoSurfaceSize, EPixelFormat::PF_R8G8B8A8, 1, 1, TexCreate_UAV, CreateInfo);
-		VideoSurfaceUAV = RHICmdList.CreateUnorderedAccessView(VideoSurfaceTextureRHI, 0);
+		RHI.Reset(new FRemotePlayRHI(RHICmdList, kVideoSurfaceSize, kVideoSurfaceSize));
+
+		StreamingEncoder.Reset(Streaming::createEncoder(Streaming::Platform::NV));
+		StreamingIO.Reset(Streaming::createNetworkIO(Streaming::NetworkAPI::ENET));
+
+		StreamingEncoder->initialize(RHI.Get(), kVideoSurfaceSize, kVideoSurfaceSize, 60);
+		StreamingIO->listen(kNetworkPort);
+
+		FrameIndex = 0;
 	}
 
-	void Release_RenderThread(FRHICommandListImmediate& RHICmdList)
+	void __declspec(noinline) Release_RenderThread(FRHICommandListImmediate& RHICmdList)
 	{
-		VideoSurfaceUAV.SafeRelease();
-		VideoSurfaceTextureRHI.SafeRelease();
+		StreamingEncoder->shutdown();
 	}
 
-	FTexture2DRHIRef VideoSurfaceTextureRHI;
-	FUnorderedAccessViewRHIRef VideoSurfaceUAV;
+	void ProjectCapturedEnvironment(
+		FRHICommandListImmediate& RHICmdList,
+		FTextureRenderTargetResource* RenderTargetResource,
+		ERHIFeatureLevel::Type FeatureLevel)
+	{
+		SCOPED_DRAW_EVENT(RHICmdList, RemotePlayCapture);
+
+		TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
+		TShaderMapRef<FCaptureProjectionCS> ComputeShader(GlobalShaderMap);
+
+		const uint32 NumThreadGroups = kVideoSurfaceSize / FCaptureProjectionCS::kThreadGroupSize;
+		ComputeShader->SetParameters(RHICmdList, RenderTargetResource->TextureRHI, RHI->SurfaceRHI, RHI->SurfaceUAV);
+
+		SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*ComputeShader));
+		DispatchComputeShader(RHICmdList, *ComputeShader, NumThreadGroups, NumThreadGroups, 1);
+	}
+
+	void ProcessCapturedEnvironment()
+	{
+		StreamingEncoder->encode(FrameIndex++);
+		StreamingIO->processServer();
+
+		const Streaming::Bitstream Bitstream = StreamingEncoder->lock();
+		StreamingIO->write(Bitstream);
+		StreamingEncoder->unlock();
+	}
+
+	TUniquePtr<FRemotePlayRHI> RHI;
+
+	TUniquePtr<Streaming::EncoderInterface> StreamingEncoder;
+	TUniquePtr<Streaming::NetworkIOInterface> StreamingIO;
+	uint64 FrameIndex;
+	
 	static const uint32 kVideoSurfaceSize = 1024;
+	static const uint32 kNetworkPort = 31337;
 };
 	
-void URemotePlayCaptureComponent::BeginInitializeRenderContext(FCaptureRenderContext* InRenderContext)
+void URemotePlayCaptureComponent::BeginInitializeContext(FCaptureContext* InContext)
 {
-	ENQUEUE_RENDER_COMMAND(RemotePlayInitializeCaptureRenderContextCommand)(
-		[InRenderContext](FRHICommandListImmediate& RHICmdList)
+	ENQUEUE_RENDER_COMMAND(RemotePlayInitializeCaptureContextCommand)(
+		[InContext](FRHICommandListImmediate& RHICmdList)
 		{
-			InRenderContext->Initialize_RenderThread(RHICmdList);
+			InContext->Initialize_RenderThread(RHICmdList);
 		}
 	);
 }
 
-void URemotePlayCaptureComponent::BeginReleaseRenderContext(FCaptureRenderContext* InRenderContext)
+void URemotePlayCaptureComponent::BeginReleaseContext(FCaptureContext* InContext)
 {
-	ENQUEUE_RENDER_COMMAND(RemotePlayReleaseCaptureRenderContextCommand)(
-		[InRenderContext](FRHICommandListImmediate& RHICmdList)
+	ENQUEUE_RENDER_COMMAND(RemotePlayReleaseCaptureContextCommand)(
+		[InContext](FRHICommandListImmediate& RHICmdList)
 		{
-			InRenderContext->Release_RenderThread(RHICmdList);
-			delete InRenderContext;
+			InContext->Release_RenderThread(RHICmdList);
+			delete InContext;
 		}
 	);
 }
-	
-void URemotePlayCaptureComponent::ProjectCapture_RenderThread(
-	FRHICommandListImmediate& RHICmdList,
-	FCaptureRenderContext* RenderContext,
-	FTextureRenderTargetResource* RenderTargetResource,
-	ERHIFeatureLevel::Type FeatureLevel)
+
+void URemotePlayCaptureComponent::BeginCapture(FCaptureContext* InContext) const
 {
-	SCOPED_DRAW_EVENT(RHICmdList, RemotePlayCapture);
+	FTextureRenderTargetResource* RenderTargetResource = TextureTarget->GameThread_GetRenderTargetResource();
+	const ERHIFeatureLevel::Type FeatureLevel = GetWorld()->Scene->GetFeatureLevel();
 
-	TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
-	TShaderMapRef<FCaptureProjectionCS> ComputeShader(GlobalShaderMap);
-
-	const uint32 NumThreadGroups = FCaptureRenderContext::kVideoSurfaceSize / FCaptureProjectionCS::kThreadGroupSize;
-	ComputeShader->SetParameters(RHICmdList, RenderTargetResource->TextureRHI, RenderContext->VideoSurfaceTextureRHI, RenderContext->VideoSurfaceUAV);
-
-	SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*ComputeShader));
-	DispatchComputeShader(RHICmdList, *ComputeShader, NumThreadGroups, NumThreadGroups, 1);
-}	
+	ENQUEUE_RENDER_COMMAND(RemotePlayCaptureCommand)(
+		[InContext, RenderTargetResource, FeatureLevel](FRHICommandListImmediate& RHICmdList)
+		{
+			InContext->ProjectCapturedEnvironment(RHICmdList, RenderTargetResource, FeatureLevel);
+			InContext->ProcessCapturedEnvironment();
+		}
+	);
+}
 	
 URemotePlayCaptureComponent::URemotePlayCaptureComponent()
-	: RenderContext(nullptr)
+	: Context(nullptr)
 {
 	bWantsInitializeComponent = true;
 	bCaptureEveryFrame = true;
@@ -148,10 +184,10 @@ void URemotePlayCaptureComponent::UninitializeComponent()
 		}
 		ViewportDrawnDelegateHandle.Reset();
 	}
-	if(RenderContext)
+	if(Context)
 	{
-		BeginReleaseRenderContext(RenderContext);
-		RenderContext = nullptr;
+		BeginReleaseContext(Context);
+		Context = nullptr;
 	}
 	Super::UninitializeComponent();
 }
@@ -178,27 +214,15 @@ void URemotePlayCaptureComponent::OnViewportDrawn()
 {
 	if(GetWorld()->IsServer() && bCaptureEveryFrame)
 	{
-		ERHIFeatureLevel::Type FeatureLevel = GetWorld()->Scene->GetFeatureLevel();
-
 		// TODO: Check for compute shader support.
-
 		if(TextureTarget)
 		{
-			if(!RenderContext)
+			if(!Context)
 			{
-				RenderContext = new FCaptureRenderContext;
-				BeginInitializeRenderContext(RenderContext);
+				Context = new FCaptureContext;
+				BeginInitializeContext(Context);
 			}
-
-			FTextureRenderTargetResource* RenderTargetResource = TextureTarget->GameThread_GetRenderTargetResource();
-			FCaptureRenderContext* RenderContextCmd = RenderContext;
-
-			ENQUEUE_RENDER_COMMAND(RemotePlayProjectCaptureCommand)(
-				[RenderContextCmd, RenderTargetResource, FeatureLevel](FRHICommandListImmediate& RHICmdList)
-				{
-					ProjectCapture_RenderThread(RHICmdList, RenderContextCmd, RenderTargetResource, FeatureLevel);
-				}
-			);
+			BeginCapture(Context);
 		}
 	}
 }
