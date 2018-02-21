@@ -173,7 +173,10 @@ void ARemotePlayCharacter::ServerFire_Implementation()
 			{
 				const FRotator SpawnRotation = VR_MuzzleLocation->GetComponentRotation();
 				const FVector SpawnLocation = VR_MuzzleLocation->GetComponentLocation();
-				World->SpawnActor<ARemotePlayProjectile>(ProjectileClass, SpawnLocation, SpawnRotation);
+				
+				FActorSpawnParameters ActorSpawnParams;
+				ActorSpawnParams.Owner = this;
+				World->SpawnActor<ARemotePlayProjectile>(ProjectileClass, SpawnLocation, SpawnRotation, ActorSpawnParams);
 			}
 			else
 			{
@@ -184,6 +187,7 @@ void ARemotePlayCharacter::ServerFire_Implementation()
 				//Set Spawn Collision Handling Override
 				FActorSpawnParameters ActorSpawnParams;
 				ActorSpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButDontSpawnIfColliding;
+				ActorSpawnParams.Owner = this;
 
 				// spawn the projectile at the muzzle
 				World->SpawnActor<ARemotePlayProjectile>(ProjectileClass, SpawnLocation, SpawnRotation, ActorSpawnParams);
