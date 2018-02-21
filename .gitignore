@@ -8,3 +8,5 @@ Binaries/
 Intermediate/
 Saved/
 
+# ThirdParty dependencies
+Plugins/RemotePlayPlugin/ThirdParty/**
