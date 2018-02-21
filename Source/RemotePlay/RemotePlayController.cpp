@@ -23,6 +23,8 @@ void ARemotePlayController::BeginPlay()
 		}
 		else
 		{
+			GetWorld()->FlushLevelStreaming();
+
 			ARemotePlayWorldSettings* WorldSettings = CastChecked<ARemotePlayWorldSettings>(GetWorld()->GetWorldSettings());
 			URemotePlayFunctionLibrary::SetStreamingLevelVisibility(this, WorldSettings->ServerSideLevelName, false);
 		}
