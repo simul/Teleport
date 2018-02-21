@@ -19,4 +19,8 @@ public:
 	virtual void Possess(APawn* Pawn) override;
 	virtual void UnPossess() override;
 	/* End AController interface */
+
+private:
+	void SetServerInputMode();
+	void SetClientInputMode();
 };

@@ -19,7 +19,9 @@ void ARemotePlayController::BeginPlay()
 				UnPossess();
 				Pawn->Destroy();
 			}
+
 			StartSpectatingOnly();
+			SetServerInputMode();
 		}
 		else
 		{
@@ -27,6 +29,8 @@ void ARemotePlayController::BeginPlay()
 
 			ARemotePlayWorldSettings* WorldSettings = CastChecked<ARemotePlayWorldSettings>(GetWorld()->GetWorldSettings());
 			URemotePlayFunctionLibrary::SetStreamingLevelVisibility(this, WorldSettings->ServerSideLevelName, false);
+
+			SetClientInputMode();
 		}
 	}
 }
@@ -53,4 +57,19 @@ void ARemotePlayController::UnPossess()
 	}
 
 	Super::UnPossess();
+}
+	
+void ARemotePlayController::SetServerInputMode()
+{
+	FInputModeUIOnly InputMode;
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	SetInputMode(InputMode);
+	bShowMouseCursor = true;
+}
+	
+void ARemotePlayController::SetClientInputMode()
+{
+	FInputModeGameOnly InputMode;
+	SetInputMode(InputMode);
+	bShowMouseCursor = false;
 }
