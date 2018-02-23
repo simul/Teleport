@@ -3,7 +3,15 @@
 #include "RemotePlayRHI.h"
 #include "RemotePlayPlugin.h"
 
+#include "Public/ShaderCore.h"
 #include "Public/RenderUtils.h"
+
+#include "AllowWindowsPlatformTypes.h"
+#include "D3D11.h"
+#include "HideWindowsPlatformTypes.h"
+
+#include "Public/D3D11State.h"
+#include "Public/D3D11Resources.h"
 
 #include "dxgiformat.h"
 
@@ -54,18 +62,57 @@ void FRemotePlayRHI::releaseSurface(Streaming::Surface& surface)
 	{
 		SurfaceUAV.SafeRelease();
 		SurfaceRHI.SafeRelease();
+		surface = {};
 	}
 }
 
 Streaming::Buffer FRemotePlayRHI::createVideoBuffer(Streaming::SurfaceFormat format, int pitch)
 {
-	checkf(0, TEXT("Not implemented!"));
-	return Streaming::Buffer{};
+	uint32 BufferSize = 0;
+	uint32 BufferStride = 1;
+	uint8 BufferFormat = EPixelFormat::PF_Unknown;
+
+	switch(format)
+	{
+	case Streaming::SurfaceFormat::ABGR:
+	case Streaming::SurfaceFormat::ARGB:
+		BufferSize = FrameHeight * pitch * 4;
+		BufferStride = 4;
+		BufferFormat = EPixelFormat::PF_R8G8B8A8_UINT;
+		break;
+	case Streaming::SurfaceFormat::NV12:
+		BufferSize   = FrameHeight * pitch * 3 / 2;
+		BufferStride = 1;
+		BufferFormat = EPixelFormat::PF_R8_UINT;
+		break;
+	default:
+		check(0);
+	}
+
+	// This is not strictly a "vertex" buffer but this gives us hardware value unpacking which is handy for NV12->RGBA conversion.
+	{
+		FRHIResourceCreateInfo CreateInfo;
+		VideoBufferRHI = RHICmdList.CreateVertexBuffer(BufferSize, BUF_ShaderResource, CreateInfo);
+		VideoBufferSRV = RHICmdList.CreateShaderResourceView(VideoBufferRHI, BufferStride, BufferFormat);
+	}
+
+	// NOTE: Assuming D3D11 for now.
+	FD3D11VertexBuffer* VideoBufferD3D11 = static_cast<FD3D11VertexBuffer*>(VideoBufferRHI.GetReference());
+	return Streaming::Buffer{(int)BufferSize, reinterpret_cast<void*>(VideoBufferD3D11->Resource.GetReference())};
 }
 	
 void FRemotePlayRHI::releaseVideoBuffer(Streaming::Buffer& buffer)
 {
-	checkf(0, TEXT("Not implemented!"));
+	if(VideoBufferRHI)
+	{
+		// NOTE: Assuming D3D11 for now.
+		FD3D11VertexBuffer* VideoBufferD3D11 = static_cast<FD3D11VertexBuffer*>(VideoBufferRHI.GetReference());
+		if(buffer.pResource == VideoBufferD3D11->Resource.GetReference())
+		{
+			VideoBufferRHI.SafeRelease();
+			buffer = {};
+		}
+	}
 }
 
 Streaming::RendererDevice* FRemotePlayRHI::getDevice() const

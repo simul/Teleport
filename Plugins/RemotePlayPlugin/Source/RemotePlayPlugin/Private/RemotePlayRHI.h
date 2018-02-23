@@ -24,6 +24,9 @@ public:
 	FTexture2DRHIRef SurfaceRHI;
 	FUnorderedAccessViewRHIRef SurfaceUAV;
 
+	FVertexBufferRHIRef VideoBufferRHI;
+	FShaderResourceViewRHIRef VideoBufferSRV;
+
 	const uint32 FrameWidth;
 	const uint32 FrameHeight;
 private:

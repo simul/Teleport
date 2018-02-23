@@ -55,6 +55,12 @@ public:
 		OutputTexture.SetTexture(RHICmdList, ShaderRHI, OutputTextureRef, OutputTextureUAVRef);
 	}
 
+	void UnsetParameters(FRHICommandList& RHICmdList)
+	{
+		FComputeShaderRHIParamRef ShaderRHI = GetComputeShader();
+		OutputTexture.UnsetUAV(RHICmdList, ShaderRHI);
+	}
+
 	virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
@@ -77,15 +83,18 @@ IMPLEMENT_SHADER_TYPE(, FCaptureProjectionCS, TEXT("/Plugin/RemotePlayPlugin/Pri
 class FCaptureContext
 {
 public:
+	void Initialize_GameThread()
+	{
+		StreamingIO.Reset(Streaming::createNetworkIO(Streaming::NetworkAPI::ENET));
+		StreamingIO->listen(kNetworkPort);
+	}
+
 	void __declspec(noinline) Initialize_RenderThread(FRHICommandListImmediate& RHICmdList)
 	{
 		RHI.Reset(new FRemotePlayRHI(RHICmdList, kVideoSurfaceSize, kVideoSurfaceSize));
 
 		StreamingEncoder.Reset(Streaming::createEncoder(Streaming::Platform::NV));
-		StreamingIO.Reset(Streaming::createNetworkIO(Streaming::NetworkAPI::ENET));
-
 		StreamingEncoder->initialize(RHI.Get(), kVideoSurfaceSize, kVideoSurfaceSize, 60);
-		StreamingIO->listen(kNetworkPort);
 
 		FrameIndex = 0;
 	}
@@ -107,9 +116,9 @@ public:
 
 		const uint32 NumThreadGroups = kVideoSurfaceSize / FCaptureProjectionCS::kThreadGroupSize;
 		ComputeShader->SetParameters(RHICmdList, RenderTargetResource->TextureRHI, RHI->SurfaceRHI, RHI->SurfaceUAV);
-
 		SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*ComputeShader));
 		DispatchComputeShader(RHICmdList, *ComputeShader, NumThreadGroups, NumThreadGroups, 1);
+		ComputeShader->UnsetParameters(RHICmdList);
 	}
 
 	void ProcessCapturedEnvironment()
@@ -134,6 +143,7 @@ public:
 	
 void URemotePlayCaptureComponent::BeginInitializeContext(FCaptureContext* InContext)
 {
+	InContext->Initialize_GameThread();
 	ENQUEUE_RENDER_COMMAND(RemotePlayInitializeCaptureContextCommand)(
 		[InContext](FRHICommandListImmediate& RHICmdList)
 		{
@@ -153,7 +163,7 @@ void URemotePlayCaptureComponent::BeginReleaseContext(FCaptureContext* InContext
 	);
 }
 
-void URemotePlayCaptureComponent::BeginCapture(FCaptureContext* InContext) const
+void URemotePlayCaptureComponent::BeginCaptureFrame(FCaptureContext* InContext) const
 {
 	FTextureRenderTargetResource* RenderTargetResource = TextureTarget->GameThread_GetRenderTargetResource();
 	const ERHIFeatureLevel::Type FeatureLevel = GetWorld()->Scene->GetFeatureLevel();
@@ -222,7 +232,7 @@ void URemotePlayCaptureComponent::OnViewportDrawn()
 				Context = new FCaptureContext;
 				BeginInitializeContext(Context);
 			}
-			BeginCapture(Context);
+			BeginCaptureFrame(Context);
 		}
 	}
 }

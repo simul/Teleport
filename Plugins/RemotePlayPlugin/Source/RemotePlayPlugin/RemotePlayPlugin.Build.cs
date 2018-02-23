@@ -42,6 +42,7 @@ public class RemotePlayPlugin : ModuleRules
                 "RHI",
                 "RenderCore",
                 "ShaderCore",
+                "D3D11RHI"
 			}
 			);
 

@@ -27,5 +27,5 @@ private:
 	class FCaptureContext* Context;
 	static void BeginInitializeContext(class FCaptureContext* InContext);
 	static void BeginReleaseContext(class FCaptureContext* InContext);
-	void BeginCapture(class FCaptureContext* InContext) const;
+	void BeginCaptureFrame(class FCaptureContext* InContext) const;
 };
