@@ -17,8 +17,8 @@ void MainCS(uint2 ThreadID : SV_DispatchThreadID)
 	uint OutputW, OutputH;
 	RWOutputTexture.GetDimensions(OutputW, OutputH);
 
-	float2 UV = float2(ThreadID.x / float(OutputW), ThreadID.y / float(OutputH));
-	float Phi = (1.0-UV.x) * TwoPI;
+	float2 UV   = float2(ThreadID.x / float(OutputW), ThreadID.y / float(OutputH));
+	float Phi   = UV.x * TwoPI;
 	float Theta = UV.y * PI;
 
 	float3 CubeSampleVec = float3(

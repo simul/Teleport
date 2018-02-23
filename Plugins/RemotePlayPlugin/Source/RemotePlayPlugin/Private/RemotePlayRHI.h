@@ -26,6 +26,7 @@ public:
 
 	FVertexBufferRHIRef VideoBufferRHI;
 	FShaderResourceViewRHIRef VideoBufferSRV;
+	uint32 VideoBufferPitch;
 
 	const uint32 FrameWidth;
 	const uint32 FrameHeight;

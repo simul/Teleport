@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/SceneCaptureComponentCube.h"
+#include "RemotePlayTypes.h"
 #include "RemotePlayCaptureComponent.generated.h"
 
 class FTextureRenderTargetResource;
@@ -20,12 +21,15 @@ public:
 	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	/* End UActorComponent interface */
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="RemotePlay")
+	FRemotePlayStreamParameters StreamParams;
+
 private:
 	void OnViewportDrawn();
 	FDelegateHandle ViewportDrawnDelegateHandle;
 
 	class FCaptureContext* Context;
-	static void BeginInitializeContext(class FCaptureContext* InContext);
-	static void BeginReleaseContext(class FCaptureContext* InContext);
+	void BeginInitializeContext(class FCaptureContext* InContext) const;
+	void BeginReleaseContext(class FCaptureContext* InContext) const;
 	void BeginCaptureFrame(class FCaptureContext* InContext) const;
 };

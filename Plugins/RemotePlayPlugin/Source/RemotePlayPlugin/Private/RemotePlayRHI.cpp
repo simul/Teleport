@@ -19,6 +19,7 @@ FRemotePlayRHI::FRemotePlayRHI(FRHICommandListImmediate& InRHICmdList, uint32 Fr
 	: RHICmdList(InRHICmdList)
 	, FrameWidth(FrameW)
 	, FrameHeight(FrameH)
+	, VideoBufferPitch(0)
 {}
 
 Streaming::Surface FRemotePlayRHI::createSurface(Streaming::SurfaceFormat format)
@@ -71,6 +72,8 @@ Streaming::Buffer FRemotePlayRHI::createVideoBuffer(Streaming::SurfaceFormat for
 	uint32 BufferSize = 0;
 	uint32 BufferStride = 1;
 	uint8 BufferFormat = EPixelFormat::PF_Unknown;
+
+	VideoBufferPitch = (uint32)pitch;
 
 	switch(format)
 	{

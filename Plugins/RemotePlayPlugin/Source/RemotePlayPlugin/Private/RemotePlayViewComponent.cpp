@@ -42,17 +42,21 @@ public:
 	{
 		InputBuffer.Bind(Initializer.ParameterMap, TEXT("InputBuffer"));
 		OutputTexture.Bind(Initializer.ParameterMap, TEXT("OutputTexture"));
+		Pitch.Bind(Initializer.ParameterMap, TEXT("Pitch"));
 	}
 
 	void SetParameters(
 		FRHICommandList& RHICmdList,
 		FShaderResourceViewRHIRef InputBufferRef,
 		FTexture2DRHIRef OutputTextureRef,
-		FUnorderedAccessViewRHIRef OutputTextureUAVRef)
+		FUnorderedAccessViewRHIRef OutputTextureUAVRef,
+		uint32 InPitch
+		)
 	{
 		FComputeShaderRHIParamRef ShaderRHI = GetComputeShader();
 		RHICmdList.SetShaderResourceViewParameter(ShaderRHI, 0, InputBufferRef);
 		OutputTexture.SetTexture(RHICmdList, ShaderRHI, OutputTextureRef, OutputTextureUAVRef);
+		SetShaderValue(RHICmdList, ShaderRHI, Pitch, InPitch);
 	}
 
 	void UnsetParameters(FRHICommandList& RHICmdList)
@@ -66,6 +70,7 @@ public:
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 		Ar << InputBuffer;
 		Ar << OutputTexture;
+		Ar << Pitch;
 		return bShaderHasOutdatedParameters;
 	}
 	
@@ -74,6 +79,7 @@ public:
 private:
 	FShaderResourceParameter InputBuffer;
 	FRWShaderParameter OutputTexture;
+	FShaderParameter Pitch;
 };
 
 class FResolveFrameVS : public FGlobalShader
@@ -134,6 +140,10 @@ IMPLEMENT_SHADER_TYPE(, FResolveFramePS, TEXT("/Plugin/RemotePlayPlugin/Private/
 class FViewContext
 {
 public:
+	FViewContext(const FRemotePlayStreamParameters& InParams)
+		: StreamParams(InParams)
+	{}
+
 	void Initialize_GameThread(const FString& InAddr)
 	{
 		StreamingIO.Reset(Streaming::createNetworkIO(Streaming::NetworkAPI::ENET));
@@ -145,7 +155,7 @@ public:
 		if(!bConnected)
 		{
 			try {
-				StreamingIO->connect(TCHAR_TO_UTF8(*RemoteAddr), kNetworkPort);
+				StreamingIO->connect(TCHAR_TO_UTF8(*RemoteAddr), (int)StreamParams.ConnectionPort);
 				bConnected = true;
 			}
 			catch(const std::exception&) {
@@ -157,12 +167,12 @@ public:
 
 	void __declspec(noinline) Initialize_RenderThread(FRHICommandListImmediate& RHICmdList)
 	{
-		RHI.Reset(new FRemotePlayRHI(RHICmdList, kVideoSurfaceSize, kVideoSurfaceSize));
+		RHI.Reset(new FRemotePlayRHI(RHICmdList, StreamParams.FrameWidth, StreamParams.FrameHeight));
 		RHI->createSurface(Streaming::SurfaceFormat::ARGB);
 
 		StreamingDecoder.Reset(Streaming::createDecoder(Streaming::Platform::NV));
 
-		StreamingDecoder->initialize(RHI.Get(), kVideoSurfaceSize, kVideoSurfaceSize);
+		StreamingDecoder->initialize(RHI.Get(), StreamParams.FrameWidth, StreamParams.FrameHeight);
 	}
 
 	void __declspec(noinline) Release_RenderThread(FRHICommandListImmediate& RHICmdList)
@@ -193,10 +203,11 @@ public:
 		TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 		TShaderMapRef<FNV12toRGBA_CS> ComputeShader(GlobalShaderMap);
 
-		const uint32 NumThreadGroups = kVideoSurfaceSize / FNV12toRGBA_CS::kThreadGroupSize;
-		ComputeShader->SetParameters(RHICmdList, RHI->VideoBufferSRV, RHI->SurfaceRHI, RHI->SurfaceUAV);
+		const uint32 NumThreadGroupsX = StreamParams.FrameWidth / FNV12toRGBA_CS::kThreadGroupSize;
+		const uint32 NumThreadGroupsY = StreamParams.FrameHeight / FNV12toRGBA_CS::kThreadGroupSize;
+		ComputeShader->SetParameters(RHICmdList, RHI->VideoBufferSRV, RHI->SurfaceRHI, RHI->SurfaceUAV, RHI->VideoBufferPitch);
 		SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*ComputeShader));
-		DispatchComputeShader(RHICmdList, *ComputeShader, NumThreadGroups, NumThreadGroups, 1);
+		DispatchComputeShader(RHICmdList, *ComputeShader, NumThreadGroupsX, NumThreadGroupsY, 1);
 		ComputeShader->UnsetParameters(RHICmdList);
 	}
 
@@ -214,7 +225,7 @@ public:
 			ESimpleRenderTargetMode::EUninitializedColorAndDepth,
 			FExclusiveDepthStencil::DepthNop_StencilNop
 		);
-		RHICmdList.SetViewport(0, 0, 0.0f, kVideoSurfaceSize, kVideoSurfaceSize, 1.0f);
+		RHICmdList.SetViewport(0, 0, 0.0f, StreamParams.FrameWidth, StreamParams.FrameHeight, 1.0f);
 
 		TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 		TShaderMapRef<FResolveFrameVS> VertexShader(GlobalShaderMap);
@@ -250,12 +261,11 @@ public:
 
 	FString RemoteAddr;
 	bool bConnected = false;
-	
-	static const uint32 kVideoSurfaceSize = 1024;
-	static const uint32 kNetworkPort = 31337;
+
+	const FRemotePlayStreamParameters StreamParams;
 };
 	
-void URemotePlayViewComponent::BeginInitializeContext(class FViewContext* InContext, const FString& InAddr)
+void URemotePlayViewComponent::BeginInitializeContext(class FViewContext* InContext, const FString& InAddr) const
 {
 	InContext->Initialize_GameThread(InAddr);
 	ENQUEUE_RENDER_COMMAND(RemotePlayInitializeViewContextCommand)(
@@ -266,7 +276,7 @@ void URemotePlayViewComponent::BeginInitializeContext(class FViewContext* InCont
 	);
 }
 	
-void URemotePlayViewComponent::BeginReleaseContext(class FViewContext* InContext)
+void URemotePlayViewComponent::BeginReleaseContext(class FViewContext* InContext) const
 {
 	ENQUEUE_RENDER_COMMAND(RemotePlayReleaseViewContextCommand)(
 		[InContext](FRHICommandListImmediate& RHICmdList)
@@ -299,6 +309,10 @@ URemotePlayViewComponent::URemotePlayViewComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
 	bWantsInitializeComponent = true;
+
+	StreamParams.FrameWidth  = 2048;
+	StreamParams.FrameHeight = 1024;
+	StreamParams.ConnectionPort = 31337;
 }
 
 void URemotePlayViewComponent::UninitializeComponent()
@@ -314,6 +328,9 @@ void URemotePlayViewComponent::UninitializeComponent()
 void URemotePlayViewComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+			
+	AActor* OuterActor = GetTypedOuter<AActor>();
+	check(OuterActor);
 
 	if(Context && TextureTarget)
 	{
@@ -322,12 +339,21 @@ void URemotePlayViewComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 			BeginProcessFrame(Context);
 		}
 	}
+	if(DisplayActor)
+	{
+		DisplayActor->SetActorLocation(OuterActor->GetActorLocation());
+	}
 }
 	
 void URemotePlayViewComponent::StartStreamingViewFromServer()
 {
 	if(Context || GetWorld()->IsServer())
 	{
+		return;
+	}
+	if(!DisplayActorClass)
+	{
+		UE_LOG(LogRemotePlayPlugin, Warning, TEXT("No display actor configured"));
 		return;
 	}
 
@@ -338,7 +364,15 @@ void URemotePlayViewComponent::StartStreamingViewFromServer()
 	{
 		const FString RemoteAddr = NetConnection->LowLevelGetRemoteAddress();
 
-		Context = new FViewContext;
+		Context = new FViewContext(StreamParams);
 		BeginInitializeContext(Context, RemoteAddr);
+
+		if(!DisplayActor)
+		{
+			FActorSpawnParameters SpawnParams;
+			SpawnParams.Owner = OuterActor;
+			SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+			DisplayActor = GetWorld()->SpawnActor<AActor>(DisplayActorClass, SpawnParams);
+		}
 	}
 }

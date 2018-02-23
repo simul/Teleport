@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Engine/TextureRenderTarget2D.h"
+#include "RemotePlayTypes.h"
 #include "RemotePlayViewComponent.generated.h"
 
 UCLASS(meta=(BlueprintSpawnableComponent))
@@ -24,10 +25,19 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="RemotePlay")
 	UTextureRenderTarget2D* TextureTarget;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category="RemotePlay")
+	TSubclassOf<AActor> DisplayActorClass;
+	
+	UPROPERTY(BlueprintReadOnly, Category="RemotePlay")
+	AActor* DisplayActor;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="RemotePlay")
+	FRemotePlayStreamParameters StreamParams;
 
 private:
 	class FViewContext* Context;
-	static void BeginInitializeContext(class FViewContext* InContext, const FString& InAddr);
-	static void BeginReleaseContext(class FViewContext* InContext);
+	void BeginInitializeContext(class FViewContext* InContext, const FString& InAddr) const;
+	void BeginReleaseContext(class FViewContext* InContext) const;
 	void BeginProcessFrame(class FViewContext* InContext) const;
 };

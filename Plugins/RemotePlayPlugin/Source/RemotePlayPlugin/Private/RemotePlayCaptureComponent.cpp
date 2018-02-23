@@ -83,18 +83,22 @@ IMPLEMENT_SHADER_TYPE(, FCaptureProjectionCS, TEXT("/Plugin/RemotePlayPlugin/Pri
 class FCaptureContext
 {
 public:
-	void Initialize_GameThread()
+	FCaptureContext(const FRemotePlayStreamParameters& InParams)
+		: StreamParams(InParams)
+	{}
+
+	void __declspec(noinline) Initialize_GameThread()
 	{
 		StreamingIO.Reset(Streaming::createNetworkIO(Streaming::NetworkAPI::ENET));
-		StreamingIO->listen(kNetworkPort);
+		StreamingIO->listen((int)StreamParams.ConnectionPort);
 	}
 
 	void __declspec(noinline) Initialize_RenderThread(FRHICommandListImmediate& RHICmdList)
 	{
-		RHI.Reset(new FRemotePlayRHI(RHICmdList, kVideoSurfaceSize, kVideoSurfaceSize));
+		RHI.Reset(new FRemotePlayRHI(RHICmdList, StreamParams.FrameWidth, StreamParams.FrameHeight));
 
 		StreamingEncoder.Reset(Streaming::createEncoder(Streaming::Platform::NV));
-		StreamingEncoder->initialize(RHI.Get(), kVideoSurfaceSize, kVideoSurfaceSize, 60);
+		StreamingEncoder->initialize(RHI.Get(), StreamParams.FrameWidth, StreamParams.FrameHeight, StreamParams.IDRFrequency);
 
 		FrameIndex = 0;
 	}
@@ -114,10 +118,11 @@ public:
 		TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 		TShaderMapRef<FCaptureProjectionCS> ComputeShader(GlobalShaderMap);
 
-		const uint32 NumThreadGroups = kVideoSurfaceSize / FCaptureProjectionCS::kThreadGroupSize;
+		const uint32 NumThreadGroupsX = StreamParams.FrameWidth / FCaptureProjectionCS::kThreadGroupSize;
+		const uint32 NumThreadGroupsY = StreamParams.FrameHeight / FCaptureProjectionCS::kThreadGroupSize;
 		ComputeShader->SetParameters(RHICmdList, RenderTargetResource->TextureRHI, RHI->SurfaceRHI, RHI->SurfaceUAV);
 		SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*ComputeShader));
-		DispatchComputeShader(RHICmdList, *ComputeShader, NumThreadGroups, NumThreadGroups, 1);
+		DispatchComputeShader(RHICmdList, *ComputeShader, NumThreadGroupsX, NumThreadGroupsY, 1);
 		ComputeShader->UnsetParameters(RHICmdList);
 	}
 
@@ -136,12 +141,11 @@ public:
 	TUniquePtr<Streaming::EncoderInterface> StreamingEncoder;
 	TUniquePtr<Streaming::NetworkIOInterface> StreamingIO;
 	uint64 FrameIndex;
-	
-	static const uint32 kVideoSurfaceSize = 1024;
-	static const uint32 kNetworkPort = 31337;
+
+	const FRemotePlayStreamParameters StreamParams;
 };
 	
-void URemotePlayCaptureComponent::BeginInitializeContext(FCaptureContext* InContext)
+void URemotePlayCaptureComponent::BeginInitializeContext(FCaptureContext* InContext) const
 {
 	InContext->Initialize_GameThread();
 	ENQUEUE_RENDER_COMMAND(RemotePlayInitializeCaptureContextCommand)(
@@ -152,7 +156,7 @@ void URemotePlayCaptureComponent::BeginInitializeContext(FCaptureContext* InCont
 	);
 }
 
-void URemotePlayCaptureComponent::BeginReleaseContext(FCaptureContext* InContext)
+void URemotePlayCaptureComponent::BeginReleaseContext(FCaptureContext* InContext) const
 {
 	ENQUEUE_RENDER_COMMAND(RemotePlayReleaseCaptureContextCommand)(
 		[InContext](FRHICommandListImmediate& RHICmdList)
@@ -182,6 +186,11 @@ URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 {
 	bWantsInitializeComponent = true;
 	bCaptureEveryFrame = true;
+
+	StreamParams.FrameWidth  = 2048;
+	StreamParams.FrameHeight = 1024;
+	StreamParams.ConnectionPort = 31337;
+	StreamParams.IDRFrequency = 60;
 }
 	
 void URemotePlayCaptureComponent::UninitializeComponent()
@@ -229,7 +238,7 @@ void URemotePlayCaptureComponent::OnViewportDrawn()
 		{
 			if(!Context)
 			{
-				Context = new FCaptureContext;
+				Context = new FCaptureContext(StreamParams);
 				BeginInitializeContext(Context);
 			}
 			BeginCaptureFrame(Context);
