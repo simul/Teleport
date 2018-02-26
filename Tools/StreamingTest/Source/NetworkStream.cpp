@@ -10,7 +10,7 @@
 
 namespace {
 	const char g_startCode[] = { 0x00, 0x00, 0x00, 0x01 };
-	const enet_uint32 g_timeout = 5000;
+	const enet_uint32 g_timeout = 500;
 }
 
 using namespace Streaming;

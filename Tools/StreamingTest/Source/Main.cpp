@@ -13,7 +13,7 @@
 
 using namespace Streaming;
 	
-const int g_frameWidth   = 1024;
+const int g_frameWidth   = 2048;
 const int g_frameHeight  = 1024;
 const int g_idrFrequency = 60;
 const int g_port         = 31337;

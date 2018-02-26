@@ -289,8 +289,8 @@ RendererDX11::PixelBuffer RendererDX11::createPixelBuffer(UINT size, UINT stride
 	D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Format = format;
 	srvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
-	srvDesc.Buffer.ElementOffset = 0;
-	srvDesc.Buffer.ElementWidth  = size / stride;
+	srvDesc.Buffer.FirstElement = 0;
+	srvDesc.Buffer.ElementWidth = size / stride;
 	if(FAILED(m_device->CreateShaderResourceView(buf.buffer.Get(), &srvDesc, &buf.srv))) {
 		throw std::runtime_error("Failed to create structured buffer view");
 	}
