@@ -225,7 +225,9 @@ public:
 			ESimpleRenderTargetMode::EUninitializedColorAndDepth,
 			FExclusiveDepthStencil::DepthNop_StencilNop
 		);
-		RHICmdList.SetViewport(0, 0, 0.0f, StreamParams.FrameWidth, StreamParams.FrameHeight, 1.0f);
+
+		const FIntPoint ViewportSize = RenderTargetResource->GetSizeXY();
+		RHICmdList.SetViewport(0, 0, 0.0f, ViewportSize.X, ViewportSize.Y, 1.0f);
 
 		TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 		TShaderMapRef<FResolveFrameVS> VertexShader(GlobalShaderMap);
