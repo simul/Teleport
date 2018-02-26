@@ -21,6 +21,10 @@
 		{
 			"Name": "RenderDocPlugin",
 			"Enabled": false
+		},
+		{
+			"Name": "RemotePlayPlugin",
+			"Enabled": true
 		}
 	]
 }

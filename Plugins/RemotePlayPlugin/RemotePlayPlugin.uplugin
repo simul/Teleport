@@ -16,7 +16,7 @@
 	"Modules": [
 		{
 			"Name": "RemotePlayPlugin",
-			"Type": "Developer",
+			"Type": "Runtime",
 			"LoadingPhase": "PostConfigInit"
 		}
 	]
