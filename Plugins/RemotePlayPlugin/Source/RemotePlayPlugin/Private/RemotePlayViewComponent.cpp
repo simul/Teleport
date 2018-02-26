@@ -154,11 +154,13 @@ public:
 	{
 		if(!bConnected)
 		{
-			try {
+			try 
+			{
 				StreamingIO->connect(TCHAR_TO_UTF8(*RemoteAddr), (int)StreamParams.ConnectionPort);
 				bConnected = true;
 			}
 			catch(const std::exception&) {
+				UE_LOG(LogRemotePlayPlugin, Warning, TEXT("Failed to connect to RemotePlay server. Retrying..."));
 				return false;
 			}
 		}
@@ -170,26 +172,46 @@ public:
 		RHI.Reset(new FRemotePlayRHI(RHICmdList, StreamParams.FrameWidth, StreamParams.FrameHeight));
 		RHI->createSurface(Streaming::SurfaceFormat::ARGB);
 
-		StreamingDecoder.Reset(Streaming::createDecoder(Streaming::Platform::NV));
-
-		StreamingDecoder->initialize(RHI.Get(), StreamParams.FrameWidth, StreamParams.FrameHeight);
+		try 
+		{
+			StreamingDecoder.Reset(Streaming::createDecoder(Streaming::Platform::NV));
+			StreamingDecoder->initialize(RHI.Get(), StreamParams.FrameWidth, StreamParams.FrameHeight);
+		}
+		catch(const std::exception& e)
+		{
+			UE_LOG(LogRemotePlayPlugin, Fatal, TEXT("%s"), UTF8_TO_TCHAR(e.what()));
+		}
 	}
 
 	void __declspec(noinline) Release_RenderThread(FRHICommandListImmediate& RHICmdList)
 	{
-		StreamingDecoder->shutdown();
+		try
+		{
+			StreamingDecoder->shutdown();
+		}
+		catch(const std::exception& e)
+		{
+			UE_LOG(LogRemotePlayPlugin, Fatal, TEXT("%s"), UTF8_TO_TCHAR(e.what()));
+		}
 	}
 
 	bool DecodeFrame()
 	{
-		if(StreamingIO->processClient())
+		try 
 		{
-			Streaming::Bitstream Bitstream = StreamingIO->read();
-			if(Bitstream)
+			if(StreamingIO->processClient())
 			{
-				StreamingDecoder->decode(Bitstream);
-				return true;
+				Streaming::Bitstream Bitstream = StreamingIO->read();
+				if(Bitstream)
+				{
+					StreamingDecoder->decode(Bitstream);
+					return true;
+				}
 			}
+		}
+		catch(const std::exception& e)
+		{
+			UE_LOG(LogRemotePlayPlugin, Fatal, TEXT("%s"), UTF8_TO_TCHAR(e.what()));
 		}
 		return false;
 	}

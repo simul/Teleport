@@ -89,23 +89,44 @@ public:
 
 	void __declspec(noinline) Initialize_GameThread()
 	{
-		StreamingIO.Reset(Streaming::createNetworkIO(Streaming::NetworkAPI::ENET));
-		StreamingIO->listen((int)StreamParams.ConnectionPort);
+		try
+		{
+			StreamingIO.Reset(Streaming::createNetworkIO(Streaming::NetworkAPI::ENET));
+			StreamingIO->listen((int)StreamParams.ConnectionPort);
+		}
+		catch(const std::exception& e)
+		{
+			UE_LOG(LogRemotePlayPlugin, Fatal, TEXT("%s"), UTF8_TO_TCHAR(e.what()));
+		}
 	}
 
 	void __declspec(noinline) Initialize_RenderThread(FRHICommandListImmediate& RHICmdList)
 	{
 		RHI.Reset(new FRemotePlayRHI(RHICmdList, StreamParams.FrameWidth, StreamParams.FrameHeight));
 
-		StreamingEncoder.Reset(Streaming::createEncoder(Streaming::Platform::NV));
-		StreamingEncoder->initialize(RHI.Get(), StreamParams.FrameWidth, StreamParams.FrameHeight, StreamParams.IDRFrequency);
+		try
+		{
+			StreamingEncoder.Reset(Streaming::createEncoder(Streaming::Platform::NV));
+			StreamingEncoder->initialize(RHI.Get(), StreamParams.FrameWidth, StreamParams.FrameHeight, StreamParams.IDRFrequency);
+		}
+		catch(const std::exception& e)
+		{
+			UE_LOG(LogRemotePlayPlugin, Fatal, TEXT("%s"), UTF8_TO_TCHAR(e.what()));
+		}
 
 		FrameIndex = 0;
 	}
 
 	void __declspec(noinline) Release_RenderThread(FRHICommandListImmediate& RHICmdList)
 	{
-		StreamingEncoder->shutdown();
+		try
+		{
+			StreamingEncoder->shutdown();
+		}
+		catch(const std::exception& e)
+		{
+			UE_LOG(LogRemotePlayPlugin, Fatal, TEXT("%s"), UTF8_TO_TCHAR(e.what()));
+		}
 	}
 
 	void ProjectCapturedEnvironment(
@@ -128,12 +149,19 @@ public:
 
 	void ProcessCapturedEnvironment()
 	{
-		StreamingEncoder->encode(FrameIndex++);
-		StreamingIO->processServer();
+		try
+		{
+			StreamingEncoder->encode(FrameIndex++);
+			StreamingIO->processServer();
 
-		const Streaming::Bitstream Bitstream = StreamingEncoder->lock();
-		StreamingIO->write(Bitstream);
-		StreamingEncoder->unlock();
+			const Streaming::Bitstream Bitstream = StreamingEncoder->lock();
+			StreamingIO->write(Bitstream);
+			StreamingEncoder->unlock();
+		}
+		catch(const std::exception& e)
+		{
+			UE_LOG(LogRemotePlayPlugin, Fatal, TEXT("%s"), UTF8_TO_TCHAR(e.what()));
+		}
 	}
 
 	TUniquePtr<FRemotePlayRHI> RHI;
