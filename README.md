@@ -23,4 +23,3 @@ To achieve best performance run two instances of `RemotePlay` project in standal
 
 After two game windows appear select `Act as Play Server` in the first, and then `Connect to Play Server` in the second (default connection address is localhost, so it should work out of the box). Keep in mind that you can only control the player while the client window has input focus.
 
-Use `StreamingTest` application to "peek" into the video stream sent by listen server (run `Tools/StreamingTest/Build/x64/Release/StreamingTest.exe`).
