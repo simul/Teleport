@@ -1,0 +1,3 @@
+[submodule "libavstream"]
+	path = libavstream
+	url = https://github.com/simul/libavstream.git
