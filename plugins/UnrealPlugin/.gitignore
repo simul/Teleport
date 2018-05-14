@@ -1,0 +1,8 @@
+# UE4 project
+
+UnrealPlugin.sln
+Binaries/
+Intermediate/
+Saved/
+Packaged/
+
