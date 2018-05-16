@@ -1,6 +1,7 @@
 // Copyright 2018 Simul.co
 
 using UnrealBuildTool;
+using System.IO;
 
 public class RemotePlay : ModuleRules
 {
@@ -11,7 +12,6 @@ public class RemotePlay : ModuleRules
 		PublicIncludePaths.AddRange(
 			new string[] {
 				"RemotePlay/Public"
-				// ... add public include paths required here ...
 			}
 			);
 				
@@ -19,7 +19,6 @@ public class RemotePlay : ModuleRules
 		PrivateIncludePaths.AddRange(
 			new string[] {
 				"RemotePlay/Private",
-				// ... add other private include paths required here ...
 			}
 			);
 			
@@ -28,7 +27,6 @@ public class RemotePlay : ModuleRules
 			new string[]
 			{
 				"Core",
-				// ... add other public dependencies that you statically link with here ...
 			}
 			);
 			
@@ -40,7 +38,7 @@ public class RemotePlay : ModuleRules
 				"Engine",
 				"Slate",
 				"SlateCore",
-				// ... add private dependencies that you statically link with here ...	
+                "Projects"
 			}
 			);
 		
@@ -51,5 +49,36 @@ public class RemotePlay : ModuleRules
 				// ... add any modules that your module loads dynamically here ...
 			}
 			);
+
+        Link_libavstream(Target);
 	}
+
+    private void Link_libavstream(ReadOnlyTargetRules Target)
+    {
+        string LibraryPath = null;
+        switch (Target.Platform)
+        {
+            case UnrealTargetPlatform.Win64:
+                LibraryPath = Path.Combine(LibrariesDirectory, "libavstream/Win64");
+                break;
+            case UnrealTargetPlatform.Win32:
+                LibraryPath = Path.Combine(LibrariesDirectory, "libavstream/Win32");
+                break;
+        }
+
+        PrivateIncludePaths.Add(Path.Combine(LibrariesDirectory, "libavstream/Include"));
+        PublicLibraryPaths.Add(LibraryPath);
+
+        PublicAdditionalLibraries.Add("libavstream.lib");
+        PublicDelayLoadDLLs.Add("libavstream.dll");
+        RuntimeDependencies.Add(Path.Combine(LibraryPath, "libavstream.dll"));
+    }
+
+    private string LibrariesDirectory
+    {
+        get
+        {
+            return Path.GetFullPath(Path.Combine(ModuleDirectory, "../../Libraries/"));
+        }
+    }
 }
