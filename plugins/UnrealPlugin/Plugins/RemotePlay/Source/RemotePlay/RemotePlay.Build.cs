@@ -36,8 +36,11 @@ public class RemotePlay : ModuleRules
 			{
 				"CoreUObject",
 				"Engine",
+                "RHI",
 				"Slate",
 				"SlateCore",
+                "RenderCore",
+                "ShaderCore",
                 "Projects"
 			}
 			);
