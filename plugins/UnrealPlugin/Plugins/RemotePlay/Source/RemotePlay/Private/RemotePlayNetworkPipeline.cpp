@@ -11,7 +11,7 @@ FRemotePlayNetworkPipeline::FRemotePlayNetworkPipeline(const FRemotePlayNetworkP
 
 void FRemotePlayNetworkPipeline::Initialize()
 {
-	Forwarder.configure(1, 1, 4096);
+	Forwarder.configure(1, 1, 64*1024);
 	Packetizer.configure(1);
 	
 	if(!NetworkSink.configure(1, Params.LocalPort, TCHAR_TO_UTF8(*Params.RemoteIP), Params.RemotePort))
@@ -36,7 +36,8 @@ void FRemotePlayNetworkPipeline::Release()
 	
 void FRemotePlayNetworkPipeline::Process()
 {
-	if(!Pipeline.process())
+	const avs::Result result = Pipeline.process();
+	if(!result && result != avs::Result::IO_Empty)
 	{
 		UE_LOG(LogRemotePlay, Warning, TEXT("Network pipeline processing encountered an error"));
 	}
