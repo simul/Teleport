@@ -16,8 +16,8 @@ public:
 	~URemotePlayCaptureComponent();
 
 	/* Begin UActorComponent interface */
-	virtual void InitializeComponent() override;
-	virtual void UninitializeComponent() override;
+	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	/* End UActorComponent interface */
 

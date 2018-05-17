@@ -2,6 +2,7 @@
 
 #include "RemotePlayCaptureComponent.h"
 #include "RemotePlayEncodePipeline.h"
+#include "RemotePlayNetworkPipeline.h"
 
 #include "Engine.h"
 #include "Engine/GameViewportClient.h"
@@ -11,6 +12,7 @@
 struct FCaptureContext
 {
 	TUniquePtr<FRemotePlayEncodePipeline> EncodePipeline;
+	TUniquePtr<FRemotePlayNetworkPipeline> NetworkPipeline;
 	avs::Queue EncodeToNetworkQueue;
 };
 
@@ -18,9 +20,7 @@ URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 	: CaptureContext(new FCaptureContext)
 {
 	PrimaryComponentTick.bCanEverTick = true;
-	PrimaryComponentTick.bStartWithTickEnabled = true;
 	bCaptureEveryFrame = true;
-	bWantsInitializeComponent = true;
 
 	EncodeParams.FrameWidth   = 2048;
 	EncodeParams.FrameHeight  = 1024;
@@ -36,13 +36,13 @@ URemotePlayCaptureComponent::~URemotePlayCaptureComponent()
 	delete CaptureContext;
 }
 	
-void URemotePlayCaptureComponent::InitializeComponent()
+void URemotePlayCaptureComponent::BeginPlay()
 {
-	Super::InitializeComponent();
+	Super::BeginPlay();
 	CaptureContext->EncodeToNetworkQueue.configure(16);
 }
-
-void URemotePlayCaptureComponent::UninitializeComponent()
+	
+void URemotePlayCaptureComponent::EndPlay(const EEndPlayReason::Type Reason)
 {
 	if(ViewportDrawnDelegateHandle.IsValid())
 	{
@@ -58,18 +58,24 @@ void URemotePlayCaptureComponent::UninitializeComponent()
 		CaptureContext->EncodePipeline->Release();
 		CaptureContext->EncodePipeline.Reset();
 	}
+	if(CaptureContext->NetworkPipeline.IsValid())
+	{
+		CaptureContext->NetworkPipeline->Release();
+		CaptureContext->NetworkPipeline.Reset();
+	}
 	CaptureContext->EncodeToNetworkQueue.deconfigure();
 
-	Super::UninitializeComponent();
+	Super::EndPlay(Reason);
 }
-
+	
 void URemotePlayCaptureComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	UActorComponent::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-	if(bCaptureEveryFrame)
+	
+	if(HasBegunPlay() && bCaptureEveryFrame)
 	{
 		CaptureSceneDeferred();
+
 		if(!ViewportDrawnDelegateHandle.IsValid())
 		{
 			if(UGameViewportClient* GameViewport = GEngine->GameViewport)
@@ -77,6 +83,13 @@ void URemotePlayCaptureComponent::TickComponent(float DeltaTime, ELevelTick Tick
 				ViewportDrawnDelegateHandle = GameViewport->OnDrawn().AddUObject(this, &URemotePlayCaptureComponent::OnViewportDrawn);
 			}
 		}
+
+		if(!CaptureContext->NetworkPipeline.IsValid())
+		{
+			CaptureContext->NetworkPipeline.Reset(new FRemotePlayNetworkPipeline(NetworkParams, CaptureContext->EncodeToNetworkQueue));
+			CaptureContext->NetworkPipeline->Initialize();
+		}
+		CaptureContext->NetworkPipeline->Process();
 	}
 }
 
