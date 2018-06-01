@@ -17,7 +17,10 @@ struct FRemotePlayEncodeParameters
 	int32 FrameHeight;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
-	int32 IDRFrequency;
+	int32 IDRInterval;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
+	int32 TargetFPS;
 };
 
 USTRUCT(BlueprintType)

@@ -24,7 +24,8 @@ URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 
 	EncodeParams.FrameWidth   = 2048;
 	EncodeParams.FrameHeight  = 1024;
-	EncodeParams.IDRFrequency = 60;
+	EncodeParams.IDRInterval  = 60;
+	EncodeParams.TargetFPS    = 60;
 
 	NetworkParams.LocalPort  = 1666;
 	NetworkParams.RemoteIP   = TEXT("127.0.0.1");
