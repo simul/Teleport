@@ -1,7 +1,7 @@
 // Copyright 2018 Simul.co
 
 #include "RemotePlayRHI.h"
-#include "RemotePlay.h"
+#include "RemotePlayModule.h"
 
 #include "RenderUtils.h"
 #include "dxgiformat.h"

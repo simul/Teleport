@@ -3,13 +3,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "ModuleManager.h"
+#include "RemotePlay.h"
 
 #include "libavstream/libavstream.hpp"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogRemotePlay, Log, All);
 
-class FRemotePlayModule : public IModuleInterface
+class FRemotePlayModule : public IRemotePlay
 {
 public:
 	/** IModuleInterface implementation */

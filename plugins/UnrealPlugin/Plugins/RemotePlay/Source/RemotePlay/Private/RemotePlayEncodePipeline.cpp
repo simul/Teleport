@@ -1,7 +1,7 @@
 // Copyright 2018 Simul.co
 
 #include "RemotePlayEncodePipeline.h"
-#include "RemotePlay.h"
+#include "RemotePlayModule.h"
 #include "RemotePlayRHI.h"
 
 #include "RenderingThread.h"

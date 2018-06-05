@@ -1,6 +1,6 @@
 // Copyright 2018 Simul.co
 
-#include "RemotePlay.h"
+#include "RemotePlayModule.h"
 #include "RemotePlayPlatform.h"
 
 #include "IPluginManager.h"

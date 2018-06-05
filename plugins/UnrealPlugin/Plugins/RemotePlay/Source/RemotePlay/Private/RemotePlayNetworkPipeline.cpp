@@ -1,7 +1,7 @@
 // Copyright 2018 Simul.co
 
 #include "RemotePlayNetworkPipeline.h"
-#include "RemotePlay.h"
+#include "RemotePlayModule.h"
 	
 FRemotePlayNetworkPipeline::FRemotePlayNetworkPipeline(const FRemotePlayNetworkParameters& InParams, avs::Queue& InInputQueue)
 	: Params(InParams)
