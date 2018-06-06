@@ -3,6 +3,8 @@
 #pragma once
 #include "ModuleManager.h"
 
+class APlayerController;
+
 class IRemotePlay : public IModuleInterface
 {
 public:

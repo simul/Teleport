@@ -3,6 +3,7 @@
 #include "RemotePlayCaptureComponent.h"
 #include "RemotePlayEncodePipeline.h"
 #include "RemotePlayNetworkPipeline.h"
+#include "RemotePlayModule.h"
 
 #include "Engine.h"
 #include "Engine/GameViewportClient.h"
@@ -18,6 +19,7 @@ struct FCaptureContext
 
 URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 	: CaptureContext(new FCaptureContext)
+	, bIsStreaming(false)
 {
 	PrimaryComponentTick.bCanEverTick = true;
 	bCaptureEveryFrame = true;
@@ -26,10 +28,6 @@ URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 	EncodeParams.FrameHeight  = 1024;
 	EncodeParams.IDRInterval  = 60;
 	EncodeParams.TargetFPS    = 60;
-
-	NetworkParams.LocalPort  = 1666;
-	NetworkParams.RemoteIP   = TEXT("127.0.0.1");
-	NetworkParams.RemotePort = NetworkParams.LocalPort + 1;
 }
 
 URemotePlayCaptureComponent::~URemotePlayCaptureComponent()
@@ -45,6 +43,71 @@ void URemotePlayCaptureComponent::BeginPlay()
 	
 void URemotePlayCaptureComponent::EndPlay(const EEndPlayReason::Type Reason)
 {
+	if(bIsStreaming)
+	{
+		StopStreaming();
+	}
+	CaptureContext->EncodeToNetworkQueue.deconfigure();
+
+	Super::EndPlay(Reason);
+}
+	
+void URemotePlayCaptureComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+	UActorComponent::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	
+	if(HasBegunPlay())
+	{
+		if(bCaptureEveryFrame)
+		{
+			CaptureSceneDeferred();
+		}
+		if(CaptureContext->NetworkPipeline.IsValid())
+		{
+			CaptureContext->NetworkPipeline->Process();
+		}
+	}
+}
+	
+void URemotePlayCaptureComponent::StartStreaming(const FString& RemoteIP, int32 RemotePort)
+{
+	if(bIsStreaming)
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Capture: Already streaming"));
+		return;
+	}
+
+	if(!ViewportDrawnDelegateHandle.IsValid())
+	{
+		if(UGameViewportClient* GameViewport = GEngine->GameViewport)
+		{
+			ViewportDrawnDelegateHandle = GameViewport->OnDrawn().AddUObject(this, &URemotePlayCaptureComponent::OnViewportDrawn);
+		}
+	}
+
+	if(!CaptureContext->NetworkPipeline.IsValid())
+	{
+		FRemotePlayNetworkParameters NetworkParams;
+		NetworkParams.RemoteIP   = RemoteIP;
+		NetworkParams.RemotePort = RemotePort;
+		NetworkParams.LocalPort  = NetworkParams.LocalPort;
+
+		CaptureContext->NetworkPipeline.Reset(new FRemotePlayNetworkPipeline(NetworkParams, CaptureContext->EncodeToNetworkQueue));
+		CaptureContext->NetworkPipeline->Initialize();
+	}
+
+	bIsStreaming = true;
+	UE_LOG(LogRemotePlay, Log, TEXT("Capture: Started streaming to %s:%d"), *RemoteIP, RemotePort);
+}
+
+void URemotePlayCaptureComponent::StopStreaming()
+{
+	if(!bIsStreaming)
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Capture: Was not streaming"));
+		return;
+	}
+
 	if(ViewportDrawnDelegateHandle.IsValid())
 	{
 		if(UGameViewportClient* GameViewport = GEngine->GameViewport)
@@ -64,34 +127,9 @@ void URemotePlayCaptureComponent::EndPlay(const EEndPlayReason::Type Reason)
 		CaptureContext->NetworkPipeline->Release();
 		CaptureContext->NetworkPipeline.Reset();
 	}
-	CaptureContext->EncodeToNetworkQueue.deconfigure();
 
-	Super::EndPlay(Reason);
-}
-	
-void URemotePlayCaptureComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
-{
-	UActorComponent::TickComponent(DeltaTime, TickType, ThisTickFunction);
-	
-	if(HasBegunPlay() && bCaptureEveryFrame)
-	{
-		CaptureSceneDeferred();
-
-		if(!ViewportDrawnDelegateHandle.IsValid())
-		{
-			if(UGameViewportClient* GameViewport = GEngine->GameViewport)
-			{
-				ViewportDrawnDelegateHandle = GameViewport->OnDrawn().AddUObject(this, &URemotePlayCaptureComponent::OnViewportDrawn);
-			}
-		}
-
-		if(!CaptureContext->NetworkPipeline.IsValid())
-		{
-			CaptureContext->NetworkPipeline.Reset(new FRemotePlayNetworkPipeline(NetworkParams, CaptureContext->EncodeToNetworkQueue));
-			CaptureContext->NetworkPipeline->Initialize();
-		}
-		CaptureContext->NetworkPipeline->Process();
-	}
+	bIsStreaming = false;
+	UE_LOG(LogRemotePlay, Log, TEXT("Capture: Stopped streaming"));
 }
 
 void URemotePlayCaptureComponent::OnViewportDrawn()

@@ -12,12 +12,13 @@ DECLARE_LOG_CATEGORY_EXTERN(LogRemotePlay, Log, All);
 class FRemotePlayModule : public IRemotePlay
 {
 public:
-	/** IModuleInterface implementation */
+	/* Begin IModuleInterface */
 	virtual void StartupModule() override;
 	virtual void ShutdownModule() override;
-
+	/* End IModuleInterface */
+	
 	FString GetPluginDir() const;
-
+	
 private:
 	bool LoadLibrary_libavstream();
 	void* Handle_libavstream = nullptr;

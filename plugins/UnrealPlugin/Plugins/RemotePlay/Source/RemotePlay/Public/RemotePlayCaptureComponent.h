@@ -21,15 +21,20 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	/* End UActorComponent interface */
 
+	UFUNCTION(BlueprintCallable, Category=RemotePlay)
+	void StartStreaming(const FString& RemoteIP, int32 RemotePort);
+
+	UFUNCTION(BlueprintCallable, Category=RemotePlay)
+	void StopStreaming();
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
 	FRemotePlayEncodeParameters EncodeParams;
 	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
-	FRemotePlayNetworkParameters NetworkParams;
-
 private:
 	void OnViewportDrawn();
 	FDelegateHandle ViewportDrawnDelegateHandle;
 
 	struct FCaptureContext* CaptureContext;
+
+	bool bIsStreaming;
 };

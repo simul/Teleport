@@ -6,6 +6,10 @@
 #include "IPluginManager.h"
 #include "PlatformProcess.h"
 
+#include "GameFramework/PlayerController.h"
+
+#include "enet/enet.h"
+
 #define LOCTEXT_NAMESPACE "FRemotePlayModule"
 
 void FRemotePlayModule::StartupModule()
@@ -14,19 +18,24 @@ void FRemotePlayModule::StartupModule()
 	{
 		Context.Reset(new avs::Context);
 		Context->setMessageHandler(FRemotePlayModule::LogMessageHandler, this);
-
-		UE_LOG(LogRemotePlay, Log, TEXT("Runtime module initialized"));
 	}
+	if(enet_initialize() != 0)
+	{
+		UE_LOG(LogRemotePlay, Error, TEXT("Failed to initialize ENET library"));
+	}
+		
+	UE_LOG(LogRemotePlay, Log, TEXT("Runtime module initialized"));
 }
 
 void FRemotePlayModule::ShutdownModule()
 {
+	UE_LOG(LogRemotePlay, Log, TEXT("Runtime module shutdown"));
+
+	enet_deinitialize();
+
 	if(Handle_libavstream)
 	{
-		UE_LOG(LogRemotePlay, Log, TEXT("Runtime module shutdown"));
-
 		Context.Reset();
-
 		FPlatformProcess::FreeDllHandle(Handle_libavstream);
 		Handle_libavstream = nullptr;
 	}
