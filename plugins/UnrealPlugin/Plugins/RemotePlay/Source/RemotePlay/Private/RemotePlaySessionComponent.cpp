@@ -79,6 +79,7 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 		case ENET_EVENT_TYPE_DISCONNECT:
 			check(ClientPeer == Event.peer);
 			UE_LOG(LogRemotePlay, Log, TEXT("Client disconnected: %s:%d"), *Client_GetIPAddress(), Client_GetPort());
+			ReleasePlayerPawn();
 			ClientPeer = nullptr;
 			break;
 		case ENET_EVENT_TYPE_RECEIVE:
@@ -107,10 +108,13 @@ void URemotePlaySessionComponent::StartSession(int32 ListenPort)
 
 void URemotePlaySessionComponent::StopSession()
 {
+	ReleasePlayerPawn();
+
 	if(ClientPeer)
 	{
 		check(ServerHost);
-
+		
+		enet_host_flush(ServerHost);
 		enet_peer_disconnect(ClientPeer, 0);
 
 		ENetEvent Event;
@@ -146,18 +150,12 @@ void URemotePlaySessionComponent::SwitchPlayerPawn(APawn* NewPawn)
 	check(ServerHost);
 	check(ClientPeer);
 
+	ReleasePlayerPawn();
+	PlayerPawn = NewPawn;
+
 	if(PlayerPawn.IsValid())
 	{
 		URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
-		if(CaptureComponent)
-		{
-			Client_SendCommand(TEXT("v 0 0 0"));
-			CaptureComponent->StopStreaming();
-		}
-	}
-	if(NewPawn)
-	{
-		URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(NewPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
 		if(CaptureComponent)
 		{
 			const auto& EncodeParams  = CaptureComponent->EncodeParams;
@@ -166,7 +164,23 @@ void URemotePlaySessionComponent::SwitchPlayerPawn(APawn* NewPawn)
 			CaptureComponent->StartStreaming(Client_GetIPAddress(), StreamingPort);
 		}
 	}
-	PlayerPawn = NewPawn;
+}
+
+void URemotePlaySessionComponent::ReleasePlayerPawn()
+{
+	if(PlayerPawn.IsValid())
+	{
+		URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
+		if(CaptureComponent)
+		{
+			if(ClientPeer)
+			{
+				Client_SendCommand(TEXT("v 0 0 0"));
+			}
+			CaptureComponent->StopStreaming();
+		}
+		PlayerPawn.Reset();
+	}
 }
 	
 inline bool URemotePlaySessionComponent::Client_SendCommand(const FString& Cmd) const

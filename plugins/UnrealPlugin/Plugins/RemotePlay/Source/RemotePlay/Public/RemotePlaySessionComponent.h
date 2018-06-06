@@ -40,6 +40,7 @@ public:
 
 private:
 	void SwitchPlayerPawn(APawn* NewPawn);
+	void ReleasePlayerPawn();
 
 	inline bool    Client_SendCommand(const FString& Cmd) const;
 	inline FString Client_GetIPAddress() const;
