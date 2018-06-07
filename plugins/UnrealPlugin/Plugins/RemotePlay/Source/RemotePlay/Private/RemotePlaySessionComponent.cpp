@@ -11,9 +11,8 @@
 
 enum ERemotePlaySessionChannel
 {
-	RPCH_Command  = 0,
-	RPCH_Control  = 1,
-	RPCH_HeadPose = 2,
+	RPCH_Control  = 0,
+	RPCH_HeadPose = 1,
 	RPCH_NumChannels,
 };
 
@@ -219,7 +218,7 @@ inline bool URemotePlaySessionComponent::Client_SendCommand(const FString& Cmd) 
 {
 	check(ClientPeer);
 	ENetPacket* Packet = enet_packet_create(TCHAR_TO_UTF8(*Cmd), Cmd.Len(), ENET_PACKET_FLAG_RELIABLE);
-	return enet_peer_send(ClientPeer, RPCH_Command, Packet) == 0;
+	return enet_peer_send(ClientPeer, RPCH_Control, Packet) == 0;
 }
 
 inline FString URemotePlaySessionComponent::Client_GetIPAddress() const
