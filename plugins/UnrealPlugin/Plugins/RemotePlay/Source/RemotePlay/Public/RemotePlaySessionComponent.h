@@ -7,8 +7,10 @@
 class APawn;
 class APlayerController;
 
-typedef struct _ENetHost ENetHost;
-typedef struct _ENetPeer ENetPeer;
+typedef struct _ENetHost   ENetHost;
+typedef struct _ENetPeer   ENetPeer;
+typedef struct _ENetPacket ENetPacket;
+typedef struct _ENetEvent  ENetEvent;
 
 UCLASS(meta=(BlueprintSpawnableComponent))
 class REMOTEPLAY_API URemotePlaySessionComponent : public UActorComponent
@@ -41,6 +43,9 @@ public:
 private:
 	void SwitchPlayerPawn(APawn* NewPawn);
 	void ReleasePlayerPawn();
+
+	void DispatchEvent(const ENetEvent& Event);
+	void ParseHeadPose(const ENetPacket* Packet);
 
 	inline bool    Client_SendCommand(const FString& Cmd) const;
 	inline FString Client_GetIPAddress() const;

@@ -83,8 +83,7 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 			ClientPeer = nullptr;
 			break;
 		case ENET_EVENT_TYPE_RECEIVE:
-			// TODO: Implement
-			enet_packet_destroy(Event.packet);
+			DispatchEvent(Event);
 			break;
 		}
 	}
@@ -181,6 +180,39 @@ void URemotePlaySessionComponent::ReleasePlayerPawn()
 		}
 		PlayerPawn.Reset();
 	}
+}
+	
+void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
+{
+	switch(Event.channelID)
+	{
+	case RPCH_Control:
+		// TODO: Implement.
+		break;
+	case RPCH_HeadPose:
+		ParseHeadPose(Event.packet);
+		break;
+	}
+	enet_packet_destroy(Event.packet);
+}
+
+void URemotePlaySessionComponent::ParseHeadPose(const ENetPacket* Packet)
+{
+	check(PlayerController.IsValid());
+
+	if(Packet->dataLength != sizeof(FQuat))
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Received malformed head pose packet of length: %d"), Packet->dataLength);
+		return;
+	}
+
+	FQuat HeadPoseOVR;
+	FPlatformMemory::Memcpy(&HeadPoseOVR, Packet->data, Packet->dataLength);
+
+	// Convert quaternion from OVR (OpenGL) coordinate system to UE4 coordinate system.
+	const FQuat HeadPose{ HeadPoseOVR.Z, -HeadPoseOVR.X, -HeadPoseOVR.Y, HeadPoseOVR.W };
+
+	PlayerController->SetControlRotation(HeadPose.Rotator());
 }
 	
 inline bool URemotePlaySessionComponent::Client_SendCommand(const FString& Cmd) const
