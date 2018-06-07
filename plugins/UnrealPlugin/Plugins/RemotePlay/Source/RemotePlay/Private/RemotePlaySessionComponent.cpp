@@ -22,6 +22,7 @@ URemotePlaySessionComponent::URemotePlaySessionComponent()
 	, bAutoStartSession(true)
 	, AutoListenPort(10500)
 	, DisconnectTimeout(1000)
+	, InputTouchSensitivity(1.0f)
 {
 	PrimaryComponentTick.bCanEverTick = true;
 }
@@ -86,6 +87,8 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 			break;
 		}
 	}
+
+	ApplyPlayerInput(DeltaTime);
 }
 
 void URemotePlaySessionComponent::StartSession(int32 ListenPort)
@@ -181,24 +184,38 @@ void URemotePlaySessionComponent::ReleasePlayerPawn()
 	}
 }
 	
+void URemotePlaySessionComponent::ApplyPlayerInput(float DeltaTime)
+{
+	check(PlayerController.IsValid());
+	PlayerController->InputAxis(EKeys::MotionController_Right_Thumbstick_X, InputTouchAxis.X, DeltaTime, 1, true);
+	PlayerController->InputAxis(EKeys::MotionController_Right_Thumbstick_Y, InputTouchAxis.Y, DeltaTime, 1, true);
+
+	while(InputQueue.ButtonsPressed.Num() > 0)
+	{
+		PlayerController->InputKey(InputQueue.ButtonsPressed.Pop(), EInputEvent::IE_Pressed, 1.0f, true);
+	}
+	while(InputQueue.ButtonsReleased.Num() > 0)
+	{
+		PlayerController->InputKey(InputQueue.ButtonsReleased.Pop(), EInputEvent::IE_Released, 1.0f, true);
+	}
+}
+	
 void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 {
 	switch(Event.channelID)
 	{
 	case RPCH_Control:
-		// TODO: Implement.
+		RecvInput(Event.packet);
 		break;
 	case RPCH_HeadPose:
-		ParseHeadPose(Event.packet);
+		RecvHeadPose(Event.packet);
 		break;
 	}
 	enet_packet_destroy(Event.packet);
 }
 
-void URemotePlaySessionComponent::ParseHeadPose(const ENetPacket* Packet)
+void URemotePlaySessionComponent::RecvHeadPose(const ENetPacket* Packet)
 {
-	check(PlayerController.IsValid());
-
 	if(Packet->dataLength != sizeof(FQuat))
 	{
 		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Received malformed head pose packet of length: %d"), Packet->dataLength);
@@ -211,7 +228,32 @@ void URemotePlaySessionComponent::ParseHeadPose(const ENetPacket* Packet)
 	// Convert quaternion from OVR (OpenGL) coordinate system to UE4 coordinate system.
 	const FQuat HeadPose{ HeadPoseOVR.Z, -HeadPoseOVR.X, -HeadPoseOVR.Y, HeadPoseOVR.W };
 
+	check(PlayerController.IsValid());
 	PlayerController->SetControlRotation(HeadPose.Rotator());
+}
+
+void URemotePlaySessionComponent::RecvInput(const ENetPacket* Packet)
+{
+	struct FInputState
+	{
+		uint32 ButtonsPressed;
+		uint32 ButtonsReleased;
+		float RelativeTouchX;
+		float RelativeTouchY;
+	};
+	FInputState InputState;
+
+	if(Packet->dataLength != sizeof(FInputState))
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Received malfored input state change packet of length: %d"), Packet->dataLength);
+		return;
+	}
+
+	FPlatformMemory::Memcpy(&InputState, Packet->data, Packet->dataLength);
+	InputTouchAxis.X = FMath::Clamp(InputState.RelativeTouchX * InputTouchSensitivity, -1.0f, 1.0f);
+	InputTouchAxis.Y = FMath::Clamp(InputState.RelativeTouchY * InputTouchSensitivity, -1.0f, 1.0f);
+	TranslateButtons(InputState.ButtonsPressed, InputQueue.ButtonsPressed);
+	TranslateButtons(InputState.ButtonsReleased, InputQueue.ButtonsReleased);
 }
 	
 inline bool URemotePlaySessionComponent::Client_SendCommand(const FString& Cmd) const
@@ -234,4 +276,30 @@ inline uint16 URemotePlaySessionComponent::Client_GetPort() const
 {
 	check(ClientPeer);
 	return ClientPeer->address.port;
+}
+	
+void URemotePlaySessionComponent::TranslateButtons(uint32_t ButtonMask, TArray<FKey>& OutKeys)
+{
+	// TODO: Add support for other buttons as well.
+
+	enum ERemotePlayButtons
+	{
+		BUTTON_A     = 0x00000001,
+		BUTTON_ENTER = 0x00100000,
+		BUTTON_BACK  = 0x00200000,
+	};
+
+	if(ButtonMask & BUTTON_A)
+	{
+		OutKeys.Add(EKeys::MotionController_Right_Trigger);
+	}
+	if(ButtonMask & BUTTON_ENTER)
+	{
+		// Not sure about this.
+		OutKeys.Add(EKeys::Virtual_Accept);
+	}
+	if(ButtonMask & BUTTON_BACK)
+	{
+		OutKeys.Add(EKeys::Virtual_Back);
+	}
 }

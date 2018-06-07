@@ -1,6 +1,7 @@
 // Copyright 2018 Simul.co
 
 #pragma once
+#include "InputCoreTypes.h"
 #include "Components/ActorComponent.h"
 #include "RemotePlaySessionComponent.generated.h"
 
@@ -39,20 +40,35 @@ public:
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
 	int32 DisconnectTimeout;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
+	float InputTouchSensitivity;
 
 private:
 	void SwitchPlayerPawn(APawn* NewPawn);
 	void ReleasePlayerPawn();
+	void ApplyPlayerInput(float DeltaTime);
 
 	void DispatchEvent(const ENetEvent& Event);
-	void ParseHeadPose(const ENetPacket* Packet);
+	void RecvHeadPose(const ENetPacket* Packet);
+	void RecvInput(const ENetPacket* Packet);
 
 	inline bool    Client_SendCommand(const FString& Cmd) const;
 	inline FString Client_GetIPAddress() const;
 	inline uint16  Client_GetPort() const;
+	
+	static void TranslateButtons(uint32_t ButtonMask, TArray<FKey>& OutKeys);
 
 	TWeakObjectPtr<APlayerController> PlayerController;
 	TWeakObjectPtr<APawn> PlayerPawn;
+	
+	struct FInputQueue
+	{
+		TArray<FKey> ButtonsPressed;
+		TArray<FKey> ButtonsReleased;
+	};
+	FInputQueue InputQueue;
+	FVector2D   InputTouchAxis;
 
 	ENetHost* ServerHost;
 	ENetPeer* ClientPeer;

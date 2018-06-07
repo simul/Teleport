@@ -27,6 +27,7 @@ public class RemotePlay : ModuleRules
 			new string[]
 			{
 				"Core",
+                "InputCore",
 			}
 			);
 			
