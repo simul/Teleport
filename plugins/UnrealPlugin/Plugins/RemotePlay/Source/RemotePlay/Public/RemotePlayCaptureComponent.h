@@ -29,6 +29,9 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
 	FRemotePlayEncodeParameters EncodeParams;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
+	uint32 bRenderOwner:1;
 	
 private:
 	void OnViewportDrawn();

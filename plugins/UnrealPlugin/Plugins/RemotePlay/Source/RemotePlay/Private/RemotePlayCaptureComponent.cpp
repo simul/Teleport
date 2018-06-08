@@ -19,6 +19,7 @@ struct FCaptureContext
 
 URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 	: CaptureContext(new FCaptureContext)
+	, bRenderOwner(false)
 	, bIsStreaming(false)
 {
 	PrimaryComponentTick.bCanEverTick = true;
@@ -39,6 +40,17 @@ void URemotePlayCaptureComponent::BeginPlay()
 {
 	Super::BeginPlay();
 	CaptureContext->EncodeToNetworkQueue.configure(16);
+
+	if(!bRenderOwner)
+	{
+		AActor* OwnerActor = GetTypedOuter<AActor>();
+		check(OwnerActor);
+
+		TArray<AActor*> OwnerAttachedActors;
+		OwnerActor->GetAttachedActors(OwnerAttachedActors);
+		HiddenActors.Add(OwnerActor);
+		HiddenActors.Append(OwnerAttachedActors);
+	}
 }
 	
 void URemotePlayCaptureComponent::EndPlay(const EEndPlayReason::Type Reason)
