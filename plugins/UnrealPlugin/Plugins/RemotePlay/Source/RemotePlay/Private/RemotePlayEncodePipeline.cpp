@@ -180,7 +180,7 @@ void FRemotePlayEncodePipeline::Initialize_RenderThread(FRHICommandListImmediate
 
 	avs::EncoderParams EncoderParams = {};
 	EncoderParams.codec  = avs::VideoCodec::HEVC;
-	EncoderParams.preset = avs::VideoPreset::HighQuality;
+	EncoderParams.preset = avs::VideoPreset::HighPerformance;
 	EncoderParams.idrInterval = Params.IDRInterval;
 	EncoderParams.targetFrameRate = Params.TargetFPS;
 	if(!Encoder.configure(avs::DeviceHandle{avsDeviceType, DeviceHandle}, Params.FrameWidth, Params.FrameHeight, EncoderParams))
