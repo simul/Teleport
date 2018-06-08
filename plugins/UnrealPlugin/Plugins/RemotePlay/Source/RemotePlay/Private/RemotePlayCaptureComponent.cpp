@@ -56,7 +56,7 @@ void URemotePlayCaptureComponent::TickComponent(float DeltaTime, ELevelTick Tick
 {
 	UActorComponent::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	
-	if(HasBegunPlay())
+	if(HasBegunPlay() && bIsStreaming)
 	{
 		if(bCaptureEveryFrame)
 		{
