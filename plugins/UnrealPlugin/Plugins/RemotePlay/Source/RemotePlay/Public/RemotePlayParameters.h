@@ -21,6 +21,12 @@ struct FRemotePlayEncodeParameters
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
 	int32 TargetFPS;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
+	int32 AverageBitrate;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
+	int32 MaxBitrate;
 };
 
 USTRUCT(BlueprintType)
