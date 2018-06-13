@@ -52,18 +52,14 @@ void URemotePlaySessionComponent::EndPlay(const EEndPlayReason::Type Reason)
 	
 void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
-	if(!HasBegunPlay())
-	{
-		return;
-	}
 	if(!ServerHost || !PlayerController.IsValid())
 	{
 		return;
 	}
 
-	if(ClientPeer && PlayerPawn != PlayerController->GetPawn())
+	if(ClientPeer && PlayerPawn != PlayerController->GetPawnOrSpectator())
 	{
-		SwitchPlayerPawn(PlayerController->GetPawn());
+		SwitchPlayerPawn(PlayerController->GetPawnOrSpectator());
 	}
 
 	ENetEvent Event;
