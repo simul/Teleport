@@ -23,6 +23,9 @@ AShooterGameMode::AShooterGameMode(const FObjectInitializer& ObjectInitializer) 
 	/* Begin RemotePlay */
 	static ConstructorHelpers::FClassFinder<APlayerController> PlayerControllerOb(TEXT("/Game/Blueprints/PlayerController"));
 	PlayerControllerClass = PlayerControllerOb.Class;
+
+	static ConstructorHelpers::FClassFinder<ASpectatorPawn> SpectatorPawnOb(TEXT("/Game/Blueprints/Pawns/SpectatorPawn"));
+	SpectatorClass = SpectatorPawnOb.Class;
 	/* End RemotePlay */
 
 	HUDClass = AShooterHUD::StaticClass();
@@ -30,7 +33,9 @@ AShooterGameMode::AShooterGameMode(const FObjectInitializer& ObjectInitializer) 
 	//PlayerControllerClass = AShooterPlayerController::StaticClass();
 	/* End RemotePlay */
 	PlayerStateClass = AShooterPlayerState::StaticClass();
-	SpectatorClass = AShooterSpectatorPawn::StaticClass();
+	/* Begin RemotePlay */
+	//SpectatorClass = AShooterSpectatorPawn::StaticClass();
+	/* End RemotePlay */
 	GameStateClass = AShooterGameState::StaticClass();
 	ReplaySpectatorPlayerControllerClass = AShooterDemoSpectator::StaticClass();
 
