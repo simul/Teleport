@@ -102,7 +102,7 @@ void URemotePlayCaptureComponent::StartStreaming(const FString& RemoteIP, int32 
 		FRemotePlayNetworkParameters NetworkParams;
 		NetworkParams.RemoteIP   = RemoteIP;
 		NetworkParams.RemotePort = RemotePort;
-		NetworkParams.LocalPort  = NetworkParams.LocalPort;
+		NetworkParams.LocalPort  = NetworkParams.RemotePort;
 
 		CaptureContext->NetworkPipeline.Reset(new FRemotePlayNetworkPipeline(NetworkParams, CaptureContext->EncodeToNetworkQueue));
 		CaptureContext->NetworkPipeline->Initialize();

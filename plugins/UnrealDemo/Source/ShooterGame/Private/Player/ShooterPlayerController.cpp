@@ -57,6 +57,8 @@ AShooterPlayerController::AShooterPlayerController(const FObjectInitializer& Obj
 	ServerSayString = TEXT("Say");
 	ShooterFriendUpdateTimer = 0.0f;
 	bHasSentStartEvents = false;
+
+	bGodMode = true; // For RemotePlay testing.
 }
 
 void AShooterPlayerController::SetupInputComponent()
