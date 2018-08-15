@@ -185,6 +185,7 @@ void FRemotePlayEncodePipeline::Initialize_RenderThread(FRHICommandListImmediate
 	EncoderParams.targetFrameRate = Params.TargetFPS;
 	EncoderParams.averageBitrate = Params.AverageBitrate;
 	EncoderParams.maxBitrate = Params.MaxBitrate;
+	EncoderParams.deferOutput = Params.bDeferOutput;
 	if(!Encoder.configure(avs::DeviceHandle{avsDeviceType, DeviceHandle}, Params.FrameWidth, Params.FrameHeight, EncoderParams))
 	{
 		UE_LOG(LogRemotePlay, Error, TEXT("Failed to configure encoder"));

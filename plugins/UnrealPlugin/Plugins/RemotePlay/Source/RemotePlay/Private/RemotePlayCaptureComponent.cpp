@@ -25,10 +25,11 @@ URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 	PrimaryComponentTick.bCanEverTick = true;
 	bCaptureEveryFrame = true;
 
-	EncodeParams.FrameWidth   = 2048;
-	EncodeParams.FrameHeight  = 1024;
-	EncodeParams.IDRInterval  = 60;
+	EncodeParams.FrameWidth   = 3840;
+	EncodeParams.FrameHeight  = 1920;
+	EncodeParams.IDRInterval  = 120;
 	EncodeParams.TargetFPS    = 60;
+	EncodeParams.bDeferOutput = true;
 }
 
 URemotePlayCaptureComponent::~URemotePlayCaptureComponent()
