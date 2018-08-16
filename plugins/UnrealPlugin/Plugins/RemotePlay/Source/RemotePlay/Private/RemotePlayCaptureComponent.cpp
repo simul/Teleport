@@ -23,7 +23,8 @@ URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 	, bIsStreaming(false)
 {
 	PrimaryComponentTick.bCanEverTick = true;
-	bCaptureEveryFrame = true;
+	bCaptureEveryFrame = false;
+	bCaptureOnMovement = false;
 
 	EncodeParams.FrameWidth   = 3840;
 	EncodeParams.FrameHeight  = 1920;
@@ -71,10 +72,8 @@ void URemotePlayCaptureComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	
 	if(bIsStreaming)
 	{
-		if(bCaptureEveryFrame)
-		{
-			CaptureSceneDeferred();
-		}
+		CaptureSceneDeferred();
+
 		if(CaptureContext->NetworkPipeline.IsValid())
 		{
 			CaptureContext->NetworkPipeline->Process();
@@ -147,7 +146,7 @@ void URemotePlayCaptureComponent::StopStreaming()
 
 void URemotePlayCaptureComponent::OnViewportDrawn()
 {
-	if(bCaptureEveryFrame && TextureTarget)
+	if(TextureTarget)
 	{
 		if(!CaptureContext->EncodePipeline.IsValid())
 		{
