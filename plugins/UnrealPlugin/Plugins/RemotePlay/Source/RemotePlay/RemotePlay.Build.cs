@@ -28,6 +28,7 @@ public class RemotePlay : ModuleRules
 			{
 				"Core",
                 "InputCore",
+                "Sockets",
 			}
 			);
 			
@@ -42,7 +43,8 @@ public class RemotePlay : ModuleRules
 				"SlateCore",
                 "RenderCore",
                 "ShaderCore",
-                "Projects"
+                "Projects",
+                "Networking",
 			}
 			);
 		

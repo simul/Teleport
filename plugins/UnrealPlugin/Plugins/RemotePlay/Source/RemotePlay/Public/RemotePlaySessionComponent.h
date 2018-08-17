@@ -3,6 +3,7 @@
 #pragma once
 #include "InputCoreTypes.h"
 #include "Components/ActorComponent.h"
+#include "RemotePlayDiscoveryService.h"
 #include "RemotePlaySessionComponent.generated.h"
 
 class APawn;
@@ -27,7 +28,7 @@ public:
 	/* End UActorComponent interface */
 
 	UFUNCTION(BlueprintCallable, Category=RemotePlay)
-	void StartSession(int32 ListenPort);
+	void StartSession(int32 ListenPort, int32 DiscoveryPort=0);
 
 	UFUNCTION(BlueprintCallable, Category=RemotePlay)
 	void StopSession();
@@ -37,6 +38,9 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
 	int32 AutoListenPort;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
+	int32 AutoDiscoveryPort;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
 	int32 DisconnectTimeout;
@@ -72,4 +76,6 @@ private:
 
 	ENetHost* ServerHost;
 	ENetPeer* ClientPeer;
+
+	FRemotePlayDiscoveryService DiscoveryService;
 };

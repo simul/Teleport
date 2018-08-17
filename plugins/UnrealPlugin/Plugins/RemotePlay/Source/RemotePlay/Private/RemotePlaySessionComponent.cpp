@@ -21,6 +21,7 @@ URemotePlaySessionComponent::URemotePlaySessionComponent()
 	, ClientPeer(nullptr)
 	, bAutoStartSession(true)
 	, AutoListenPort(10500)
+	, AutoDiscoveryPort(10600)
 	, DisconnectTimeout(1000)
 	, InputTouchSensitivity(1.0f)
 {
@@ -40,7 +41,7 @@ void URemotePlaySessionComponent::BeginPlay()
 
 	if(bAutoStartSession)
 	{
-		StartSession(AutoListenPort);
+		StartSession(AutoListenPort, AutoDiscoveryPort);
 	}
 }
 	
@@ -57,9 +58,16 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 		return;
 	}
 
-	if(ClientPeer && PlayerPawn != PlayerController->GetPawnOrSpectator())
+	if(ClientPeer)
 	{
-		SwitchPlayerPawn(PlayerController->GetPawnOrSpectator());
+		if(PlayerPawn != PlayerController->GetPawnOrSpectator())
+		{
+			SwitchPlayerPawn(PlayerController->GetPawnOrSpectator());
+		}
+	}
+	else
+	{
+		DiscoveryService.Tick();
 	}
 
 	ENetEvent Event;
@@ -70,6 +78,7 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 		case ENET_EVENT_TYPE_CONNECT:
 			check(ClientPeer == nullptr);
 			ClientPeer = Event.peer;
+			DiscoveryService.Shutdown();
 			UE_LOG(LogRemotePlay, Log, TEXT("Client connected: %s:%d"), *Client_GetIPAddress(), Client_GetPort());
 			break;
 		case ENET_EVENT_TYPE_DISCONNECT:
@@ -87,7 +96,7 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	ApplyPlayerInput(DeltaTime);
 }
 
-void URemotePlaySessionComponent::StartSession(int32 ListenPort)
+void URemotePlaySessionComponent::StartSession(int32 ListenPort, int32 DiscoveryPort)
 {
 	if(PlayerController.IsValid() && PlayerController->IsLocalController())
 	{
@@ -100,12 +109,21 @@ void URemotePlaySessionComponent::StartSession(int32 ListenPort)
 		{
 			UE_LOG(LogRemotePlay, Error, TEXT("Session: Failed to create ENET server host"));
 		}
+
+		if(DiscoveryPort > 0)
+		{
+			if(!DiscoveryService.Initialize(DiscoveryPort, ListenPort))
+			{
+				UE_LOG(LogRemotePlay, Warning, TEXT("Session: Failed to initialize discovery service"));
+			}
+		}
 	}
 }
 
 void URemotePlaySessionComponent::StopSession()
 {
 	ReleasePlayerPawn();
+	DiscoveryService.Shutdown();
 
 	if(ClientPeer)
 	{
