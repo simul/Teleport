@@ -1,4 +1,4 @@
-﻿// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
 
 #include "ShooterGame.h"
 #include "Weapons/ShooterWeapon.h"
@@ -366,7 +366,7 @@ void AShooterWeapon::GiveAmmo(int AddAmount)
 	// start reload if clip was empty
 	if (GetCurrentAmmoInClip() <= 0 &&
 		CanReload() &&
-		MyPawn->GetWeapon() == this)
+		MyPawn && (MyPawn->GetWeapon() == this))
 	{
 		ClientStartReload();
 	}

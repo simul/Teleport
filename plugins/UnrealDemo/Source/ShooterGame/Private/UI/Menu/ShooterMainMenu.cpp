@@ -512,7 +512,7 @@ void FShooterMainMenu::OnUserCanPlayOnlineQuickMatch(const FUniqueNetId& UserId,
 		SplitScreenLobbyWidget->SetIsJoining(false);
 
 		// Skip splitscreen for PS4
-#if PLATFORM_PS4
+#if PLATFORM_PS4 || MAX_LOCAL_PLAYERS == 1
 		BeginQuickMatchSearch();
 #else
 		UGameViewportClient* const GVC = GEngine->GameViewport;
@@ -577,12 +577,12 @@ void FShooterMainMenu::BeginQuickMatchSearch()
 
 	// Perform matchmaking with all local players
 	TArray<TSharedRef<const FUniqueNetId>> LocalPlayerIds;
-	for (int i = 0; i < GameInstance->GetNumLocalPlayers(); ++i)
+	for (int32 i = 0; i < GameInstance->GetNumLocalPlayers(); ++i)
 	{
-		auto PlayerId = GameInstance->GetLocalPlayerByIndex(i)->GetPreferredUniqueNetId();
+		FUniqueNetIdRepl PlayerId = GameInstance->GetLocalPlayerByIndex(i)->GetPreferredUniqueNetId();
 		if (PlayerId.IsValid())
 		{
-			LocalPlayerIds.Add(PlayerId.ToSharedRef());
+			LocalPlayerIds.Add((*PlayerId).AsShared());
 		}
 	}
 
@@ -619,30 +619,20 @@ void FShooterMainMenu::OnSplitScreenSelected()
 
 	RemoveMenuFromGameViewport();
 
-#if PLATFORM_PS4
-	if (GameInstance.IsValid())
+#if PLATFORM_PS4 || MAX_LOCAL_PLAYERS == 1
+	if (GameInstance.IsValid() && GameInstance->GetOnlineMode() == EOnlineMode::Online)
 	{
-		if (GameInstance->GetOnlineMode() == EOnlineMode::Online)
-		{
-			OnUIHostTeamDeathMatch();
-		}
-		else
-		{
-			UGameViewportClient* const GVC = GEngine->GameViewport;
-			GVC->AddViewportWidgetContent(SplitScreenLobbyWidgetContainer.ToSharedRef());
-
-			SplitScreenLobbyWidget->Clear();
-			FSlateApplication::Get().SetKeyboardFocus(SplitScreenLobbyWidget);
-		}
+		OnUIHostTeamDeathMatch();
 	}
-#else
-
-	UGameViewportClient* const GVC = GEngine->GameViewport;
-	GVC->AddViewportWidgetContent(SplitScreenLobbyWidgetContainer.ToSharedRef());
-
-	SplitScreenLobbyWidget->Clear();
-	FSlateApplication::Get().SetKeyboardFocus(SplitScreenLobbyWidget);
+	else
 #endif
+	{
+		UGameViewportClient* const GVC = GEngine->GameViewport;
+		GVC->AddViewportWidgetContent(SplitScreenLobbyWidgetContainer.ToSharedRef());
+
+		SplitScreenLobbyWidget->Clear();
+		FSlateApplication::Get().SetKeyboardFocus(SplitScreenLobbyWidget);
+	}
 }
 
 void FShooterMainMenu::OnHostOnlineSelected()
@@ -703,12 +693,12 @@ void FShooterMainMenu::StartOnlinePrivilegeTask(const IOnlineIdentity::FOnGetUse
 	{
 		// Lock controls for the duration of the async task
 		MenuWidget->LockControls(true);
-		TSharedPtr<const FUniqueNetId> UserId;
+		FUniqueNetIdRepl UserId;
 		if (PlayerOwner.IsValid())
 		{
 			UserId = PlayerOwner->GetPreferredUniqueNetId();
 		}
-		GameInstance->StartOnlinePrivilegeTask(Delegate, EUserPrivileges::CanPlayOnline, UserId);
+		GameInstance->StartOnlinePrivilegeTask(Delegate, EUserPrivileges::CanPlayOnline, UserId.GetUniqueNetId());
 	}	
 }
 
@@ -763,13 +753,25 @@ FReply FShooterMainMenu::OnSplitScreenPlay()
 
 				FSlateApplication::Get().SetKeyboardFocus(MenuWidget);	
 
+				// Grab the map filter if there is one
+				FString SelectedMapFilterName = TEXT("ANY");
+				if (JoinMapOption.IsValid())
+				{
+					int32 FilterChoice = JoinMapOption->SelectedMultiChoice;
+					if (FilterChoice != INDEX_NONE)
+					{
+						SelectedMapFilterName = JoinMapOption->MultiChoice[FilterChoice].ToString();
+					}
+				}
+
+
 				MenuWidget->NextMenu = JoinServerItem->SubMenu;
-				ServerListWidget->BeginServerSearch(bIsLanMatch, bIsDedicatedServer, ("ANY"));
+				ServerListWidget->BeginServerSearch(bIsLanMatch, bIsDedicatedServer, SelectedMapFilterName);
 				ServerListWidget->UpdateServerList();
 				MenuWidget->EnterSubMenu();
 #else
 				SplitScreenLobbyWidget->NextMenu = JoinServerItem->SubMenu;
-				ServerListWidget->BeginServerSearch(bIsLanMatch, bIsDedicatedServer, TEXT("ANY"));
+				ServerListWidget->BeginServerSearch(bIsLanMatch, bIsDedicatedServer, SelectedMapFilterName);
 				ServerListWidget->UpdateServerList();
 				SplitScreenLobbyWidget->EnterSubMenu();
 #endif
@@ -1245,7 +1247,7 @@ void FShooterMainMenu::OnUserCanPlayOnlineJoin(const FUniqueNetId& UserId, EUser
 
 		MatchType = EMatchType::Custom;
 		// Grab the map filter if there is one
-		FString SelectedMapFilterName = MapNames[0];
+		FString SelectedMapFilterName("Any");
 		if( JoinMapOption.IsValid())
 		{
 			int32 FilterChoice = JoinMapOption->SelectedMultiChoice;
@@ -1257,7 +1259,7 @@ void FShooterMainMenu::OnUserCanPlayOnlineJoin(const FUniqueNetId& UserId, EUser
 
 #if SHOOTER_CONSOLE_UI
 		UGameViewportClient* const GVC = GEngine->GameViewport;
-#if PLATFORM_PS4
+#if PLATFORM_PS4 || MAX_LOCAL_PLAYERS == 1
 		// Show server menu (skip splitscreen)
 		AddMenuToGameViewport();
 		FSlateApplication::Get().SetKeyboardFocus(MenuWidget);

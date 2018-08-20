@@ -1,4 +1,4 @@
-﻿// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ShooterGameInstance.cpp
@@ -104,8 +104,8 @@ void UShooterGameInstance::Init()
 	const auto IdentityInterface = OnlineSub->GetIdentityInterface();
 	check(IdentityInterface.IsValid());
 
-	const auto SessionInterface = OnlineSub->GetSessionInterface();
-	check(SessionInterface.IsValid());
+ 	const auto SessionInterface = OnlineSub->GetSessionInterface();
+ 	check(SessionInterface.IsValid());
 
 	// bind any OSS delegates we needs to handle
 	for (int i = 0; i < MAX_LOCAL_PLAYERS; ++i)
@@ -133,7 +133,10 @@ void UShooterGameInstance::Init()
 
 	OnlineSub->AddOnConnectionStatusChangedDelegate_Handle( FOnConnectionStatusChangedDelegate::CreateUObject( this, &UShooterGameInstance::HandleNetworkConnectionStatusChanged ) );
 
-	SessionInterface->AddOnSessionFailureDelegate_Handle( FOnSessionFailureDelegate::CreateUObject( this, &UShooterGameInstance::HandleSessionFailure ) );
+	if (SessionInterface.IsValid())
+	{
+		SessionInterface->AddOnSessionFailureDelegate_Handle( FOnSessionFailureDelegate::CreateUObject( this, &UShooterGameInstance::HandleSessionFailure ) );
+	}
 	
 	OnEndSessionCompleteDelegate = FOnEndSessionCompleteDelegate::CreateUObject(this, &UShooterGameInstance::OnEndSessionComplete);
 
@@ -158,7 +161,7 @@ void UShooterGameInstance::Shutdown()
 	FTicker::GetCoreTicker().RemoveTicker(TickDelegateHandle);
 }
 
-void UShooterGameInstance::HandleNetworkConnectionStatusChanged(  EOnlineServerConnectionStatus::Type LastConnectionStatus, EOnlineServerConnectionStatus::Type ConnectionStatus )
+void UShooterGameInstance::HandleNetworkConnectionStatusChanged( const FString& ServiceName, EOnlineServerConnectionStatus::Type LastConnectionStatus, EOnlineServerConnectionStatus::Type ConnectionStatus )
 {
 	UE_LOG( LogOnlineGame, Log, TEXT( "UShooterGameInstance::HandleNetworkConnectionStatusChanged: %s" ), EOnlineServerConnectionStatus::ToString( ConnectionStatus ) );
 
@@ -218,12 +221,16 @@ void UShooterGameInstance::HandleSessionFailure( const FUniqueNetId& NetId, ESes
 
 void UShooterGameInstance::OnPreLoadMap(const FString& MapName)
 {
-	if ( bPendingEnableSplitscreen )
+	if (bPendingEnableSplitscreen)
 	{
 		// Allow splitscreen
-		GetGameViewportClient()->SetDisableSplitscreenOverride( false );
+		UGameViewportClient* GameViewportClient = GetGameViewportClient();
+		if (GameViewportClient != nullptr)
+		{
+			GameViewportClient->SetDisableSplitscreenOverride(false);
 
-		bPendingEnableSplitscreen = false;
+			bPendingEnableSplitscreen = false;
+		}
 	}
 }
 
@@ -231,8 +238,7 @@ void UShooterGameInstance::OnPostLoadMap(UWorld*)
 {
 	// Make sure we hide the loading screen when the level is done loading
 	UShooterGameViewportClient * ShooterViewport = Cast<UShooterGameViewportClient>(GetGameViewportClient());
-
-	if ( ShooterViewport != NULL )
+	if (ShooterViewport != nullptr)
 	{
 		ShooterViewport->HideLoadingScreen();
 	}
@@ -651,7 +657,7 @@ void UShooterGameInstance::SetPresenceForLocalPlayers(const FString& StatusStr, 
 	{
 		for (int i = 0; i < LocalPlayers.Num(); ++i)
 		{
-			const TSharedPtr<const FUniqueNetId> UserId = LocalPlayers[i]->GetPreferredUniqueNetId();
+			FUniqueNetIdRepl UserId = LocalPlayers[i]->GetPreferredUniqueNetId();
 
 			if (UserId.IsValid())
 			{
@@ -715,7 +721,7 @@ void UShooterGameInstance::BeginMainMenuState()
 	if (Player != nullptr)
 	{
 		Player->SetControllerId(0);
-		Player->SetCachedUniqueNetId(Player->GetUniqueNetIdFromCachedControllerId());
+		Player->SetCachedUniqueNetId(Player->GetUniqueNetIdFromCachedControllerId().GetUniqueNetId());
 	}
 #endif
 
@@ -863,7 +869,7 @@ void UShooterGameInstance::CleanupSessionOnReturnToMenu()
 			Sessions->DestroySession(NAME_GameSession);
 			bPendingOnlineOp = true;
 		}
-		else if ( EOnlineSessionState::Starting == SessionState )
+		else if ( EOnlineSessionState::Starting == SessionState || EOnlineSessionState::Creating == SessionState)
 		{
 			UE_LOG(LogOnline, Log, TEXT("Waiting for session %s to start, and then we will end it to return to main menu"), *GameSession.ToString() );
 			OnStartSessionCompleteDelegateHandle = Sessions->AddOnStartSessionCompleteDelegate_Handle(OnEndSessionCompleteDelegate);
@@ -909,7 +915,48 @@ TSubclassOf<UOnlineSession> UShooterGameInstance::GetOnlineSessionClass()
 	return UShooterOnlineSessionClient::StaticClass();
 }
 
-// starts playing a game as the host
+bool UShooterGameInstance::HostQuickSession(ULocalPlayer& LocalPlayer, const FOnlineSessionSettings& SessionSettings)
+{
+	// This function is different from BeginHostingQuickMatch in that it creates a session and then starts a quick match,
+	// while BeginHostingQuickMatch assumes a session already exists
+
+	if (AShooterGameSession* const GameSession = GetGameSession())
+	{
+		// Add callback delegate for completion
+		OnCreatePresenceSessionCompleteDelegateHandle = GameSession->OnCreatePresenceSessionComplete().AddUObject(this, &UShooterGameInstance::OnCreatePresenceSessionComplete);
+
+		TravelURL = GetQuickMatchUrl();
+
+		FOnlineSessionSettings HostSettings = SessionSettings;
+
+		const FString GameType = UGameplayStatics::ParseOption(TravelURL, TEXT("game"));
+
+		// Determine the map name from the travelURL
+		const FString MapNameSubStr = "/Game/Maps/";
+		const FString ChoppedMapName = TravelURL.RightChop(MapNameSubStr.Len());
+		const FString MapName = ChoppedMapName.LeftChop(ChoppedMapName.Len() - ChoppedMapName.Find("?game"));
+
+		HostSettings.Set(SETTING_GAMEMODE, GameType, EOnlineDataAdvertisementType::ViaOnlineService);
+		HostSettings.Set(SETTING_MAPNAME, MapName, EOnlineDataAdvertisementType::ViaOnlineService);
+		HostSettings.NumPublicConnections = 16;
+
+		if (GameSession->HostSession(LocalPlayer.GetPreferredUniqueNetId().GetUniqueNetId(), NAME_GameSession, SessionSettings))
+		{
+			// If any error occurred in the above, pending state would be set
+			if (PendingState == CurrentState || PendingState == ShooterGameInstanceState::None)
+			{
+				// Go ahead and go into loading state now
+				// If we fail, the delegate will handle showing the proper messaging and move to the correct state
+				ShowLoadingScreen();
+				GotoState(ShooterGameInstanceState::Playing);
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
 bool UShooterGameInstance::HostGame(ULocalPlayer* LocalPlayer, const FString& GameType, const FString& InTravelURL)
 {
 	if (GetOnlineMode() == EOnlineMode::Offline)
@@ -945,9 +992,9 @@ bool UShooterGameInstance::HostGame(ULocalPlayer* LocalPlayer, const FString& Ga
 		const FString& ChoppedMapName = TravelURL.RightChop(MapNameSubStr.Len());
 		const FString& MapName = ChoppedMapName.LeftChop(ChoppedMapName.Len() - ChoppedMapName.Find("?game"));
 
-		if (GameSession->HostSession(LocalPlayer->GetPreferredUniqueNetId(), NAME_GameSession, GameType, MapName, bIsLanMatch, true, AShooterGameSession::DEFAULT_NUM_PLAYERS))
+		if (GameSession->HostSession(LocalPlayer->GetPreferredUniqueNetId().GetUniqueNetId(), NAME_GameSession, GameType, MapName, bIsLanMatch, true, AShooterGameSession::DEFAULT_NUM_PLAYERS))
 		{
-			// If any error occured in the above, pending state would be set
+			// If any error occurred in the above, pending state would be set
 			if ( (PendingState == CurrentState) || (PendingState == ShooterGameInstanceState::None) )
 			{
 				// Go ahead and go into loading state now
@@ -972,7 +1019,7 @@ bool UShooterGameInstance::JoinSession(ULocalPlayer* LocalPlayer, int32 SessionI
 		AddNetworkFailureHandlers();
 
 		OnJoinSessionCompleteDelegateHandle = GameSession->OnJoinSessionComplete().AddUObject(this, &UShooterGameInstance::OnJoinSessionComplete);
-		if (GameSession->JoinSession(LocalPlayer->GetPreferredUniqueNetId(), NAME_GameSession, SessionIndexInSearchResults))
+		if (GameSession->JoinSession(LocalPlayer->GetPreferredUniqueNetId().GetUniqueNetId(), NAME_GameSession, SessionIndexInSearchResults))
 		{
 			// If any error occured in the above, pending state would be set
 			if ( (PendingState == CurrentState) || (PendingState == ShooterGameInstanceState::None) )
@@ -998,7 +1045,7 @@ bool UShooterGameInstance::JoinSession(ULocalPlayer* LocalPlayer, const FOnlineS
 		AddNetworkFailureHandlers();
 
 		OnJoinSessionCompleteDelegateHandle = GameSession->OnJoinSessionComplete().AddUObject(this, &UShooterGameInstance::OnJoinSessionComplete);
-		if (GameSession->JoinSession(LocalPlayer->GetPreferredUniqueNetId(), NAME_GameSession, SearchResult))
+		if (GameSession->JoinSession(LocalPlayer->GetPreferredUniqueNetId().GetUniqueNetId(), NAME_GameSession, SearchResult))
 		{
 			// If any error occured in the above, pending state would be set
 			if ( (PendingState == CurrentState) || (PendingState == ShooterGameInstanceState::None) )
@@ -1172,7 +1219,7 @@ bool UShooterGameInstance::FindSessions(ULocalPlayer* PlayerOwner, bool bIsDedic
 			GameSession->OnFindSessionsComplete().RemoveAll(this);
 			OnSearchSessionsCompleteDelegateHandle = GameSession->OnFindSessionsComplete().AddUObject(this, &UShooterGameInstance::OnSearchSessionsComplete);
 
-			GameSession->FindSessions(PlayerOwner->GetPreferredUniqueNetId(), NAME_GameSession, bFindLAN, !bIsDedicatedServer);
+			GameSession->FindSessions(PlayerOwner->GetPreferredUniqueNetId().GetUniqueNetId(), NAME_GameSession, bFindLAN, !bIsDedicatedServer);
 
 			bResult = true;
 		}
@@ -1259,11 +1306,20 @@ bool UShooterGameInstance::Tick(float DeltaSeconds)
 					NewPlayerOwner->SetControllerId(PendingInvite.ControllerId);
 					NewPlayerOwner->SetCachedUniqueNetId(PendingInvite.UserId);
 					SetOnlineMode(EOnlineMode::Online);
-					JoinSession(NewPlayerOwner, PendingInvite.InviteResult);					
+
+					const bool bIsLocalPlayerHost = PendingInvite.UserId.IsValid() && PendingInvite.InviteResult.Session.OwningUserId.IsValid() && *PendingInvite.UserId == *PendingInvite.InviteResult.Session.OwningUserId;
+					if (bIsLocalPlayerHost)
+					{
+						HostQuickSession(*NewPlayerOwner, PendingInvite.InviteResult.Session.SessionSettings);
+					}
+					else
+					{
+						JoinSession(NewPlayerOwner, PendingInvite.InviteResult);
+					}
 				}
 
 				PendingInvite.UserId.Reset();
-			}			
+			}
 		}
 	}
 
@@ -1387,7 +1443,7 @@ void UShooterGameInstance::HandleAppSuspend()
 		for (int i = 0; i < LocalPlayers.Num(); ++i)
 		{
 			auto ShooterPC = Cast<AShooterPlayerController>(LocalPlayers[i]->PlayerController);
-			if (ShooterPC)
+			if (ShooterPC && GameState)
 			{
 				// Assuming you can't win if you quit early
 				ShooterPC->ClientSendRoundEndEvent(false, GameState->ElapsedTime);
@@ -1607,7 +1663,7 @@ void UShooterGameInstance::UpdateUsingMultiplayerFeatures(bool bIsUsingMultiplay
 		{
 			ULocalPlayer* LocalPlayer = LocalPlayers[i];
 
-			TSharedPtr<const FUniqueNetId> PlayerId = LocalPlayer->GetPreferredUniqueNetId();
+			FUniqueNetIdRepl PlayerId = LocalPlayer->GetPreferredUniqueNetId();
 			if (PlayerId.IsValid())
 			{
 				OnlineSub->SetUsingMultiplayerFeatures(*PlayerId, bIsUsingMultiplayerFeatures);
@@ -1818,7 +1874,7 @@ void UShooterGameInstance::DisplayOnlinePrivilegeFailureDialogs(const FUniqueNet
 	{
 		for (auto It = GEngine->GetLocalPlayerIterator(GetWorld()); It; ++It)
 		{
-			TSharedPtr<const FUniqueNetId> OtherId = (*It)->GetPreferredUniqueNetId();
+			FUniqueNetIdRepl OtherId = (*It)->GetPreferredUniqueNetId();
 			if (OtherId.IsValid())
 			{
 				if (UserId == (*OtherId))
@@ -1925,13 +1981,19 @@ void UShooterGameInstance::FinishSessionCreation(EOnJoinSessionCompleteResult::T
 	}
 }
 
+FString UShooterGameInstance::GetQuickMatchUrl()
+{
+	static const FString QuickMatchUrl(TEXT("/Game/Maps/Highrise?game=TDM?listen"));
+	return QuickMatchUrl;
+}
+
 void UShooterGameInstance::BeginHostingQuickMatch()
 {
 	ShowLoadingScreen();
 	GotoState(ShooterGameInstanceState::Playing);
 
 	// Travel to the specified match URL
-	GetWorld()->ServerTravel(TEXT("/Game/Maps/Highrise?game=TDM?listen"));	
+	GetWorld()->ServerTravel(GetQuickMatchUrl());	
 }
 
 void UShooterGameInstance::OnPlayTogetherEventReceived(const int32 UserIndex, const TArray<TSharedPtr<const FUniqueNetId>>& UserIdList)
@@ -1980,13 +2042,13 @@ void UShooterGameInstance::SendPlayTogetherInvites()
 		{
 			if (LocalPlayer->GetControllerId() == PlayTogetherInfo.UserIndex)
 			{
-				TSharedPtr<const FUniqueNetId> PlayerId = LocalPlayer->GetPreferredUniqueNetId();
+				FUniqueNetIdRepl PlayerId = LocalPlayer->GetPreferredUniqueNetId();
 				if (PlayerId.IsValid())
 				{
 					// Automatically send invites to friends in the player's PS4 party to conform with Play Together requirements
 					for (const TSharedPtr<const FUniqueNetId>& FriendId : PlayTogetherInfo.UserIdList)
 					{
-						SessionInterface->SendSessionInviteToFriend(*PlayerId.ToSharedRef(), NAME_GameSession, *FriendId.ToSharedRef());
+						SessionInterface->SendSessionInviteToFriend(*PlayerId, NAME_GameSession, *FriendId.ToSharedRef());
 					}
 				}
 

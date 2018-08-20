@@ -8,8 +8,6 @@ public class ShooterGameLoadingScreen : ModuleRules
 {
     public ShooterGameLoadingScreen(ReadOnlyTargetRules Target) : base(Target)
 	{
-		PrivateIncludePaths.Add("../../ShooterGame/Source/ShooterGameLoadingScreen/Private");
-
         PrivateDependencyModuleNames.AddRange(
 			new string[] {
 				"Core",

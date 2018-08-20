@@ -163,7 +163,7 @@ FReply SShooterConfirmationDialog::ExecuteConfirm(const int32 UserIndex)
 				if (IdentityInterface.IsValid())
 				{
 					TSharedPtr<const FUniqueNetId> IncomingUserId = IdentityInterface->GetUniquePlayerId(UserIndex);
-					TSharedPtr<const FUniqueNetId> DisconnectedId = PlayerOwner->GetCachedUniqueNetId();
+					FUniqueNetIdRepl DisconnectedId = PlayerOwner->GetCachedUniqueNetId();
 
 					if (*IncomingUserId == *DisconnectedId)
 					{

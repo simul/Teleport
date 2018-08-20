@@ -241,6 +241,7 @@ void SShooterServerList::UpdateServerList()
 			if (ServerList[i]->MapName != MapFilterName)
 			{
 				ServerList.RemoveAt(i);
+				i--;
 			}
 		}
 	}

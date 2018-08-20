@@ -120,6 +120,9 @@ public:
 	/** Travel directly to the named session */
 	void TravelToSession(const FName& SessionName);
 
+	/** Get the Travel URL for a quick match */
+	static FString GetQuickMatchUrl();
+
 	/** Begin a hosted quick match */
 	void BeginHostingQuickMatch();
 
@@ -197,6 +200,9 @@ public:
 	/** @return OnlineSession class to use for this player */
 	TSubclassOf<class UOnlineSession> GetOnlineSessionClass() override;
 
+	/** Create a session with the default map and game-type with the selected online settings */
+	bool HostQuickSession(ULocalPlayer& LocalPlayer, const FOnlineSessionSettings& SessionSettings);
+
 	/** Called when we receive a Play Together system event on PS4 */
 	void OnPlayTogetherEventReceived(const int32 UserIndex, const TArray<TSharedPtr<const FUniqueNetId>>& UserIdList);
 
@@ -271,7 +277,7 @@ private:
 	/** A hard-coded encryption key used to try out the encryption code. This is NOT SECURE, do not use this technique in production! */
 	TArray<uint8> DebugTestEncryptionKey;
 
-	void HandleNetworkConnectionStatusChanged(  EOnlineServerConnectionStatus::Type LastConnectionStatus, EOnlineServerConnectionStatus::Type ConnectionStatus );
+	void HandleNetworkConnectionStatusChanged(const FString& ServiceName, EOnlineServerConnectionStatus::Type LastConnectionStatus, EOnlineServerConnectionStatus::Type ConnectionStatus );
 
 	void HandleSessionFailure( const FUniqueNetId& NetId, ESessionFailure::Type FailureType );
 	

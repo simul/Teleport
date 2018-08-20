@@ -111,14 +111,18 @@ UShooterPersistentUser* UShooterPersistentUser::LoadPersistentUser(FString SlotN
 	// first set of player signins can happen before the UWorld exists, which means no OSS, which means no user names, which means no slotnames.
 	// Persistent users aren't valid in this state.
 	if (SlotName.Len() > 0)
-	{	
-		Result = Cast<UShooterPersistentUser>(UGameplayStatics::LoadGameFromSlot(SlotName, UserIndex));
-		if (Result == NULL)
+	{
+		if (!GIsBuildMachine)
+		{
+			Result = Cast<UShooterPersistentUser>(UGameplayStatics::LoadGameFromSlot(SlotName, UserIndex));
+		}
+
+		if (Result == nullptr)
 		{
 			// if failed to load, create a new one
 			Result = Cast<UShooterPersistentUser>( UGameplayStatics::CreateSaveGameObject(UShooterPersistentUser::StaticClass()) );
 		}
-		check(Result != NULL);
+		check(Result != nullptr);
 	
 		Result->SlotName = SlotName;
 		Result->UserIndex = UserIndex;

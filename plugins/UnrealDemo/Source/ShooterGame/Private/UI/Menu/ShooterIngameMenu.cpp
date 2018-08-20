@@ -80,7 +80,7 @@ void FShooterIngameMenu::Construct(ULocalPlayer* _PlayerOwner)
 #endif		
 
 #if SHOOTER_CONSOLE_UI			
-			TSharedPtr<FShooterMenuItem> ShowInvitesItem = MenuHelper::AddMenuItem(RootMenuItem, LOCTEXT("Invite Players", "INVITE PLAYERS"));
+			TSharedPtr<FShooterMenuItem> ShowInvitesItem = MenuHelper::AddMenuItem(RootMenuItem, LOCTEXT("Invite Players", "INVITE PLAYERS (via System UI)"));
 			ShowInvitesItem->OnConfirmMenuItem.BindRaw(this, &FShooterIngameMenu::OnShowInviteUI);		
 #endif
 		}

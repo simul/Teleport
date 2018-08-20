@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Online.h"
+#include "ShooterLeaderboards.h"
 #include "ShooterPlayerController.generated.h"
 
 class AShooterHUD;
@@ -130,6 +131,9 @@ public:
 	 * @param bWasSuccessful true if the server responded successfully to the request
 	 */
 	void OnQueryAchievementsComplete(const FUniqueNetId& PlayerId, const bool bWasSuccessful );
+
+	UFUNCTION()
+	void OnLeaderboardReadComplete(bool bWasSuccessful);
 	
 	// Begin APlayerController interface
 
@@ -147,7 +151,6 @@ public:
 
 	virtual bool SetPause(bool bPause, FCanUnpause CanUnpauseDelegate = FCanUnpause()) override;
 
-	UFUNCTION(BlueprintCallable, Category = "Pawn")
 	virtual FVector GetFocalLocation() const override;
 
 	// End APlayerController interface
@@ -158,6 +161,11 @@ public:
 	 * Reads achievements to precache them before first use
 	 */
 	void QueryAchievements();
+
+	/**
+	 * Reads backend stats to precache them before first use
+	 */
+	void QueryStats();
 
 	/** 
 	 * Writes a single achievement (unless another write is in progress).
@@ -231,6 +239,17 @@ protected:
 
 	/** after all game elements are created */
 	virtual void PostInitializeComponents() override;
+
+	/** Internal. Used to store stats from the online interface. These increment as matches are written */
+	int32 StatMatchesPlayed;
+	int32 StatKills;
+	int32 StatDeaths;
+	bool bHasFetchedPlatformData;
+
+	/** Internal. Reads the stats from the platform backend to sync online status with local */
+	FOnlineLeaderboardReadPtr ReadObject;
+	FDelegateHandle LeaderboardReadCompleteDelegateHandle;
+	void ClearLeaderboardDelegate();
 
 public:
 	virtual void TickActor(float DeltaTime, enum ELevelTick TickType, FActorTickFunction& ThisTickFunction) override;

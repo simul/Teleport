@@ -699,7 +699,7 @@ void AShooterHUD::DrawCrosshair()
 				}
 			}
 
-			if (Pawn->IsTargeting() && MyWeapon->UseLaserDot)
+			if (Pawn->IsTargeting() && MyWeapon && MyWeapon->UseLaserDot)
 			{
 				Canvas->SetDrawColor(255,0,0,192);
 				Canvas->DrawIcon(*CurrentCrosshair[EShooterCrosshairDirection::Center],

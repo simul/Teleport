@@ -88,6 +88,8 @@ public:
 	IOnlineFriendsPtr OnlineFriendsPtr;
 
 protected:
+	void OnFriendsUpdated(int32 UpdatedPlayerIndex, bool bWasSuccessful, const FString& FriendListName, const FString& ErrorString);
+
 	/** User settings pointer */
 	UShooterGameUserSettings* UserSettings;
 

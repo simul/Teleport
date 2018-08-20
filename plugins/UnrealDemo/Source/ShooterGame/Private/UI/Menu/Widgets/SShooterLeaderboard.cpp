@@ -199,12 +199,12 @@ bool SShooterLeaderboard::ProfileUIOpened() const
 	if( IsPlayerSelectedAndValid() )
 	{
 		check( PlayerOwner.IsValid() );
-		const TSharedPtr<const FUniqueNetId> OwnerNetId = PlayerOwner->GetPreferredUniqueNetId();
+		FUniqueNetIdRepl OwnerNetId = PlayerOwner->GetPreferredUniqueNetId();
 		check( OwnerNetId.IsValid() );
 
 		const TSharedPtr<const FUniqueNetId>& PlayerId = SelectedItem->PlayerId;
 		check( PlayerId.IsValid() );
-		return ShooterUIHelpers::Get().ProfileOpenedUI(*OwnerNetId.Get(), *PlayerId.Get(), NULL);
+		return ShooterUIHelpers::Get().ProfileOpenedUI(*OwnerNetId, *PlayerId.Get(), NULL);
 	}
 	return false;
 }

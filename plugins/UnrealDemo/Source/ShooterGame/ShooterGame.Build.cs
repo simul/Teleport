@@ -8,7 +8,6 @@ public class ShooterGame : ModuleRules
 	{
 		PrivateIncludePaths.AddRange(
 			new string[] { 
-				"ShooterGame/Classes/Player",
 				"ShooterGame/Private",
 				"ShooterGame/Private/UI",
 				"ShooterGame/Private/UI/Menu",
@@ -25,7 +24,8 @@ public class ShooterGame : ModuleRules
 				"OnlineSubsystem",
 				"OnlineSubsystemUtils",
 				"AssetRegistry",
-                "AIModule",
+				"NavigationSystem",
+				"AIModule",
 				"GameplayTasks",
 			}
 		);
@@ -37,7 +37,8 @@ public class ShooterGame : ModuleRules
 				"SlateCore",
 				"ShooterGameLoadingScreen",
 				"Json",
-				"ApplicationCore"
+				"ApplicationCore",
+				"ReplicationGraph"
 			}
 		);
 
@@ -56,5 +57,15 @@ public class ShooterGame : ModuleRules
 				"NetworkReplayStreaming"
 			}
 		);
+
+		if (Target.bBuildDeveloperTools || (Target.Configuration != UnrealTargetConfiguration.Shipping && Target.Configuration != UnrealTargetConfiguration.Test))
+        {
+            PrivateDependencyModuleNames.Add("GameplayDebugger");
+            PublicDefinitions.Add("WITH_GAMEPLAY_DEBUGGER=1");
+        }
+		else
+		{
+			PublicDefinitions.Add("WITH_GAMEPLAY_DEBUGGER=0");
+		}
 	}
 }

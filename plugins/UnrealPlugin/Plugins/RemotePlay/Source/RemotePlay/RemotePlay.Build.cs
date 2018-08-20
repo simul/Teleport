@@ -9,20 +9,12 @@ public class RemotePlay : ModuleRules
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 		
-		PublicIncludePaths.AddRange(
-			new string[] {
-				"RemotePlay/Public"
-			}
-			);
-				
-		
 		PrivateIncludePaths.AddRange(
 			new string[] {
 				"RemotePlay/Private",
 			}
 			);
 			
-		
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
@@ -31,7 +23,6 @@ public class RemotePlay : ModuleRules
                 "Sockets",
 			}
 			);
-			
 		
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
@@ -47,7 +38,6 @@ public class RemotePlay : ModuleRules
                 "Networking",
 			}
 			);
-		
 		
 		DynamicallyLoadedModuleNames.AddRange(
 			new string[]

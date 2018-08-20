@@ -34,7 +34,7 @@ bool UBTDecorator_HasLoSTo::CalculateRawConditionValue(class UBehaviorTreeCompon
 
 	bool bHasPath = false;
 
-	const UNavigationSystem* NavSys = UNavigationSystem::GetCurrent(OwnerComp->GetWorld());
+	const UNavigationSystemV1* NavSys = UNavigationSystemV1::GetCurrent(OwnerComp->GetWorld());
 	if (NavSys && bHasPointA && bHasPointB)
 	{
 		const AAIController* AIOwner = Cast<AAIController>(OwnerComp->GetOwner());

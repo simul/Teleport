@@ -240,6 +240,30 @@ bool AShooterGameSession::HostSession(TSharedPtr<const FUniqueNetId> UserId, FNa
 	return false;
 }
 
+bool AShooterGameSession::HostSession(const TSharedPtr<const FUniqueNetId> UserId, const FName InSessionName, const FOnlineSessionSettings& SessionSettings)
+{
+	bool bResult = false;
+
+	IOnlineSubsystem* const OnlineSub = IOnlineSubsystem::Get();
+	if (OnlineSub)
+	{
+		CurrentSessionParams.SessionName = InSessionName;
+		CurrentSessionParams.bIsLAN = SessionSettings.bIsLANMatch;
+		CurrentSessionParams.bIsPresence = SessionSettings.bUsesPresence;
+		CurrentSessionParams.UserId = UserId;
+		MaxPlayers = SessionSettings.NumPrivateConnections + SessionSettings.NumPublicConnections;
+
+		IOnlineSessionPtr Sessions = OnlineSub->GetSessionInterface();
+		if (Sessions.IsValid() && CurrentSessionParams.UserId.IsValid())
+		{
+			OnCreateSessionCompleteDelegateHandle = Sessions->AddOnCreateSessionCompleteDelegate_Handle(OnCreateSessionCompleteDelegate);
+			bResult = Sessions->CreateSession(*UserId, InSessionName, SessionSettings);
+		}
+	}
+
+	return bResult;
+}
+
 void AShooterGameSession::OnFindSessionsComplete(bool bWasSuccessful)
 {
 	UE_LOG(LogOnlineGame, Verbose, TEXT("OnFindSessionsComplete bSuccess: %d"), bWasSuccessful);
@@ -446,6 +470,7 @@ void AShooterGameSession::RegisterServer()
 			ShooterHostSettings->Set(SETTING_MATCHING_HOPPER, FString("TeamDeathmatch"), EOnlineDataAdvertisementType::DontAdvertise);
 			ShooterHostSettings->Set(SETTING_MATCHING_TIMEOUT, 120.0f, EOnlineDataAdvertisementType::ViaOnlineService);
 			ShooterHostSettings->Set(SETTING_SESSION_TEMPLATE_NAME, FString("GameSession"), EOnlineDataAdvertisementType::DontAdvertise);
+			ShooterHostSettings->Set(SETTING_GAMEMODE, FString("TeamDeathmatch"), EOnlineDataAdvertisementType::ViaOnlineService);
 			ShooterHostSettings->Set(SETTING_MAPNAME, GetWorld()->GetMapName(), EOnlineDataAdvertisementType::ViaOnlineService);
 			ShooterHostSettings->bAllowInvites = true;
 			ShooterHostSettings->bIsDedicated = true;

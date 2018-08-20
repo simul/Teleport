@@ -99,7 +99,17 @@ class SShooterWelcomeMenuWidget : public SCompoundWidget
 		const FKey Key = InKeyEvent.GetKey();
 		if (Key == EKeys::Enter)
 		{
-			MenuOwner->HandleLoginUIClosed(TSharedPtr<const FUniqueNetId>(), 0);
+			TSharedPtr<const FUniqueNetId> UserId;
+			const auto OnlineSub = IOnlineSubsystem::Get();
+			if (OnlineSub)
+			{
+				const auto IdentityInterface = OnlineSub->GetIdentityInterface();
+				if (IdentityInterface.IsValid())
+				{
+					UserId = IdentityInterface->GetUniquePlayerId(InKeyEvent.GetUserIndex());
+				}
+			}
+			MenuOwner->HandleLoginUIClosed(UserId, InKeyEvent.GetUserIndex());
 		}
 		else if (!MenuOwner->GetControlsLocked() && Key == EKeys::Virtual_Accept)
 		{
@@ -185,7 +195,7 @@ void FShooterWelcomeMenu::RemoveFromGameViewport()
 	}
 }
 
-void FShooterWelcomeMenu::HandleLoginUIClosed(TSharedPtr<const FUniqueNetId> UniqueId, const int ControllerIndex)
+void FShooterWelcomeMenu::HandleLoginUIClosed(TSharedPtr<const FUniqueNetId> UniqueId, const int ControllerIndex, const FOnlineError& Error)
 {
 	if ( !ensure( GameInstance.IsValid() ) )
 	{
@@ -260,7 +270,7 @@ void FShooterWelcomeMenu::SetControllerAndAdvanceToMainMenu(const int Controller
 	if ( NewPlayerOwner != nullptr && ControllerIndex != -1 )
 	{
 		NewPlayerOwner->SetControllerId(ControllerIndex);
-		NewPlayerOwner->SetCachedUniqueNetId(NewPlayerOwner->GetUniqueNetIdFromCachedControllerId());
+		NewPlayerOwner->SetCachedUniqueNetId(NewPlayerOwner->GetUniqueNetIdFromCachedControllerId().GetUniqueNetId());
 
 		// tell gameinstance to transition to main menu
 		GameInstance->GotoState(ShooterGameInstanceState::MainMenu);

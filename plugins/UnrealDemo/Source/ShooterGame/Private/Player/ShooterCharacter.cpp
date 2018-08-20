@@ -1,4 +1,4 @@
-﻿// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
 
 #include "ShooterGame.h"
 #include "Weapons/ShooterWeapon.h"
@@ -26,6 +26,8 @@ FAutoConsoleVariableRef CVarNetEnablePauseRelevancy(
 	TEXT("")
 	TEXT("0: Disable, 1: Enable"),
 	ECVF_Cheat);
+
+FOnShooterCharacterWeaponChange AShooterCharacter::NotifyWeaponChange;
 
 AShooterCharacter::AShooterCharacter(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer.SetDefaultSubobjectClass<UShooterCharacterMovement>(ACharacter::CharacterMovementComponentName))
@@ -333,7 +335,7 @@ void AShooterCharacter::OnDeath(float KillingDamage, struct FDamageEvent const& 
 	}
 
 	bReplicateMovement = false;
-	bTearOff = true;
+	TearOff();
 	bIsDying = true;
 
 	if (Role == ROLE_Authority)
@@ -656,7 +658,7 @@ void AShooterCharacter::OnRep_CurrentWeapon(AShooterWeapon* LastWeapon)
 
 void AShooterCharacter::SetCurrentWeapon(AShooterWeapon* NewWeapon, AShooterWeapon* LastWeapon)
 {
-	AShooterWeapon* LocalLastWeapon = NULL;
+	AShooterWeapon* LocalLastWeapon = nullptr;
 
 	if (LastWeapon != NULL)
 	{
@@ -682,6 +684,8 @@ void AShooterCharacter::SetCurrentWeapon(AShooterWeapon* NewWeapon, AShooterWeap
 
 		NewWeapon->OnEquip(LastWeapon);
 	}
+
+	NotifyWeaponChange.Broadcast(this, CurrentWeapon, LocalLastWeapon);
 }
 
 

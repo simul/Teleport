@@ -6,7 +6,8 @@
 
 AShooterSpectatorPawn::AShooterSpectatorPawn(const FObjectInitializer& ObjectInitializer)
 : Super(ObjectInitializer)
-{	
+{
+	bReplicates = false;
 }
 
 void AShooterSpectatorPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
