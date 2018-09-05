@@ -4,22 +4,19 @@
 
 #include "CoreMinimal.h"
 #include "RHI.h"
-
-#include "RemotePlayParameters.h"
-
-#include "libavstream/libavstream.hpp"
+#include "EncodePipelineInterface.h"
 
 class UTextureRenderTargetCube;
 class FTextureRenderTargetResource;
 
-class FRemotePlayEncodePipeline
+class FEncodePipelineMonoscopic : public IEncodePipeline
 {
 public:
-	FRemotePlayEncodePipeline(const FRemotePlayEncodeParameters& InParams, avs::Queue& InOutputQueue);
-
-	void Initialize();
-	void Release();
-	void EncodeFrame(FSceneInterface* InScene, UTextureRenderTargetCube* InTarget);
+	/* Begin IEncodePipeline interface */
+	virtual void Initialize(const FRemotePlayEncodeParameters& InParams, avs::Queue& InOutputQueue) override;
+	virtual void Release() override;
+	virtual void EncodeFrame(FSceneInterface* InScene, UTexture* InSourceTexture) override;
+	/* End IEncodePipeline interface */
 
 private:
 	void Initialize_RenderThread(FRHICommandListImmediate& RHICmdList);
@@ -27,12 +24,12 @@ private:
 	void PrepareFrame_RenderThread(FRHICommandListImmediate& RHICmdList, FTextureRenderTargetResource* TargetResource, ERHIFeatureLevel::Type FeatureLevel);
 	void EncodeFrame_RenderThread(FRHICommandListImmediate& RHICmdList);
 
-	const FRemotePlayEncodeParameters Params;
+	FRemotePlayEncodeParameters Params;
 	FTexture2DRHIRef InputSurfaceTexture;
 	FUnorderedAccessViewRHIRef InputSurfaceUAV;
 
 	avs::Pipeline Pipeline;
 	avs::Encoder Encoder;
 	avs::Surface InputSurface;
-	avs::Queue&  OutputQueue;
+	avs::Queue*  OutputQueue = nullptr;
 };

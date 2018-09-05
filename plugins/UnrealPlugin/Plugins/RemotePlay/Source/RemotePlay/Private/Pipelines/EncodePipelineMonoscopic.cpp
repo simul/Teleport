@@ -1,6 +1,6 @@
 // Copyright 2018 Simul.co
 
-#include "RemotePlayEncodePipeline.h"
+#include "EncodePipelineMonoscopic.h"
 #include "RemotePlayModule.h"
 #include "RemotePlayRHI.h"
 
@@ -22,11 +22,11 @@
 #include "HideWindowsPlatformTypes.h"
 #endif
 
-DECLARE_FLOAT_COUNTER_STAT(TEXT("RemotePlayEncodePipeline"), Stat_GPU_RemotePlayEncodePipeline, STATGROUP_GPU);
+DECLARE_FLOAT_COUNTER_STAT(TEXT("RemotePlayEncodePipelineMonoscopic"), Stat_GPU_RemotePlayEncodePipelineMonoscopic, STATGROUP_GPU);
 
-class FCaptureProjectionCS : public FGlobalShader
+class FProjectCubemapCS : public FGlobalShader
 {
-	DECLARE_SHADER_TYPE(FCaptureProjectionCS, Global);
+	DECLARE_SHADER_TYPE(FProjectCubemapCS, Global);
 public:
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
@@ -39,23 +39,23 @@ public:
 		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZEY"), kThreadGroupSize);
 	}
 
-	FCaptureProjectionCS() {}
-	FCaptureProjectionCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
+	FProjectCubemapCS() = default;
+	FProjectCubemapCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
 	{
-		CaptureCubeMap.Bind(Initializer.ParameterMap, TEXT("CaptureCubeMap"));
-		CaptureSampler.Bind(Initializer.ParameterMap, TEXT("CaptureSampler"));
+		InputCubeMap.Bind(Initializer.ParameterMap, TEXT("InputCubeMap"));
+		DefaultSampler.Bind(Initializer.ParameterMap, TEXT("DefaultSampler"));
 		OutputTexture.Bind(Initializer.ParameterMap, TEXT("OutputTexture"));
 	}
 
 	void SetParameters(
 		FRHICommandList& RHICmdList,
-		FTextureRHIRef CaptureCubeMapTextureRef,
+		FTextureRHIRef InputCubeMapTextureRef,
 		FTexture2DRHIRef OutputTextureRef,
 		FUnorderedAccessViewRHIRef OutputTextureUAVRef)
 	{
 		FComputeShaderRHIParamRef ShaderRHI = GetComputeShader();
-		SetTextureParameter(RHICmdList, ShaderRHI, CaptureCubeMap, CaptureSampler, TStaticSamplerState<SF_Bilinear>::GetRHI(), CaptureCubeMapTextureRef);
+		SetTextureParameter(RHICmdList, ShaderRHI, InputCubeMap, DefaultSampler, TStaticSamplerState<SF_Bilinear>::GetRHI(), InputCubeMapTextureRef);
 		OutputTexture.SetTexture(RHICmdList, ShaderRHI, OutputTextureRef, OutputTextureUAVRef);
 	}
 
@@ -68,8 +68,8 @@ public:
 	virtual bool Serialize(FArchive& Ar) override
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
-		Ar << CaptureCubeMap;
-		Ar << CaptureSampler;
+		Ar << InputCubeMap;
+		Ar << DefaultSampler;
 		Ar << OutputTexture;
 		return bShaderHasOutdatedParameters;
 	}
@@ -77,20 +77,17 @@ public:
 	static const uint32 kThreadGroupSize = 16;
 
 private:
-	FShaderResourceParameter CaptureCubeMap;
-	FShaderResourceParameter CaptureSampler;
+	FShaderResourceParameter InputCubeMap;
+	FShaderResourceParameter DefaultSampler;
 	FRWShaderParameter OutputTexture;
 };
 
-IMPLEMENT_SHADER_TYPE(, FCaptureProjectionCS, TEXT("/Plugin/RemotePlay/Private/CaptureProjection.usf"), TEXT("MainCS"), SF_Compute)
+IMPLEMENT_SHADER_TYPE(, FProjectCubemapCS, TEXT("/Plugin/RemotePlay/Private/ProjectCubemap.usf"), TEXT("MainCS"), SF_Compute)
 
-FRemotePlayEncodePipeline::FRemotePlayEncodePipeline(const FRemotePlayEncodeParameters& InParams, avs::Queue& InOutputQueue)
-	: Params(InParams)
-	, OutputQueue(InOutputQueue)
-{}
-	
-void FRemotePlayEncodePipeline::Initialize()
+void FEncodePipelineMonoscopic::Initialize(const FRemotePlayEncodeParameters& InParams, avs::Queue& InOutputQueue)
 {
+	Params = InParams;
+	OutputQueue = &InOutputQueue;
 	ENQUEUE_RENDER_COMMAND(RemotePlayInitializeEncodePipeline)(
 		[this](FRHICommandListImmediate& RHICmdList)
 		{
@@ -99,7 +96,7 @@ void FRemotePlayEncodePipeline::Initialize()
 	);
 }
 
-void FRemotePlayEncodePipeline::Release()
+void FEncodePipelineMonoscopic::Release()
 {
 	ENQUEUE_RENDER_COMMAND(RemotePlayReleaseEncodePipeline)(
 		[this](FRHICommandListImmediate& RHICmdList)
@@ -108,29 +105,32 @@ void FRemotePlayEncodePipeline::Release()
 		}
 	);
 	FlushRenderingCommands();
+	OutputQueue = nullptr;
 }
 
-void FRemotePlayEncodePipeline::EncodeFrame(FSceneInterface* InScene, UTextureRenderTargetCube* InTarget)
+void FEncodePipelineMonoscopic::EncodeFrame(FSceneInterface* InScene, UTexture* InSourceTexture)
 {
-	if(!InScene || !InTarget)
+	if(!InScene || !InSourceTexture)
 	{
 		return;
 	}
 
 	const ERHIFeatureLevel::Type FeatureLevel = InScene->GetFeatureLevel();
-	FTextureRenderTargetResource* TargetResource = InTarget->GameThread_GetRenderTargetResource();
+
+	auto SourceTarget = CastChecked<UTextureRenderTargetCube>(InSourceTexture);
+	FTextureRenderTargetResource* TargetResource = SourceTarget->GameThread_GetRenderTargetResource();
 
 	ENQUEUE_RENDER_COMMAND(RemotePlayEncodeFrame)(
 		[this, TargetResource, FeatureLevel](FRHICommandListImmediate& RHICmdList)
 		{
-			SCOPED_DRAW_EVENT(RHICmdList, RemotePlayEncodePipeline);
+			SCOPED_DRAW_EVENT(RHICmdList, RemotePlayEncodePipelineMonoscopic);
 			PrepareFrame_RenderThread(RHICmdList, TargetResource, FeatureLevel);
 			EncodeFrame_RenderThread(RHICmdList);
 		}
 	);
 }
 	
-void FRemotePlayEncodePipeline::Initialize_RenderThread(FRHICommandListImmediate& RHICmdList)
+void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate& RHICmdList)
 {
 	FRemotePlayRHI RHI(RHICmdList);
 
@@ -192,14 +192,15 @@ void FRemotePlayEncodePipeline::Initialize_RenderThread(FRHICommandListImmediate
 		return;
 	}
 
-	if(!Pipeline.add({&InputSurface, &Encoder, &OutputQueue}))
+	check(OutputQueue);
+	if(!Pipeline.link({&InputSurface, &Encoder, OutputQueue}))
 	{
 		UE_LOG(LogRemotePlay, Error, TEXT("Error configuring the encoding pipeline"));
 		return;
 	}
 }
 	
-void FRemotePlayEncodePipeline::Release_RenderThread(FRHICommandListImmediate& RHICmdList)
+void FEncodePipelineMonoscopic::Release_RenderThread(FRHICommandListImmediate& RHICmdList)
 {
 	Encoder.deconfigure();
 	InputSurface.deconfigure();
@@ -207,23 +208,23 @@ void FRemotePlayEncodePipeline::Release_RenderThread(FRHICommandListImmediate& R
 	InputSurfaceTexture.SafeRelease();
 }
 	
-void FRemotePlayEncodePipeline::PrepareFrame_RenderThread(
+void FEncodePipelineMonoscopic::PrepareFrame_RenderThread(
 	FRHICommandListImmediate& RHICmdList,
 	FTextureRenderTargetResource* TargetResource,
 	ERHIFeatureLevel::Type FeatureLevel)
 {
 	TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
-	TShaderMapRef<FCaptureProjectionCS> ComputeShader(GlobalShaderMap);
+	TShaderMapRef<FProjectCubemapCS> ComputeShader(GlobalShaderMap);
 
-	const uint32 NumThreadGroupsX = Params.FrameWidth / FCaptureProjectionCS::kThreadGroupSize;
-	const uint32 NumThreadGroupsY = Params.FrameHeight / FCaptureProjectionCS::kThreadGroupSize;
+	const uint32 NumThreadGroupsX = Params.FrameWidth / FProjectCubemapCS::kThreadGroupSize;
+	const uint32 NumThreadGroupsY = Params.FrameHeight / FProjectCubemapCS::kThreadGroupSize;
 	ComputeShader->SetParameters(RHICmdList, TargetResource->TextureRHI, InputSurfaceTexture, InputSurfaceUAV);
 	SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*ComputeShader));
 	DispatchComputeShader(RHICmdList, *ComputeShader, NumThreadGroupsX, NumThreadGroupsY, 1);
 	ComputeShader->UnsetParameters(RHICmdList);
 }
 	
-void FRemotePlayEncodePipeline::EncodeFrame_RenderThread(FRHICommandListImmediate& RHICmdList)
+void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediate& RHICmdList)
 {
 	if(!Pipeline.process())
 	{

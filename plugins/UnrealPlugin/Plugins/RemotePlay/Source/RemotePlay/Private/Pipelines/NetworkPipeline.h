@@ -8,20 +8,15 @@
 
 #include "libavstream/libavstream.hpp"
 
-class FRemotePlayNetworkPipeline
+class FNetworkPipeline
 {
 public:
-	FRemotePlayNetworkPipeline(const FRemotePlayNetworkParameters& InParams, avs::Queue& InInputQueue);
-	
-	void Initialize();
+	void Initialize(const FRemotePlayNetworkParameters& InParams, avs::Queue& InInputQueue);
 	void Release();
 	void Process();
 
 private:
-	const FRemotePlayNetworkParameters Params;
-
 	avs::Pipeline Pipeline;
-	avs::Queue& InputQueue;
 	avs::Forwarder Forwarder;
 	avs::Packetizer Packetizer;
 	avs::NetworkSink NetworkSink;

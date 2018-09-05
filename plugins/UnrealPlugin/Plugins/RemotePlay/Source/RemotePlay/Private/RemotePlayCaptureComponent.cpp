@@ -1,9 +1,9 @@
 // Copyright 2018 Simul.co
 
 #include "RemotePlayCaptureComponent.h"
-#include "RemotePlayEncodePipeline.h"
-#include "RemotePlayNetworkPipeline.h"
 #include "RemotePlayModule.h"
+#include "Pipelines/EncodePipelineMonoscopic.h"
+#include "Pipelines/NetworkPipeline.h"
 
 #include "Engine.h"
 #include "Engine/GameViewportClient.h"
@@ -12,8 +12,8 @@
 
 struct FCaptureContext
 {
-	TUniquePtr<FRemotePlayEncodePipeline> EncodePipeline;
-	TUniquePtr<FRemotePlayNetworkPipeline> NetworkPipeline;
+	TUniquePtr<IEncodePipeline> EncodePipeline;
+	TUniquePtr<FNetworkPipeline> NetworkPipeline;
 	avs::Queue EncodeToNetworkQueue;
 };
 
@@ -104,8 +104,8 @@ void URemotePlayCaptureComponent::StartStreaming(const FString& RemoteIP, int32 
 		NetworkParams.RemotePort = RemotePort;
 		NetworkParams.LocalPort  = NetworkParams.RemotePort;
 
-		CaptureContext->NetworkPipeline.Reset(new FRemotePlayNetworkPipeline(NetworkParams, CaptureContext->EncodeToNetworkQueue));
-		CaptureContext->NetworkPipeline->Initialize();
+		CaptureContext->NetworkPipeline.Reset(new FNetworkPipeline);
+		CaptureContext->NetworkPipeline->Initialize(NetworkParams, CaptureContext->EncodeToNetworkQueue);
 	}
 
 	bIsStreaming = true;
@@ -150,8 +150,8 @@ void URemotePlayCaptureComponent::OnViewportDrawn()
 	{
 		if(!CaptureContext->EncodePipeline.IsValid())
 		{
-			CaptureContext->EncodePipeline.Reset(new FRemotePlayEncodePipeline(EncodeParams, CaptureContext->EncodeToNetworkQueue));
-			CaptureContext->EncodePipeline->Initialize();
+			CaptureContext->EncodePipeline.Reset(new FEncodePipelineMonoscopic);
+			CaptureContext->EncodePipeline->Initialize(EncodeParams, CaptureContext->EncodeToNetworkQueue);
 		}
 		CaptureContext->EncodePipeline->EncodeFrame(GetWorld()->Scene, TextureTarget);
 	}
