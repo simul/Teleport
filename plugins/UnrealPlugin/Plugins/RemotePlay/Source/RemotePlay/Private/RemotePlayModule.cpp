@@ -5,6 +5,8 @@
 
 #include "IPluginManager.h"
 #include "PlatformProcess.h"
+#include "ShaderCore.h"
+#include "Misc/Paths.h"
 
 #include "GameFramework/PlayerController.h"
 
@@ -23,6 +25,9 @@ void FRemotePlayModule::StartupModule()
 	{
 		UE_LOG(LogRemotePlay, Error, TEXT("Failed to initialize ENET library"));
 	}
+
+	const FString PluginShaderDir = FPaths::Combine(IPluginManager::Get().FindPlugin(TEXT("RemotePlay"))->GetBaseDir(), TEXT("Shaders"));
+	AddShaderSourceDirectoryMapping(TEXT("/Plugin/RemotePlay"), PluginShaderDir);
 		
 	UE_LOG(LogRemotePlay, Log, TEXT("Runtime module initialized"));
 }
