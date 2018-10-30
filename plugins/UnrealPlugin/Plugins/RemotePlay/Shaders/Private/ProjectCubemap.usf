@@ -10,13 +10,16 @@ static const float TwoPI  = 2.0 * PI;
 TextureCube InputCubeMap;
 SamplerState DefaultSampler;
 
-RWTexture2D<float4> RWOutputTexture;
+RWTexture2D<float4> RWOutputColorTexture;
+#if WRITE_DEPTH
+RWTexture2D<float4> RWOutputDepthTexture;
+#endif
 
 [numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
 void MainCS(uint2 ThreadID : SV_DispatchThreadID)
 {
 	uint OutputW, OutputH;
-	RWOutputTexture.GetDimensions(OutputW, OutputH);
+	RWOutputColorTexture.GetDimensions(OutputW, OutputH);
 
 	float2 UV   = float2(ThreadID.x / float(OutputW), ThreadID.y / float(OutputH));
 	float Phi   = UV.x * TwoPI;
@@ -29,5 +32,10 @@ void MainCS(uint2 ThreadID : SV_DispatchThreadID)
 	);
 
 	float4 SceneColor = InputCubeMap.SampleLevel(DefaultSampler, CubeSampleVec, 0);
-	RWOutputTexture[int2(ThreadID.x, ThreadID.y)] = Tonemap(SceneColor);
+	RWOutputColorTexture[int2(ThreadID.x, ThreadID.y)] = Tonemap(SceneColor.rgb);
+
+#if WRITE_DEPTH
+	float DepthValue = SceneColor.a / 1000.0;
+	RWOutputDepthTexture[int2(ThreadID.x, ThreadID.y)] = float4(DepthValue, DepthValue, DepthValue, 1.0);
+#endif
 }

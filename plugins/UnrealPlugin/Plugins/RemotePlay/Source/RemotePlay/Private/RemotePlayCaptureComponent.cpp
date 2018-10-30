@@ -14,7 +14,9 @@ struct FCaptureContext
 {
 	TUniquePtr<IEncodePipeline> EncodePipeline;
 	TUniquePtr<FNetworkPipeline> NetworkPipeline;
-	avs::Queue EncodeToNetworkQueue;
+	TUniquePtr<avs::Queue> ColorQueue;
+	TUniquePtr<avs::Queue> DepthQueue;
+	bool bCaptureDepth = false;
 };
 
 URemotePlayCaptureComponent::URemotePlayCaptureComponent()
@@ -41,7 +43,20 @@ URemotePlayCaptureComponent::~URemotePlayCaptureComponent()
 void URemotePlayCaptureComponent::BeginPlay()
 {
 	Super::BeginPlay();
-	CaptureContext->EncodeToNetworkQueue.configure(16);
+
+	CaptureContext->ColorQueue.Reset(new avs::Queue);
+	CaptureContext->ColorQueue->configure(16);
+
+	if(CaptureSource == ESceneCaptureSource::SCS_SceneColorSceneDepth)
+	{
+		CaptureContext->bCaptureDepth = true;
+		CaptureContext->DepthQueue.Reset(new avs::Queue);
+		CaptureContext->DepthQueue->configure(16);
+	}
+	else
+	{
+		CaptureContext->bCaptureDepth = false;
+	}
 
 	if(!bRenderOwner)
 	{
@@ -53,6 +68,8 @@ void URemotePlayCaptureComponent::BeginPlay()
 		HiddenActors.Add(OwnerActor);
 		HiddenActors.Append(OwnerAttachedActors);
 	}
+
+	StartStreaming(TEXT("127.0.0.1"), 1667);
 }
 	
 void URemotePlayCaptureComponent::EndPlay(const EEndPlayReason::Type Reason)
@@ -61,7 +78,9 @@ void URemotePlayCaptureComponent::EndPlay(const EEndPlayReason::Type Reason)
 	{
 		StopStreaming();
 	}
-	CaptureContext->EncodeToNetworkQueue.deconfigure();
+
+	CaptureContext->ColorQueue.Reset();
+	CaptureContext->DepthQueue.Reset();
 
 	Super::EndPlay(Reason);
 }
@@ -105,7 +124,7 @@ void URemotePlayCaptureComponent::StartStreaming(const FString& RemoteIP, int32 
 		NetworkParams.LocalPort  = NetworkParams.RemotePort;
 
 		CaptureContext->NetworkPipeline.Reset(new FNetworkPipeline);
-		CaptureContext->NetworkPipeline->Initialize(NetworkParams, CaptureContext->EncodeToNetworkQueue);
+		CaptureContext->NetworkPipeline->Initialize(NetworkParams, CaptureContext->ColorQueue.Get(), CaptureContext->DepthQueue.Get());
 	}
 
 	bIsStreaming = true;
@@ -151,7 +170,7 @@ void URemotePlayCaptureComponent::OnViewportDrawn()
 		if(!CaptureContext->EncodePipeline.IsValid())
 		{
 			CaptureContext->EncodePipeline.Reset(new FEncodePipelineMonoscopic);
-			CaptureContext->EncodePipeline->Initialize(EncodeParams, CaptureContext->EncodeToNetworkQueue);
+			CaptureContext->EncodePipeline->Initialize(EncodeParams, CaptureContext->ColorQueue.Get(), CaptureContext->DepthQueue.Get());
 		}
 		CaptureContext->EncodePipeline->EncodeFrame(GetWorld()->Scene, TextureTarget);
 	}

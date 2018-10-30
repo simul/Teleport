@@ -14,15 +14,15 @@
 class FNetworkPipeline
 {
 public:
-	void Initialize(const FRemotePlayNetworkParameters& InParams, avs::Queue& InInputQueue);
+	void Initialize(const FRemotePlayNetworkParameters& InParams, avs::Queue* ColorQueue, avs::Queue* DepthQueue);
 	void Release();
 	void Process();
 
 private:
-	avs::Pipeline Pipeline;
-	avs::Forwarder Forwarder;
-	avs::Packetizer Packetizer;
-	avs::NetworkSink NetworkSink;
+	TUniquePtr<avs::Pipeline> Pipeline;
+	TArray<avs::Forwarder> Forwarder;
+	TArray<avs::Packetizer> Packetizer;
+	TUniquePtr<avs::NetworkSink> NetworkSink;
 
 #if WITH_REMOTEPLAY_STATS
 	double LastTimestamp = 0.0;
