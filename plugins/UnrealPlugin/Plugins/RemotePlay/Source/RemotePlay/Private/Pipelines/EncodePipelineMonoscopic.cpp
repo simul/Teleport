@@ -176,6 +176,11 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	avs::DeviceType avsDeviceType;
 	avs::SurfaceBackendInterface* avsSurfaceBackends[2] = { nullptr };
 
+	const avs::SurfaceFormat avsInputFormats[2] = {
+		avs::SurfaceFormat::Unknown, // Any suitable for color (preferably ARGB or ABGR)
+		avs::SurfaceFormat::NV12, // NV12 is needed for depth encoding
+	};
+
 	switch(DeviceType)
 	{
 	case FRemotePlayRHI::EDeviceType::DirectX:
@@ -212,7 +217,7 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 
 	if(DepthQueue)
 	{
-		DepthSurfaceTexture.Texture = RHI.CreateSurfaceTexture(Params.FrameWidth, Params.FrameHeight, EPixelFormat::PF_R8G8B8A8);
+		DepthSurfaceTexture.Texture = RHI.CreateSurfaceTexture(Params.FrameWidth, Params.FrameHeight, EPixelFormat::PF_R16F);
 		if(DepthSurfaceTexture.Texture.IsValid())
 		{
 			DepthSurfaceTexture.UAV = RHI.CreateSurfaceUAV(DepthSurfaceTexture.Texture);
@@ -255,11 +260,14 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 			UE_LOG(LogRemotePlay, Error, TEXT("Failed to configure input surface node #%d"), i);
 			return;
 		}
+
+		EncoderParams.inputFormat = avsInputFormats[i];
 		if(!Encoder[i].configure(avs::DeviceHandle{avsDeviceType, DeviceHandle}, Params.FrameWidth, Params.FrameHeight, EncoderParams))
 		{
 			UE_LOG(LogRemotePlay, Error, TEXT("Failed to configure encoder #%d"), i);
 			return;
 		}
+
 		if(!Pipeline->link({&InputSurface[i], &Encoder[i], Outputs[i]}))
 		{
 			UE_LOG(LogRemotePlay, Error, TEXT("Error configuring the encoding pipeline"));
