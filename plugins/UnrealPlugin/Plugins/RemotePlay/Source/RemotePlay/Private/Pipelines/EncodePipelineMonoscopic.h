@@ -39,4 +39,6 @@ private:
 	TArray<avs::Surface> InputSurface;
 	avs::Queue* ColorQueue = nullptr;
 	avs::Queue* DepthQueue = nullptr;
+
+	FVector2D WorldZToDeviceZTransform;
 };

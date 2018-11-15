@@ -14,9 +14,12 @@ RWTexture2D<float4> RWOutputColorTexture;
 
 #if WRITE_DEPTH
 RWTexture2D<float> RWOutputDepthTexture;
-// TODO: Expose as uniform parameters.
-static const float ZNear = 0.1f;
-static const float ZFar = 10000.0f;
+float2 WorldZToDeviceZTransform;
+
+float ConvertToDeviceZ(float SceneDepth)
+{
+	return 1.0f / ((SceneDepth + WorldZToDeviceZTransform.y) * WorldZToDeviceZTransform.x);
+}
 #endif
 
 [numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
@@ -39,8 +42,7 @@ void MainCS(uint2 ThreadID : SV_DispatchThreadID)
 	RWOutputColorTexture[int2(ThreadID.x, ThreadID.y)] = Tonemap(SceneColor.rgb);
 
 #if WRITE_DEPTH
-	float Depth = SceneColor.a;
-	float LinearDepth = (Depth - ZNear) / (ZFar - ZNear);
-	RWOutputDepthTexture[int2(ThreadID.x, ThreadID.y)] = clamp(LinearDepth, 0.0f, 1.0f);
+	float LinearDepth = ConvertToDeviceZ(SceneColor.a);
+	RWOutputDepthTexture[int2(ThreadID.x, ThreadID.y)] = LinearDepth;
 #endif
 }

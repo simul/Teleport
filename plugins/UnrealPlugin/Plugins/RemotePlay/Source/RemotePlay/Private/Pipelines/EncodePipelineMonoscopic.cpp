@@ -11,6 +11,7 @@
 
 #include "Engine/TextureRenderTargetCube.h"
 
+#include "Public/RHIDefinitions.h"
 #include "Public/GlobalShader.h"
 #include "Public/PipelineStateCache.h"
 #include "Public/ShaderParameters.h"
@@ -51,6 +52,7 @@ public:
 		if(bWriteDepth)
 		{
 			OutputDepthTexture.Bind(Initializer.ParameterMap, TEXT("OutputDepthTexture"));
+			WorldZToDeviceZTransform.Bind(Initializer.ParameterMap, TEXT("WorldZToDeviceZTransform"));
 		}
 	}
 
@@ -71,12 +73,14 @@ public:
 		FTexture2DRHIRef OutputColorTextureRef,
 		FUnorderedAccessViewRHIRef OutputColorTextureUAVRef,
 		FTexture2DRHIRef OutputDepthTextureRef,
-		FUnorderedAccessViewRHIRef OutputDepthTextureUAVRef)
+		FUnorderedAccessViewRHIRef OutputDepthTextureUAVRef,
+		const FVector2D& InWorldZToDeviceZTransform)
 	{
 		check(bWriteDepth);
 		FComputeShaderRHIParamRef ShaderRHI = GetComputeShader();
 		SetParameters(RHICmdList, InputCubeMapTextureRef, OutputColorTextureRef, OutputColorTextureUAVRef);
 		OutputDepthTexture.SetTexture(RHICmdList, ShaderRHI, OutputDepthTextureRef, OutputDepthTextureUAVRef);
+		SetShaderValue(RHICmdList, ShaderRHI, WorldZToDeviceZTransform, InWorldZToDeviceZTransform);
 	}
 
 	void UnsetParameters(FRHICommandList& RHICmdList)
@@ -98,6 +102,7 @@ public:
 		if(bWriteDepth)
 		{
 			Ar << OutputDepthTexture;
+			Ar << WorldZToDeviceZTransform;
 		}
 		return bShaderHasOutdatedParameters;
 	}
@@ -109,10 +114,38 @@ private:
 	FShaderResourceParameter DefaultSampler;
 	FRWShaderParameter OutputColorTexture;
 	FRWShaderParameter OutputDepthTexture;
+	FShaderParameter WorldZToDeviceZTransform;
 };
 
 IMPLEMENT_SHADER_TYPE(, FProjectCubemapCS<false>, TEXT("/Plugin/RemotePlay/Private/ProjectCubemap.usf"), TEXT("MainCS"), SF_Compute)
 IMPLEMENT_SHADER_TYPE(, FProjectCubemapCS<true>,  TEXT("/Plugin/RemotePlay/Private/ProjectCubemap.usf"), TEXT("MainCS"), SF_Compute)
+
+static inline FVector2D CreateWorldZToDeviceZTransform(float FOV)
+{
+	FMatrix ProjectionMatrix;
+	if(static_cast<int32>(ERHIZBuffer::IsInverted) == 1)
+	{
+		ProjectionMatrix = FReversedZPerspectiveMatrix(FOV, FOV, 1.0f, 1.0f, GNearClippingPlane, GNearClippingPlane);
+	}
+	else
+	{
+		ProjectionMatrix = FPerspectiveMatrix(FOV, FOV, 1.0f, 1.0f, GNearClippingPlane, GNearClippingPlane);
+	}
+
+	// Based on CreateInvDeviceZToWorldZTransform() in Runtime\Engine\Private\SceneView.cpp.
+	float DepthMul = ProjectionMatrix.M[2][2];
+	float DepthAdd = ProjectionMatrix.M[3][2];
+
+	if(DepthAdd == 0.0f)
+	{
+		DepthAdd = 0.00000001f;
+	}
+
+	float SubtractValue = DepthMul / DepthAdd;
+	SubtractValue -= 0.00000001f;
+
+	return FVector2D{1.0f / DepthAdd, SubtractValue};
+}
 
 void FEncodePipelineMonoscopic::Initialize(const FRemotePlayEncodeParameters& InParams, avs::Queue* InColorQueue, avs::Queue* InDepthQueue)
 {
@@ -121,6 +154,8 @@ void FEncodePipelineMonoscopic::Initialize(const FRemotePlayEncodeParameters& In
 	Params = InParams;
 	ColorQueue = InColorQueue;
 	DepthQueue = InDepthQueue;
+	WorldZToDeviceZTransform = CreateWorldZToDeviceZTransform(FMath::DegreesToRadians(90.0f));
+
 	ENQUEUE_RENDER_COMMAND(RemotePlayInitializeEncodePipeline)(
 		[this](FRHICommandListImmediate& RHICmdList)
 		{
@@ -304,7 +339,8 @@ void FEncodePipelineMonoscopic::PrepareFrame_RenderThread(
 		TShaderMapRef<FProjectCubemapCS<true>> ComputeShader(GlobalShaderMap);
 		ComputeShader->SetParameters(RHICmdList, TargetResource->TextureRHI,
 			ColorSurfaceTexture.Texture, ColorSurfaceTexture.UAV,
-			DepthSurfaceTexture.Texture, DepthSurfaceTexture.UAV);
+			DepthSurfaceTexture.Texture, DepthSurfaceTexture.UAV,
+			WorldZToDeviceZTransform);
 		SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*ComputeShader));
 		DispatchComputeShader(RHICmdList, *ComputeShader, NumThreadGroupsX, NumThreadGroupsY, 1);
 		ComputeShader->UnsetParameters(RHICmdList);
