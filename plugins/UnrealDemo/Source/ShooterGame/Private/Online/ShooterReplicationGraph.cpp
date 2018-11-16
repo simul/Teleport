@@ -299,7 +299,7 @@ void UShooterReplicationGraph::InitGlobalActorClassSettings()
 	PlayerStateRepInfo.ActorChannelFrameTimeout = 0;
 	SetClassInfo( APlayerState::StaticClass(), PlayerStateRepInfo );
 	
-	UReplicationGraphNode_ActorListFrequencyBuckets::DefaultListSize = 12;
+	UReplicationGraphNode_ActorListFrequencyBuckets::DefaultSettings.ListSize = 12;
 
 	// Set FClassReplicationInfo based on legacy settings from all replicated classes
 	for (UClass* ReplicatedClass : AllReplicatedClasses)
@@ -358,7 +358,8 @@ void UShooterReplicationGraph::InitGlobalActorClassSettings()
 	//	So for now, erring on the side of a cleaning dependencies between classes.
 	// -------------------------------------------------------
 	
-	AShooterCharacter::NotifyWeaponChange.AddUObject(this, &UShooterReplicationGraph::OnCharacterWeaponChange);
+	AShooterCharacter::NotifyEquipWeapon.AddUObject(this, &UShooterReplicationGraph::OnCharacterEquipWeapon);
+	AShooterCharacter::NotifyUnEquipWeapon.AddUObject(this, &UShooterReplicationGraph::OnCharacterUnEquipWeapon);
 
 #if WITH_GAMEPLAY_DEBUGGER
 	AGameplayDebuggerCategoryReplicator::NotifyDebuggerOwnerChange.AddUObject(this, &UShooterReplicationGraph::OnGameplayDebuggerOwnerChange);
@@ -520,20 +521,32 @@ void UShooterReplicationGraph::RouteRemoveNetworkActorToNodes(const FNewReplicat
 #define CHECK_WORLDS(X)
 #endif
 
-void UShooterReplicationGraph::OnCharacterWeaponChange(AShooterCharacter* Character, AShooterWeapon* NewWeapon, AShooterWeapon* OldWeapon)
+void UShooterReplicationGraph::OnCharacterEquipWeapon(AShooterCharacter* Character, AShooterWeapon* NewWeapon)
 {
-	CHECK_WORLDS(Character);
-	
-	FGlobalActorReplicationInfo& ActorInfo = GlobalActorReplicationInfoMap.Get(Character);
-	ActorInfo.DependentActorList.PrepareForWrite();
-	if (OldWeapon)
+	if (Character && NewWeapon)
 	{
-		ActorInfo.DependentActorList.Remove(OldWeapon);
-	}
+		CHECK_WORLDS(Character);
 
-	if (NewWeapon)
+		FGlobalActorReplicationInfo& ActorInfo = GlobalActorReplicationInfoMap.Get(Character);
+		ActorInfo.DependentActorList.PrepareForWrite();
+
+		if (!ActorInfo.DependentActorList.Contains(NewWeapon))
+		{
+			ActorInfo.DependentActorList.Add(NewWeapon);
+		}
+	}
+}
+
+void UShooterReplicationGraph::OnCharacterUnEquipWeapon(AShooterCharacter* Character, AShooterWeapon* OldWeapon)
+{
+	if (Character && OldWeapon)
 	{
-		ActorInfo.DependentActorList.Add(NewWeapon);
+		CHECK_WORLDS(Character);
+
+		FGlobalActorReplicationInfo& ActorInfo = GlobalActorReplicationInfoMap.Get(Character);
+		ActorInfo.DependentActorList.PrepareForWrite();
+
+		ActorInfo.DependentActorList.Remove(OldWeapon);
 	}
 }
 

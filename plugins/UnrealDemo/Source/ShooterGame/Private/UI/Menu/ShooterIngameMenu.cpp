@@ -219,6 +219,9 @@ void FShooterIngameMenu::ToggleGameMenu()
 			PCOwner->SetCinematicMode(true, false, false, true, true);
 
 			PCOwner->SetPause(true);
+
+			FInputModeGameAndUI InputMode;
+			PCOwner->SetInputMode(InputMode);
 		}
 	} 
 	else
@@ -235,6 +238,9 @@ void FShooterIngameMenu::ToggleGameMenu()
 			if( ( ShooterHUD != NULL ) && ( ShooterHUD->IsMatchOver() == false ) )
 			{
 				PCOwner->SetCinematicMode(false,false,false,true,true);
+
+				FInputModeGameOnly InputMode;
+				PCOwner->SetInputMode(InputMode);
 			}
 		}
 	}

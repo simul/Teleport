@@ -8,6 +8,10 @@ public class ShooterGameLoadingScreen : ModuleRules
 {
     public ShooterGameLoadingScreen(ReadOnlyTargetRules Target) : base(Target)
 	{
+		PrivatePCHHeaderFile = "Public/ShooterGameLoadingScreen.h";
+
+		PCHUsage = PCHUsageMode.UseSharedPCHs;
+
         PrivateDependencyModuleNames.AddRange(
 			new string[] {
 				"Core",

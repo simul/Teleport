@@ -365,8 +365,9 @@ void FShooterMainMenu::AddMenuToGameViewport()
 {
 	if (GEngine && GEngine->GameViewport)
 	{
-		UGameViewportClient* const GVC = GEngine->GameViewport;
+		UGameViewportClient* GVC = GEngine->GameViewport;
 		GVC->AddViewportWidgetContent(MenuWidgetContainer.ToSharedRef());
+		GVC->SetCaptureMouseOnClick(EMouseCaptureMode::NoCapture);
 	}
 }
 
@@ -1137,12 +1138,12 @@ void FShooterMainMenu::HostGame(const FString& GameType)
 
 void FShooterMainMenu::HostFreeForAll()
 {
-	HostGame(LOCTEXT("FFA", "FFA").ToString());
+	HostGame(TEXT("FFA"));
 }
 
 void FShooterMainMenu::HostTeamDeathMatch()
-{	
-	HostGame(LOCTEXT("TDM", "TDM").ToString());
+{
+	HostGame(TEXT("TDM"));
 }
 
 FReply FShooterMainMenu::OnConfirm()

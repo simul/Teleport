@@ -27,7 +27,8 @@ FAutoConsoleVariableRef CVarNetEnablePauseRelevancy(
 	TEXT("0: Disable, 1: Enable"),
 	ECVF_Cheat);
 
-FOnShooterCharacterWeaponChange AShooterCharacter::NotifyWeaponChange;
+FOnShooterCharacterEquipWeapon AShooterCharacter::NotifyEquipWeapon;
+FOnShooterCharacterUnEquipWeapon AShooterCharacter::NotifyUnEquipWeapon;
 
 AShooterCharacter::AShooterCharacter(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer.SetDefaultSubobjectClass<UShooterCharacterMovement>(ACharacter::CharacterMovementComponentName))
@@ -38,7 +39,7 @@ AShooterCharacter::AShooterCharacter(const FObjectInitializer& ObjectInitializer
 	Mesh1P->bOwnerNoSee = false;
 	Mesh1P->bCastDynamicShadow = false;
 	Mesh1P->bReceivesDecals = false;
-	Mesh1P->MeshComponentUpdateFlag = EMeshComponentUpdateFlag::OnlyTickPoseWhenRendered;
+	Mesh1P->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::OnlyTickPoseWhenRendered;
 	Mesh1P->PrimaryComponentTick.TickGroup = TG_PrePhysics;
 	Mesh1P->SetCollisionObjectType(ECC_Pawn);
 	Mesh1P->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -136,7 +137,7 @@ void AShooterCharacter::OnRep_PlayerState()
 	Super::OnRep_PlayerState();
 
 	// [client] as soon as PlayerState is assigned, set team colors of this pawn for local player
-	if (PlayerState != NULL)
+	if (GetPlayerState() != NULL)
 	{
 		UpdateTeamColorsAllMIDs();
 	}
@@ -159,7 +160,7 @@ bool AShooterCharacter::IsEnemyFor(AController* TestPC) const
 	}
 
 	AShooterPlayerState* TestPlayerState = Cast<AShooterPlayerState>(TestPC->PlayerState);
-	AShooterPlayerState* MyPlayerState = Cast<AShooterPlayerState>(PlayerState);
+	AShooterPlayerState* MyPlayerState = Cast<AShooterPlayerState>(GetPlayerState());
 
 	bool bIsEnemy = true;
 	if (GetWorld()->GetGameState())
@@ -181,10 +182,10 @@ void AShooterCharacter::UpdatePawnMeshes()
 {
 	bool const bFirstPerson = IsFirstPerson();
 
-	Mesh1P->MeshComponentUpdateFlag = !bFirstPerson ? EMeshComponentUpdateFlag::OnlyTickPoseWhenRendered : EMeshComponentUpdateFlag::AlwaysTickPoseAndRefreshBones;
+	Mesh1P->VisibilityBasedAnimTickOption = !bFirstPerson ? EVisibilityBasedAnimTickOption::OnlyTickPoseWhenRendered : EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 	Mesh1P->SetOwnerNoSee(!bFirstPerson);
 
-	GetMesh()->MeshComponentUpdateFlag = bFirstPerson ? EMeshComponentUpdateFlag::OnlyTickPoseWhenRendered : EMeshComponentUpdateFlag::AlwaysTickPoseAndRefreshBones;
+	GetMesh()->VisibilityBasedAnimTickOption = bFirstPerson ? EVisibilityBasedAnimTickOption::OnlyTickPoseWhenRendered : EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
 	GetMesh()->SetOwnerNoSee(bFirstPerson);
 }
 
@@ -192,7 +193,7 @@ void AShooterCharacter::UpdateTeamColors(UMaterialInstanceDynamic* UseMID)
 {
 	if (UseMID)
 	{
-		AShooterPlayerState* MyPlayerState = Cast<AShooterPlayerState>(PlayerState);
+		AShooterPlayerState* MyPlayerState = Cast<AShooterPlayerState>(GetPlayerState());
 		if (MyPlayerState != NULL)
 		{
 			float MaterialParam = (float)MyPlayerState->GetTeamNum();
@@ -684,8 +685,6 @@ void AShooterCharacter::SetCurrentWeapon(AShooterWeapon* NewWeapon, AShooterWeap
 
 		NewWeapon->OnEquip(LastWeapon);
 	}
-
-	NotifyWeaponChange.Broadcast(this, CurrentWeapon, LocalLastWeapon);
 }
 
 
@@ -1070,7 +1069,10 @@ void AShooterCharacter::Tick(float DeltaSeconds)
 			{
 				LowHealthWarningPlayer = UGameplayStatics::SpawnSoundAttached(LowHealthSound, GetRootComponent(),
 					NAME_None, FVector(ForceInit), EAttachLocation::KeepRelativeOffset, true);
-				LowHealthWarningPlayer->SetVolumeMultiplier(0.0f);
+				if (LowHealthWarningPlayer)
+				{
+					LowHealthWarningPlayer->SetVolumeMultiplier(0.0f);
+				}
 			}
 			else if ((this->Health > this->GetMaxHealth() * LowHealthPercentage || this->Health < 0) && LowHealthWarningPlayer && LowHealthWarningPlayer->IsPlaying())
 			{

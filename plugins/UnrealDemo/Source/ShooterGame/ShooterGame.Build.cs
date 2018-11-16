@@ -6,6 +6,8 @@ public class ShooterGame : ModuleRules
 {
 	public ShooterGame(ReadOnlyTargetRules Target) : base(Target)
 	{
+		PrivatePCHHeaderFile = "Public/ShooterGame.h";
+
 		PrivateIncludePaths.AddRange(
 			new string[] { 
 				"ShooterGame/Private",

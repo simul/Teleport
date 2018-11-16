@@ -2,6 +2,7 @@
 
 #include "ShooterGame.h"
 #include "Weapons/ShooterWeapon.h"
+#include "Player/ShooterCharacter.h"
 #include "Particles/ParticleSystemComponent.h"
 #include "Bots/ShooterAIController.h"
 #include "Online/ShooterPlayerState.h"
@@ -10,7 +11,7 @@
 AShooterWeapon::AShooterWeapon(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
 	Mesh1P = ObjectInitializer.CreateDefaultSubobject<USkeletalMeshComponent>(this, TEXT("WeaponMesh1P"));
-	Mesh1P->MeshComponentUpdateFlag = EMeshComponentUpdateFlag::OnlyTickPoseWhenRendered;
+	Mesh1P->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::OnlyTickPoseWhenRendered;
 	Mesh1P->bReceivesDecals = false;
 	Mesh1P->CastShadow = false;
 	Mesh1P->SetCollisionObjectType(ECC_WorldDynamic);
@@ -19,7 +20,7 @@ AShooterWeapon::AShooterWeapon(const FObjectInitializer& ObjectInitializer) : Su
 	RootComponent = Mesh1P;
 
 	Mesh3P = ObjectInitializer.CreateDefaultSubobject<USkeletalMeshComponent>(this, TEXT("WeaponMesh3P"));
-	Mesh3P->MeshComponentUpdateFlag = EMeshComponentUpdateFlag::OnlyTickPoseWhenRendered;
+	Mesh3P->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::OnlyTickPoseWhenRendered;
 	Mesh3P->bReceivesDecals = false;
 	Mesh3P->CastShadow = true;
 	Mesh3P->SetCollisionObjectType(ECC_WorldDynamic);
@@ -104,6 +105,8 @@ void AShooterWeapon::OnEquip(const AShooterWeapon* LastWeapon)
 	{
 		PlayWeaponSound(EquipSound);
 	}
+
+	AShooterCharacter::NotifyEquipWeapon.Broadcast(MyPawn, this);
 }
 
 void AShooterWeapon::OnEquipFinished()
@@ -153,6 +156,8 @@ void AShooterWeapon::OnUnEquip()
 		GetWorldTimerManager().ClearTimer(TimerHandle_OnEquipFinished);
 	}
 
+	AShooterCharacter::NotifyUnEquipWeapon.Broadcast(MyPawn, this);
+
 	DetermineWeaponState();
 }
 
@@ -163,14 +168,14 @@ void AShooterWeapon::OnEnterInventory(AShooterCharacter* NewOwner)
 
 void AShooterWeapon::OnLeaveInventory()
 {
-	if (Role == ROLE_Authority)
-	{
-		SetOwningPawn(NULL);
-	}
-
 	if (IsAttachedToPawn())
 	{
 		OnUnEquip();
+	}
+
+	if (Role == ROLE_Authority)
+	{
+		SetOwningPawn(NULL);
 	}
 }
 
@@ -231,7 +236,7 @@ void AShooterWeapon::StartFire()
 
 void AShooterWeapon::StopFire()
 {
-	if (Role < ROLE_Authority)
+	if ((Role < ROLE_Authority) && MyPawn && MyPawn->IsLocallyControlled())
 	{
 		ServerStopFire();
 	}

@@ -98,7 +98,8 @@ struct FDecalData
 
 	/** defaults */
 	FDecalData()
-		: DecalSize(256.f)
+		: DecalMaterial(nullptr)
+		, DecalSize(256.f)
 		, LifeSpan(10.f)
 	{
 	}

@@ -320,7 +320,7 @@ float AShooterGameMode::ModifyDamage(float Damage, AActor* DamagedActor, struct 
 	AShooterCharacter* DamagedPawn = Cast<AShooterCharacter>(DamagedActor);
 	if (DamagedPawn && EventInstigator)
 	{
-		AShooterPlayerState* DamagedPlayerState = Cast<AShooterPlayerState>(DamagedPawn->PlayerState);
+		AShooterPlayerState* DamagedPlayerState = Cast<AShooterPlayerState>(DamagedPawn->GetPlayerState());
 		AShooterPlayerState* InstigatorPlayerState = Cast<AShooterPlayerState>(EventInstigator->PlayerState);
 
 		// disable friendly fire

@@ -5,7 +5,8 @@
 #include "ShooterTypes.h"
 #include "ShooterCharacter.generated.h"
 
-DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnShooterCharacterWeaponChange, AShooterCharacter*, AShooterWeapon* /* new */, AShooterWeapon* /*old */);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnShooterCharacterEquipWeapon, AShooterCharacter*, AShooterWeapon* /* new */);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnShooterCharacterUnEquipWeapon, AShooterCharacter*, AShooterWeapon* /* old */);
 
 UCLASS(Abstract)
 class AShooterCharacter : public ACharacter
@@ -203,8 +204,11 @@ class AShooterCharacter : public ACharacter
 	UFUNCTION(BlueprintCallable, Category = "Game|Weapon")
 	class AShooterWeapon* GetWeapon() const;
 
-	/** Global notification when a pawns weapon changes. Needed for replication graph. Use OnWeaponEquippedDelegate for actor notification */
-	SHOOTERGAME_API static FOnShooterCharacterWeaponChange NotifyWeaponChange;
+	/** Global notification when a character equips a weapon. Needed for replication graph. */
+	SHOOTERGAME_API static FOnShooterCharacterEquipWeapon NotifyEquipWeapon;
+
+	/** Global notification when a character un-equips a weapon. Needed for replication graph. */
+	SHOOTERGAME_API static FOnShooterCharacterUnEquipWeapon NotifyUnEquipWeapon;
 
 	/** get weapon attach point */
 	FName GetWeaponAttachPoint() const;
