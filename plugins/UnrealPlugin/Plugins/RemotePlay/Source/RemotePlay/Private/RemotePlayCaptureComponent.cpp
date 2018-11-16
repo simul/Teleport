@@ -33,6 +33,8 @@ URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 	EncodeParams.IDRInterval  = 120;
 	EncodeParams.TargetFPS    = 60;
 	EncodeParams.bDeferOutput = true;
+	EncodeParams.bLinearDepth = false;
+	EncodeParams.MaxDepth     = 10000.0f;
 }
 
 URemotePlayCaptureComponent::~URemotePlayCaptureComponent()
@@ -69,7 +71,9 @@ void URemotePlayCaptureComponent::BeginPlay()
 		HiddenActors.Append(OwnerAttachedActors);
 	}
 
+#ifdef DEBUG_STREAMING
 	StartStreaming(TEXT("127.0.0.1"), 1667);
+#endif
 }
 	
 void URemotePlayCaptureComponent::EndPlay(const EEndPlayReason::Type Reason)

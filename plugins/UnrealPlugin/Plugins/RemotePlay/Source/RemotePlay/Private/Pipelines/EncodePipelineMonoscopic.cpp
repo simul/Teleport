@@ -25,7 +25,14 @@
 
 DECLARE_FLOAT_COUNTER_STAT(TEXT("RemotePlayEncodePipelineMonoscopic"), Stat_GPU_RemotePlayEncodePipelineMonoscopic, STATGROUP_GPU);
 
-template<bool bWriteDepth>
+enum class EProjectCubemapVariant
+{
+	Color,
+	ColorAndDepth,
+	ColorAndLinearDepth,
+};
+
+template<EProjectCubemapVariant Variant>
 class FProjectCubemapCS : public FGlobalShader
 {
 	DECLARE_SHADER_TYPE(FProjectCubemapCS, Global);
@@ -40,6 +47,7 @@ public:
 		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZEX"), kThreadGroupSize);
 		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZEY"), kThreadGroupSize);
 		OutEnvironment.SetDefine(TEXT("WRITE_DEPTH"), bWriteDepth ? 1 : 0);
+		OutEnvironment.SetDefine(TEXT("WRITE_DEPTH_LINEAR"), bWriteLinearDepth ? 1 : 0);
 	}
 
 	FProjectCubemapCS() = default;
@@ -49,24 +57,17 @@ public:
 		InputCubeMap.Bind(Initializer.ParameterMap, TEXT("InputCubeMap"));
 		DefaultSampler.Bind(Initializer.ParameterMap, TEXT("DefaultSampler"));
 		OutputColorTexture.Bind(Initializer.ParameterMap, TEXT("OutputColorTexture"));
+
 		if(bWriteDepth)
 		{
 			OutputDepthTexture.Bind(Initializer.ParameterMap, TEXT("OutputDepthTexture"));
+		}
+		if(bWriteLinearDepth)
+		{
 			WorldZToDeviceZTransform.Bind(Initializer.ParameterMap, TEXT("WorldZToDeviceZTransform"));
 		}
 	}
 
-	void SetParameters(
-		FRHICommandList& RHICmdList,
-		FTextureRHIRef InputCubeMapTextureRef,
-		FTexture2DRHIRef OutputColorTextureRef,
-		FUnorderedAccessViewRHIRef OutputColorTextureUAVRef)
-	{
-		FComputeShaderRHIParamRef ShaderRHI = GetComputeShader();
-		SetTextureParameter(RHICmdList, ShaderRHI, InputCubeMap, DefaultSampler, TStaticSamplerState<SF_Bilinear>::GetRHI(), InputCubeMapTextureRef);
-		OutputColorTexture.SetTexture(RHICmdList, ShaderRHI, OutputColorTextureRef, OutputColorTextureUAVRef);
-	}
-	
 	void SetParameters(
 		FRHICommandList& RHICmdList,
 		FTextureRHIRef InputCubeMapTextureRef,
@@ -76,11 +77,19 @@ public:
 		FUnorderedAccessViewRHIRef OutputDepthTextureUAVRef,
 		const FVector2D& InWorldZToDeviceZTransform)
 	{
-		check(bWriteDepth);
 		FComputeShaderRHIParamRef ShaderRHI = GetComputeShader();
-		SetParameters(RHICmdList, InputCubeMapTextureRef, OutputColorTextureRef, OutputColorTextureUAVRef);
-		OutputDepthTexture.SetTexture(RHICmdList, ShaderRHI, OutputDepthTextureRef, OutputDepthTextureUAVRef);
-		SetShaderValue(RHICmdList, ShaderRHI, WorldZToDeviceZTransform, InWorldZToDeviceZTransform);
+
+		SetTextureParameter(RHICmdList, ShaderRHI, InputCubeMap, DefaultSampler, TStaticSamplerState<SF_Bilinear>::GetRHI(), InputCubeMapTextureRef);
+		OutputColorTexture.SetTexture(RHICmdList, ShaderRHI, OutputColorTextureRef, OutputColorTextureUAVRef);
+
+		if(bWriteDepth)
+		{
+			OutputDepthTexture.SetTexture(RHICmdList, ShaderRHI, OutputDepthTextureRef, OutputDepthTextureUAVRef);
+		}
+		if(bWriteLinearDepth)
+		{
+			SetShaderValue(RHICmdList, ShaderRHI, WorldZToDeviceZTransform, InWorldZToDeviceZTransform);
+		}
 	}
 
 	void UnsetParameters(FRHICommandList& RHICmdList)
@@ -102,12 +111,17 @@ public:
 		if(bWriteDepth)
 		{
 			Ar << OutputDepthTexture;
+		}
+		if(bWriteLinearDepth)
+		{
 			Ar << WorldZToDeviceZTransform;
 		}
 		return bShaderHasOutdatedParameters;
 	}
 
 	static const uint32 kThreadGroupSize = 16;
+	static const bool bWriteDepth = (Variant != EProjectCubemapVariant::Color);
+	static const bool bWriteLinearDepth = (Variant == EProjectCubemapVariant::ColorAndLinearDepth);
 
 private:
 	FShaderResourceParameter InputCubeMap;
@@ -117,8 +131,9 @@ private:
 	FShaderParameter WorldZToDeviceZTransform;
 };
 
-IMPLEMENT_SHADER_TYPE(, FProjectCubemapCS<false>, TEXT("/Plugin/RemotePlay/Private/ProjectCubemap.usf"), TEXT("MainCS"), SF_Compute)
-IMPLEMENT_SHADER_TYPE(, FProjectCubemapCS<true>,  TEXT("/Plugin/RemotePlay/Private/ProjectCubemap.usf"), TEXT("MainCS"), SF_Compute)
+IMPLEMENT_SHADER_TYPE(, FProjectCubemapCS<EProjectCubemapVariant::Color>, TEXT("/Plugin/RemotePlay/Private/ProjectCubemap.usf"), TEXT("MainCS"), SF_Compute)
+IMPLEMENT_SHADER_TYPE(, FProjectCubemapCS<EProjectCubemapVariant::ColorAndDepth>,  TEXT("/Plugin/RemotePlay/Private/ProjectCubemap.usf"), TEXT("MainCS"), SF_Compute)
+IMPLEMENT_SHADER_TYPE(, FProjectCubemapCS<EProjectCubemapVariant::ColorAndLinearDepth>,  TEXT("/Plugin/RemotePlay/Private/ProjectCubemap.usf"), TEXT("MainCS"), SF_Compute)
 
 static inline FVector2D CreateWorldZToDeviceZTransform(float FOV)
 {
@@ -284,6 +299,11 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	EncoderParams.averageBitrate = Params.AverageBitrate;
 	EncoderParams.maxBitrate = Params.MaxBitrate;
 	EncoderParams.deferOutput = Params.bDeferOutput;
+	if(!Params.bLinearDepth)
+	{
+		EncoderParams.depthRemapNear = GNearClippingPlane;
+		EncoderParams.depthRemapFar = Params.MaxDepth;
+	}
 
 	Pipeline.Reset(new avs::Pipeline);
 	Encoder.SetNum(NumStreams);
@@ -329,30 +349,20 @@ void FEncodePipelineMonoscopic::PrepareFrame_RenderThread(
 	FTextureRenderTargetResource* TargetResource,
 	ERHIFeatureLevel::Type FeatureLevel)
 {
-	const uint32 NumThreadGroupsX = Params.FrameWidth / FProjectCubemapCS<false>::kThreadGroupSize;
-	const uint32 NumThreadGroupsY = Params.FrameHeight / FProjectCubemapCS<false>::kThreadGroupSize;
-
-	TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
-
 	if(DepthQueue)
 	{
-		TShaderMapRef<FProjectCubemapCS<true>> ComputeShader(GlobalShaderMap);
-		ComputeShader->SetParameters(RHICmdList, TargetResource->TextureRHI,
-			ColorSurfaceTexture.Texture, ColorSurfaceTexture.UAV,
-			DepthSurfaceTexture.Texture, DepthSurfaceTexture.UAV,
-			WorldZToDeviceZTransform);
-		SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*ComputeShader));
-		DispatchComputeShader(RHICmdList, *ComputeShader, NumThreadGroupsX, NumThreadGroupsY, 1);
-		ComputeShader->UnsetParameters(RHICmdList);
+		if(Params.bLinearDepth)
+		{
+			DispatchProjectCubemapShader<FProjectCubemapCS<EProjectCubemapVariant::ColorAndLinearDepth>>(RHICmdList, TargetResource->TextureRHI, FeatureLevel);
+		}
+		else
+		{
+			DispatchProjectCubemapShader<FProjectCubemapCS<EProjectCubemapVariant::ColorAndDepth>>(RHICmdList, TargetResource->TextureRHI, FeatureLevel);
+		}
 	}
 	else
 	{
-		TShaderMapRef<FProjectCubemapCS<false>> ComputeShader(GlobalShaderMap);
-		ComputeShader->SetParameters(RHICmdList, TargetResource->TextureRHI,
-			ColorSurfaceTexture.Texture, ColorSurfaceTexture.UAV);
-		SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*ComputeShader));
-		DispatchComputeShader(RHICmdList, *ComputeShader, NumThreadGroupsX, NumThreadGroupsY, 1);
-		ComputeShader->UnsetParameters(RHICmdList);
+		DispatchProjectCubemapShader<FProjectCubemapCS<EProjectCubemapVariant::Color>>(RHICmdList, TargetResource->TextureRHI, FeatureLevel);
 	}
 }
 	
@@ -363,4 +373,22 @@ void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediat
 	{
 		UE_LOG(LogRemotePlay, Warning, TEXT("Encode pipeline processing encountered an error"));
 	}
+}
+	
+template<typename ShaderType>
+void FEncodePipelineMonoscopic::DispatchProjectCubemapShader(FRHICommandListImmediate& RHICmdList, FTextureRHIRef TextureRHI, ERHIFeatureLevel::Type FeatureLevel)
+{
+	const uint32 NumThreadGroupsX = Params.FrameWidth / ShaderType::kThreadGroupSize;
+	const uint32 NumThreadGroupsY = Params.FrameHeight / ShaderType::kThreadGroupSize;
+
+	TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
+			
+	TShaderMapRef<ShaderType> ComputeShader(GlobalShaderMap);
+	ComputeShader->SetParameters(RHICmdList, TextureRHI,
+		ColorSurfaceTexture.Texture, ColorSurfaceTexture.UAV,
+		DepthSurfaceTexture.Texture, DepthSurfaceTexture.UAV,
+		WorldZToDeviceZTransform);
+	SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*ComputeShader));
+	DispatchComputeShader(RHICmdList, *ComputeShader, NumThreadGroupsX, NumThreadGroupsY, 1);
+	ComputeShader->UnsetParameters(RHICmdList);
 }

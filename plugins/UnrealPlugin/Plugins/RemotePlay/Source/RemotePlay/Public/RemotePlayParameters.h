@@ -30,6 +30,12 @@ struct FRemotePlayEncodeParameters
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
 	uint32 bDeferOutput:1;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
+	uint32 bLinearDepth:1;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
+	float MaxDepth;
 };
 
 USTRUCT(BlueprintType)

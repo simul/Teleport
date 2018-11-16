@@ -24,6 +24,9 @@ private:
 	void PrepareFrame_RenderThread(FRHICommandListImmediate& RHICmdList, FTextureRenderTargetResource* TargetResource, ERHIFeatureLevel::Type FeatureLevel);
 	void EncodeFrame_RenderThread(FRHICommandListImmediate& RHICmdList);
 
+	template<typename ShaderType>
+	void DispatchProjectCubemapShader(FRHICommandListImmediate& RHICmdList, FTextureRHIRef TextureRHI, ERHIFeatureLevel::Type FeatureLevel);
+
 	struct FSurfaceTexture
 	{
 		FTexture2DRHIRef Texture;

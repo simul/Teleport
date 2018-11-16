@@ -14,13 +14,16 @@ RWTexture2D<float4> RWOutputColorTexture;
 
 #if WRITE_DEPTH
 RWTexture2D<float> RWOutputDepthTexture;
-float2 WorldZToDeviceZTransform;
 
+#if WRITE_DEPTH_LINEAR
+float2 WorldZToDeviceZTransform;
 float ConvertToDeviceZ(float SceneDepth)
 {
 	return 1.0f / ((SceneDepth + WorldZToDeviceZTransform.y) * WorldZToDeviceZTransform.x);
 }
-#endif
+#endif // WRITE_DEPTH_LINEAR
+
+#endif // WRITE_DEPTH
 
 [numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
 void MainCS(uint2 ThreadID : SV_DispatchThreadID)
@@ -42,7 +45,11 @@ void MainCS(uint2 ThreadID : SV_DispatchThreadID)
 	RWOutputColorTexture[int2(ThreadID.x, ThreadID.y)] = Tonemap(SceneColor.rgb);
 
 #if WRITE_DEPTH
-	float LinearDepth = ConvertToDeviceZ(SceneColor.a);
-	RWOutputDepthTexture[int2(ThreadID.x, ThreadID.y)] = LinearDepth;
-#endif
+#if WRITE_DEPTH_LINEAR
+	float DepthValue = ConvertToDeviceZ(SceneColor.a);
+#else
+	float DepthValue = SceneColor.a;
+#endif // WRITE_DEPTH_LINEAR
+	RWOutputDepthTexture[int2(ThreadID.x, ThreadID.y)] = DepthValue;
+#endif // WRITE_DEPTH
 }
