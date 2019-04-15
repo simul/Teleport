@@ -73,7 +73,7 @@ public:
 
 private:
 
-	EClassRepNodeMapping GetMappingPolicy(const UClass* Class);
+	EClassRepNodeMapping GetMappingPolicy(UClass* Class);
 
 	bool IsSpatialized(EClassRepNodeMapping Mapping) const { return Mapping >= EClassRepNodeMapping::Spatialize_Static; }
 

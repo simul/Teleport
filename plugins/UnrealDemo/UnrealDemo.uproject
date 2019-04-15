@@ -1,6 +1,6 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "{09079313-4503-92D6-28F2-4FAA112840A7}",
+	"EngineAssociation": "{8F8FA42C-481E-D0DD-9B60-CF9A5A4782AD}",
 	"Category": "Samples",
 	"Description": "",
 	"Modules": [
@@ -37,26 +37,6 @@
 			"Enabled": true
 		},
 		{
-			"Name": "OnlineSubsystemPS4",
-			"Enabled": true,
-			"WhitelistPlatforms": [
-				"PS4"
-			],
-			"SupportedTargetPlatforms": [
-				"PS4"
-			]
-		},
-		{
-			"Name": "OnlineSubsystemLive",
-			"Enabled": true,
-			"WhitelistPlatforms": [
-				"XboxOne"
-			],
-			"SupportedTargetPlatforms": [
-				"XboxOne"
-			]
-		},
-		{
 			"Name": "OnlineSubsystemNull",
 			"Enabled": true
 		},
@@ -67,14 +47,14 @@
 		{
 			"Name": "ReplicationGraph",
 			"Enabled": true
+		},
+		{
+			"Name": "TrueSkyPlugin",
+			"Enabled": true
 		}
 	],
 	"TargetPlatforms": [
-		"MacNoEditor",
-		"PS4",
 		"WindowsNoEditor",
-		"XboxOne",
-		"Switch",
 		"Quail"
 	],
 	"EpicSampleNameHash": "3868556100"

@@ -728,7 +728,7 @@ FHitResult AShooterWeapon::WeaponTrace(const FVector& StartTrace, const FVector&
 
 	// Perform trace to retrieve hit info
 	FCollisionQueryParams TraceParams(SCENE_QUERY_STAT(WeaponTrace), true, Instigator);
-	TraceParams.bTraceAsyncScene = true;
+//	TraceParams.bTraceAsyncScene = true;
 	TraceParams.bReturnPhysicalMaterial = true;
 
 	FHitResult Hit(ForceInit);

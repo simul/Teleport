@@ -327,14 +327,14 @@ void UShooterReplicationGraph::InitGlobalActorClassSettings()
 		const EClassRepNodeMapping Mapping = ClassMapIt.Value();
 
 		// Only print if different than native class
-		const UClass* ParentNativeClass = GetParentNativeClass(Class);
+	/*	const UClass* ParentNativeClass = GetParentNativeClass(Class);
 		const EClassRepNodeMapping* ParentMapping = ClassRepNodePolicies.Get(ParentNativeClass);
 		if (ParentMapping && Class != ParentNativeClass && Mapping == *ParentMapping)
 		{
 			continue;
-		}
+		}*/
 
-		UE_LOG(LogShooterReplicationGraph, Log, TEXT("  %s (%s) -> %s"), *Class->GetName(), *GetNameSafe(ParentNativeClass), *Enum->GetNameStringByValue(static_cast<uint32>(Mapping)));
+//		UE_LOG(LogShooterReplicationGraph, Log, TEXT("  %s (%s) -> %s"), *Class->GetName(), *GetNameSafe(ParentNativeClass), *Enum->GetNameStringByValue(static_cast<uint32>(Mapping)));
 	}
 
 	UE_LOG(LogShooterReplicationGraph, Log, TEXT(""));
@@ -415,9 +415,9 @@ void UShooterReplicationGraph::InitConnectionGraphNodes(UNetReplicationGraphConn
 	AddConnectionGraphNode(AlwaysRelevantConnectionNode, RepGraphConnection);
 }
 
-EClassRepNodeMapping UShooterReplicationGraph::GetMappingPolicy(const UClass* Class)
+EClassRepNodeMapping UShooterReplicationGraph::GetMappingPolicy(UClass* Class)
 {
-	EClassRepNodeMapping* PolicyPtr = ClassRepNodePolicies.Get(Class);
+	const EClassRepNodeMapping* PolicyPtr = ClassRepNodePolicies.Get(Class);
 	EClassRepNodeMapping Policy = PolicyPtr ? *PolicyPtr : EClassRepNodeMapping::NotRouted;
 	return Policy;
 }
