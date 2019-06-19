@@ -27,6 +27,10 @@ void FGeometryStreamingService::StartStreaming(UWorld* World, GeometrySource *ge
 {
 	if (RemotePlayContext == Context)
 		return;
+	if (!geomSource)
+	{
+		return;
+	}
 	geometrySource = geomSource;
 	RemotePlayContext = Context;
 	 
@@ -68,7 +72,7 @@ void FGeometryStreamingService::StopStreaming()
 void FGeometryStreamingService::Tick()
 {
 	// Might not be initialized... YET
-	//if (!avsPipeline)
+	if (!avsPipeline)
 		return;
 	// This will be called by each streaming service, but only the first call per-frame really matters.
 	geometrySource->Tick();
@@ -78,6 +82,6 @@ void FGeometryStreamingService::Tick()
 	// For this client's POSITION and OTHER PROPERTIES,
 	// Use the Geometry Source to determine which Node uid's are relevant.
 	//geometrySource->
-//	if(avsPipeline)
-	//	avsPipeline->process();
+	if(avsPipeline)
+		avsPipeline->process();
 }
