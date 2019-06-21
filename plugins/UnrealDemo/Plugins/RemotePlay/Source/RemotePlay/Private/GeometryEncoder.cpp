@@ -13,7 +13,6 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp
 	, avs::GeometrySourceBackendInterface * src
 	, avs::GeometryRequesterBackendInterface *req)
 {
-#if 1
 	char txt[] = "geometry";
 	unsigned char GALU_code[] = { 0x01,0x00,0x80,0xFF };
 	buffer.clear();
@@ -21,33 +20,86 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp
 	buffer.push_back(GALU_code[1]);
 	buffer.push_back(GALU_code[2]);
 	buffer.push_back(GALU_code[3]);
-	for (int i = 0; i < strlen(txt); i++)
-	{
-		buffer.push_back(txt[i]);
-	}
-	buffer.push_back(GALU_code[0]);
-	buffer.push_back(GALU_code[1]);
-	buffer.push_back(GALU_code[2]);
-	buffer.push_back(GALU_code[3]);
-#endif
+#if 1
 	// The source backend will give us the data to encode.
 	// What data it provides depends on the contents of the avs::GeometryRequesterBackendInterface object.
-	size_t num=src->getMeshCount();
+	size_t num = src->getMeshCount();
+	std::vector<avs::uid> accessors;
 	for (size_t i = 0; i < num; i++)
 	{
 		avs::uid uid = src->getMeshUid(i);
 		if (!req->hasMesh(uid))
 		{
-			// Requester doesn't have this mesh, and needs it, so:
-			size_t prims=src->getMeshPrimitiveArrayCount(uid);
+			put(uid);
+			// Requester doesn't have this mesh, and needs it, so we will encode the mesh for transport.
+			size_t prims = src->getMeshPrimitiveArrayCount(uid);
+			put(prims);
 			for (size_t j = 0; j < prims; j++)
 			{
 				avs::PrimitiveArray primitiveArray;
 				src->getMeshPrimitiveArray(uid, j, primitiveArray);
-				primitiveArray.attributeCount;
+				put(primitiveArray.attributeCount);
+				put(primitiveArray.indices_accessor);
+				put(primitiveArray.material);
+				put(primitiveArray.primitiveMode);
+				accessors.push_back( primitiveArray.indices_accessor);
+				for (size_t k = 0; k < primitiveArray.attributeCount; k++)
+				{
+					put(primitiveArray.attributes[k]);
+					accessors.push_back(primitiveArray.attributes[k].accessor);
+				}
 			}
 		}
 	}
+	size_t generic_accessor_count = accessors.size();
+	for (size_t i = 0; i < generic_accessor_count; i++)
+	{
+		avs::Accessor accessor;
+		src->getAccessor(accessors[i], accessor);
+	}
+	put(accessors.size());
+	std::vector<avs::uid> bufferViews;
+	for (size_t i = 0; i < accessors.size(); i++)
+	{
+		avs::Accessor accessor;
+		src->getAccessor(accessors[i], accessor);
+		put(accessor.type);
+		put(accessor.componentType);
+		put(accessor.count);
+		put(accessor.bufferView);
+		bufferViews.push_back(accessor.bufferView);
+		put(accessor.byteOffset);
+	}
+	put(bufferViews.size());
+	std::vector<avs::uid> buffers;
+	for (size_t i = 0; i < bufferViews.size(); i++)
+	{
+		avs::BufferView bufferView;
+		src->getBufferView(bufferViews[i], bufferView);
+		put(bufferView.buffer);
+		buffers.push_back(bufferView.buffer);
+		put(bufferView.byteOffset);
+		put(bufferView.byteLength);
+		put(bufferView.byteStride);
+	}
+	put(buffers.size());
+	for (size_t i = 0; i < buffers.size(); i++)
+	{
+		avs::GeometryBuffer buffer;
+		src->getBuffer(buffers[i], buffer);
+		put(buffer.byteLength);
+		put(buffer.data, buffer.byteLength);
+	}
+#else
+	for (int i = 0; i < strlen(txt); i++)
+	{
+		buffer.push_back(txt[i]);
+	}
+#endif
+	buffer.push_back(GALU_code[0]);
+	buffer.push_back(GALU_code[1]);
+	buffer.push_back(GALU_code[2]);
+	buffer.push_back(GALU_code[3]);
 	return avs::Result::OK;
 }
 

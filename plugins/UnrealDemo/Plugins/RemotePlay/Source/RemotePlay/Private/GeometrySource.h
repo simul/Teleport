@@ -19,6 +19,7 @@ public:
 	// Inherited via GeometrySourceBackendInterface
 	virtual size_t getNodeCount() const override;
 	virtual avs::uid getNodeUid(size_t index) const override;
+
 	virtual size_t getMeshCount() const override;
 	virtual avs::uid getMeshUid(size_t index) const override;
 	virtual size_t getMeshPrimitiveArrayCount(avs::uid mesh_uid) const override;
@@ -34,8 +35,9 @@ protected:
 		class UStreamableGeometryComponent* Geometry;
 		//unsigned long long SentFrame;
 	};
-	TMap<avs::uid,TSharedPtr<Mesh>> Meshes;
+	TMap<avs::uid, TSharedPtr<Mesh>> Meshes;
 	TMap<avs::uid, TSharedPtr<GeometryInstance> > GeometryInstances;
 	void PrepareMesh(Mesh &m);
 	void SendMesh(Mesh &m);
+	bool InitMesh(Mesh *mesh, class FStaticMeshLODResources &lod);
 };

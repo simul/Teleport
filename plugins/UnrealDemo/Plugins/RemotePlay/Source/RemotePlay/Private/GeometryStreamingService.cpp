@@ -40,8 +40,6 @@ void FGeometryStreamingService::StartStreaming(UWorld* World, GeometrySource *ge
 	avsGeometrySource->configure(geometrySource,this);
 	avsGeometryEncoder->configure(&geometryEncoder);
 
-	avsPipeline->add(RemotePlayContext->GeometryQueue.Get());
-
 	avsPipeline->link({ avsGeometrySource.Get(), avsGeometryEncoder.Get(), RemotePlayContext->GeometryQueue.Get() });
 
 	// It is intended that each session component should track the streamed actors that enter its bubble.

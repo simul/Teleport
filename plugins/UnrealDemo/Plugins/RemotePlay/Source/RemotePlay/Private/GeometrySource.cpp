@@ -1,6 +1,10 @@
 #include "GeometrySource.h"
 #include "StreamableGeometryComponent.h"
-#include "StaticMeshResources.h"
+#include "Engine/StaticMesh.h"
+#include "Rendering/StaticMeshVertexBuffer.h"
+#include "Rendering/PositionVertexBuffer.h"
+#include "StaticMeshFResources.h"
+#include <map>
 #if 0
 #include <random>
 std::default_random_engine generator;
@@ -9,10 +13,121 @@ int dice_roll = distribution(generator);
 #endif
 struct GeometrySource::Mesh
 {
+	~Mesh();
 	class UStaticMesh* StaticMesh;
 	unsigned long long SentFrame;
 	bool Confirmed;
+	std::vector<avs::PrimitiveArray> primitiveArrays;
+	std::vector<avs::Attribute> attributes;
+	std::map<avs::uid,avs::Accessor> accessors;
+	std::map<avs::uid, avs::BufferView> bufferViews;
+	std::map<avs::uid, avs::GeometryBuffer> geometryBuffers;
 };
+avs::AttributeSemantic IndexToSemantic(int index)
+{
+	switch (index)
+	{
+	case 0:
+		return avs::AttributeSemantic::POSITION;
+	case 1:
+		return avs::AttributeSemantic::NORMAL;
+	case 2:
+		return avs::AttributeSemantic::TANGENT;
+	case 3:
+		return avs::AttributeSemantic::TEXCOORD_0;
+	case 4:
+		return avs::AttributeSemantic::TEXCOORD_1;
+	case 5:
+		return avs::AttributeSemantic::COLOR_0;
+	case 6:
+		return avs::AttributeSemantic::JOINTS_0;
+	case 7:
+		return avs::AttributeSemantic::WEIGHTS_0;
+	};
+	return avs::AttributeSemantic::TEXCOORD_0;
+}
+
+bool GeometrySource::InitMesh(GeometrySource::Mesh *m, FStaticMeshLODResources &lod)
+{
+	m->primitiveArrays.resize(lod.Sections.Num());
+	for (size_t i = 0; i < m->primitiveArrays.size(); i++)
+	{
+		auto &section = lod.Sections[i];
+		FPositionVertexBuffer &pb = lod.VertexBuffers.PositionVertexBuffer;
+		FStaticMeshVertexBuffer &vb = lod.VertexBuffers.StaticMeshVertexBuffer;
+		auto &pa = m->primitiveArrays[i];
+		pa.attributeCount = 2 + vb.GetTangentData() ? 1 : 0 + vb.GetTexCoordData() ? vb.GetNumTexCoords() : 0;
+		pa.attributes = new avs::Attribute[pa.attributeCount];
+		auto AddBufferAndView = [this](GeometrySource::Mesh *m,size_t num,size_t stride,const void *data)
+		{
+			avs::BufferView &bv = m->bufferViews[a.bufferView];
+			bv.byteOffset = 0;
+			bv.byteLength = num * stride;
+			bv.byteStride = stride;
+			bv.buffer = avs::GenerateUid();
+			avs::GeometryBuffer b = m->geometryBuffers[bv.buffer];
+			b.byteLength = bv.byteLength;
+			b.data = (const uint8_t *)data;			// Remember, just a pointer: we don't own this data.
+		};
+		size_t idx = 0;
+		// Position:
+		{
+			avs::Attribute &attr = pa.attributes[idx++];
+			attr.accessor = avs::GenerateUid();
+			attr.semantic = avs::AttributeSemantic::POSITION;
+			avs::Accessor &a = m->accessors(attr.accessor);
+			a.byteOffset = 0;
+			a.type = avs::Accessor::DataType::VEC3;
+			a.componentType = avs::Accessor::ComponentType::FLOAT;
+			a.count = pb.GetNumVertices();
+			a.bufferView = avs::GenerateUid();
+			AddBufferAndView(m,a.bufferView, pb.GetNumVertices(), pb.GetStride(), pb.GetVertexData());
+		}
+		// Normal:
+		{
+			avs::Attribute &attr = pa.attributes[idx++];
+			attr.accessor = avs::GenerateUid();
+			attr.semantic = avs::AttributeSemantic::NORMAL;
+			avs::Accessor &a = m->accessors(attr.accessor);
+			a.byteOffset = 0;
+			a.type = avs::Accessor::DataType::VEC3;
+			a.componentType = avs::Accessor::ComponentType::FLOAT;
+			a.count = vb.GetNumVertices();// same as pb???
+			a.bufferView = avs::GenerateUid();
+			AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), vb.GetStride(), vb.GetTangentData());
+		}
+		if(vb.GetTangentData())
+		{
+			avs::Attribute &attr = pa.attributes[idx++];
+			attr.accessor = avs::GenerateUid();
+			attr.semantic = avs::AttributeSemantic::TANGENT;
+			avs::Accessor &a = m->accessors(attr.accessor);
+			a.byteOffset = 0;
+			a.type = avs::Accessor::DataType::VEC4;
+			a.componentType = avs::Accessor::ComponentType::FLOAT;
+			a.count = vb.GetTangentSize();// same as pb???
+			a.bufferView = avs::GenerateUid();
+			AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), vb.GetStride(), vb.GetTangentData());
+		}
+		for (size_t j = 0; j < vb.GetNumTexCoords; j++)
+		{
+			avs::Attribute &attr = pa.attributes[idx++];
+			attr.accessor = avs::GenerateUid();
+			attr.semantic = j==0?avs::AttributeSemantic::TEXCOORD_0: avs::AttributeSemantic::TEXCOORD_1;
+			avs::Accessor &a = m->accessors(attr.accessor);
+			a.byteOffset = 0;
+			a.type = avs::Accessor::DataType::VEC4;
+			a.componentType = avs::Accessor::ComponentType::FLOAT;
+			a.count = vb.GetTangentSize();// same as pb???
+			a.bufferView = avs::GenerateUid();
+			AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), vb.GetStride(), vb.GetTangentData());
+			idx++;
+		}
+		pa.indices_accessor = avs::GenerateUid();
+		pa.material = avs::GenerateUid();
+		pa.primitiveMode = avs::PrimitiveMode::TRIANGLES;
+	}
+}
 
 GeometrySource::GeometrySource()
 {
@@ -24,16 +139,16 @@ GeometrySource::~GeometrySource()
 	GeometryInstances.Empty();
 }
 
-// By adding a mesh, we also add a pipe, including the InputMesh, which must be configured with the appropriate 
+// By adding a m, we also add a pipe, including the InputMesh, which must be configured with the appropriate 
 avs::uid GeometrySource::AddMesh(UStaticMesh *StaticMesh)
 {
 	avs::uid uid = avs::GenerateUid();
-	TSharedPtr<Mesh> mesh ( new Mesh);
-	Meshes.Add(uid, mesh);
-	mesh->StaticMesh = StaticMesh;
-	mesh->SentFrame = (unsigned long long)0;
-	mesh->Confirmed = false;
-	PrepareMesh(*mesh);
+	TSharedPtr<Mesh> m ( new Mesh);
+	Meshes.Add(uid, m);
+	m->StaticMesh = StaticMesh;
+	m->SentFrame = (unsigned long long)0;
+	m->Confirmed = false;
+	PrepareMesh(*m);
 	return uid;
 }
  
@@ -127,21 +242,41 @@ avs::uid GeometrySource::getNodeUid(size_t index) const
 
 size_t GeometrySource::getMeshCount() const
 {
-	return size_t();
+	return Meshes.Num();
 }
 
 avs::uid GeometrySource::getMeshUid(size_t index) const
 {
-	return avs::uid();
+	TArray<avs::uid> MeshUids;
+	Meshes.GenerateKeyArray(MeshUids);
+	return MeshUids[index];
 }
 
 size_t GeometrySource::getMeshPrimitiveArrayCount(avs::uid mesh_uid) const
 {
-	return size_t();
+	auto &mesh = Meshes[mesh_uid];
+	UStaticMesh *staticMesh = mesh->StaticMesh;
+	auto &lods=staticMesh->RenderData->LODResources;
+	if (!lods.Num())
+		return 0;
+	return lods[0].Sections.Num();
 }
+
 
 bool GeometrySource::getMeshPrimitiveArray(avs::uid mesh_uid, size_t array_index, avs::PrimitiveArray & primitiveArray) const
 {
+	auto &mesh = Meshes[mesh_uid];
+	UStaticMesh *staticMesh = mesh->StaticMesh;
+	auto &lods = staticMesh->RenderData->LODResources;
+	if (!lods.Num())
+		return false;
+	auto &lod=lods[0];
+	if (!mesh->primitiveArrays.size())
+	{
+		InitMesh(mesh, lod);
+	}
+	primitiveArray.attributes;
+	section.
 	return false;
 }
 

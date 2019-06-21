@@ -1,0 +1,55 @@
+// (c) 2018 Simul.co
+
+#include "/Engine/Public/Platform.ush"
+#include "/Plugin/RemotePlay/Private/Common.ush"
+
+static const float PI     = 3.141592;
+static const float HalfPI = 0.5 * PI;
+static const float TwoPI  = 2.0 * PI;
+
+TextureCube InputCubeMap;
+SamplerState DefaultSampler;
+
+RWTexture2D<float4> RWOutputColorTexture;
+
+#if WRITE_DEPTH
+RWTexture2D<float> RWOutputDepthTexture;
+
+#if WRITE_DEPTH_LINEAR
+float2 WorldZToDeviceZTransform;
+float ConvertToDeviceZ(float SceneDepth)
+{
+	return 1.0f / ((SceneDepth + WorldZToDeviceZTransform.y) * WorldZToDeviceZTransform.x);
+}
+#endif // WRITE_DEPTH_LINEAR
+
+#endif // WRITE_DEPTH
+
+[numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
+void MainCS(uint2 ThreadID : SV_DispatchThreadID)
+{
+	uint OutputW, OutputH;
+	RWOutputColorTexture.GetDimensions(OutputW, OutputH);
+
+	float2 UV   = float2(ThreadID.x / float(OutputW), ThreadID.y / float(OutputH));
+	float Phi   = UV.x * TwoPI;
+	float Theta = UV.y * PI;
+
+	float3 CubeSampleVec = float3(
+		sin(Theta) * cos(Phi),
+		sin(Theta) * sin(Phi),
+		cos(Theta)
+	);
+
+	float4 SceneColor = InputCubeMap.SampleLevel(DefaultSampler, CubeSampleVec, 0);
+	RWOutputColorTexture[int2(ThreadID.x, ThreadID.y)] = PrepareTonemap(SceneColor);
+
+#if WRITE_DEPTH
+#if WRITE_DEPTH_LINEAR
+	float DepthValue = ConvertToDeviceZ(SceneColor.a);
+#else
+	float DepthValue = SceneColor.a;
+#endif // WRITE_DEPTH_LINEAR
+	RWOutputDepthTexture[int2(ThreadID.x, ThreadID.y)] = DepthValue;
+#endif // WRITE_DEPTH
+}
