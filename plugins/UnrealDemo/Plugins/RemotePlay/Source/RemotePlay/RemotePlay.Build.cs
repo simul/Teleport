@@ -54,18 +54,19 @@ public class RemotePlay : ModuleRules
     {
 		string LibraryPath = Path.Combine(LibrariesDirectory,"libavstream/lib/Release");//, GetPlatformName(Target));
 		
-        PrivateIncludePaths.Add("C:/RemotePlay/libavstream/Include");
+        PrivateIncludePaths.Add(RemotePlayRootDirectory + "/libavstream/Include");
         PublicLibraryPaths.Add(LibraryPath);
+	
 
 		PublicAdditionalLibraries.Add("libavstream.lib");
-        PublicDelayLoadDLLs.Add("libavstream.dll");
-        RuntimeDependencies.Add(Path.Combine(LibraryPath, "libavstream.dll"));
+        //PublicDelayLoadDLLs.Add("libavstream.dll");
+        //RuntimeDependencies.Add(Path.Combine(LibraryPath, "libavstream.dll"));
     }
 
     private void Link_libenet(ReadOnlyTargetRules Target)
     {
         PrivateIncludePaths.Add(Path.Combine(LibrariesDirectory, "enet/Include"));
-        PublicLibraryPaths.Add(Path.Combine(LibrariesDirectory, "enet", GetPlatformName(Target)));
+        PublicLibraryPaths.Add(Path.Combine(LibrariesDirectory, "enet", GetPlatformName(Target), "Release"));
         PublicAdditionalLibraries.Add("enet.lib");
     }
 
@@ -74,7 +75,7 @@ public class RemotePlay : ModuleRules
         switch(Target.Platform)
         {
             case UnrealTargetPlatform.Win64:
-                return "Win64";
+				return "x64";// "Win64";
             case UnrealTargetPlatform.Win32:
                 return "Win32";
             default:
@@ -82,11 +83,20 @@ public class RemotePlay : ModuleRules
         }
     }
 
+	//ModuleDirectory C:\Simul\RemotePlay\plugins\UnrealDemo\Plugins\RemotePlay\Source\RemotePlay
     private string LibrariesDirectory
     {
         get
         {
-            return Path.GetFullPath(Path.Combine(ModuleDirectory, "../../Libraries/"));
+			return Path.GetFullPath(Path.Combine(ModuleDirectory, "../../Libraries/"));
         }
-    }
+	}
+
+	private string RemotePlayRootDirectory
+	{
+		get
+		{
+			return Path.GetFullPath(Path.Combine(ModuleDirectory, "../../../../../../"));
+		}
+	}
 }
