@@ -19,7 +19,8 @@ enum ERemotePlaySessionChannel
 };
 
 URemotePlaySessionComponent::URemotePlaySessionComponent()
-	: bAutoStartSession(true)
+	: bStreamGeometry(true)
+	, bAutoStartSession(true)
 	, AutoListenPort(10500)
 	, AutoDiscoveryPort(10600)
 	, DisconnectTimeout(1000)
@@ -227,7 +228,10 @@ void URemotePlaySessionComponent::StartStreaming()
 	Client_SendCommand(FString::Printf(TEXT("v %d %d %d"), StreamingPort, EncodeParams.FrameWidth, EncodeParams.FrameHeight));
 	
 	CaptureComponent->StartStreaming(RemotePlayContext);
-	GeometryStreamingService.StartStreaming(GetWorld(), IRemotePlay::Get().GetGeometrySource(),RemotePlayContext);
+	if (bStreamGeometry)
+	{
+		GeometryStreamingService.StartStreaming(GetWorld(), IRemotePlay::Get().GetGeometrySource(), RemotePlayContext);
+	}
 
 
 	if (!RemotePlayContext->NetworkPipeline.IsValid())

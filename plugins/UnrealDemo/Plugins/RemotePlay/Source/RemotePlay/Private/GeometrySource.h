@@ -1,5 +1,6 @@
 #pragma once
 #include <libavstream/geometry/mesh_interface.hpp>
+#include <map>
 
 /*! The Geometry Source keeps all the geometry ready for streaming, and returns geometry
 	data in glTF-style when asked for.
@@ -35,9 +36,14 @@ protected:
 		class UStreamableGeometryComponent* Geometry;
 		//unsigned long long SentFrame;
 	};
-	TMap<avs::uid, TSharedPtr<Mesh>> Meshes;
-	TMap<avs::uid, TSharedPtr<GeometryInstance> > GeometryInstances;
+	mutable TMap<avs::uid, TSharedPtr<Mesh>> Meshes;
+	mutable TMap<avs::uid, TSharedPtr<GeometryInstance> > GeometryInstances;
+	// We store buffers, views and accessors in one big list. But we should
+	// PROBABLY refcount these so that unused ones can be cleared.
+	mutable std::map<avs::uid, avs::Accessor> accessors;
+	mutable std::map<avs::uid, avs::BufferView> bufferViews;
+	mutable std::map<avs::uid, avs::GeometryBuffer> geometryBuffers;
 	void PrepareMesh(Mesh &m);
 	void SendMesh(Mesh &m);
-	bool InitMesh(Mesh *mesh, class FStaticMeshLODResources &lod);
+	bool InitMesh(Mesh *mesh, struct FStaticMeshLODResources &lod) const;
 };

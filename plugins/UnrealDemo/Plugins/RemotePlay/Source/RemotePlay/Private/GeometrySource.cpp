@@ -3,7 +3,7 @@
 #include "Engine/StaticMesh.h"
 #include "Rendering/StaticMeshVertexBuffer.h"
 #include "Rendering/PositionVertexBuffer.h"
-#include "StaticMeshFResources.h"
+#include "StaticMeshResources.h"
 #include <map>
 #if 0
 #include <random>
@@ -13,16 +13,16 @@ int dice_roll = distribution(generator);
 #endif
 struct GeometrySource::Mesh
 {
-	~Mesh();
+	~Mesh()
+	{
+	}
 	class UStaticMesh* StaticMesh;
 	unsigned long long SentFrame;
 	bool Confirmed;
 	std::vector<avs::PrimitiveArray> primitiveArrays;
 	std::vector<avs::Attribute> attributes;
-	std::map<avs::uid,avs::Accessor> accessors;
-	std::map<avs::uid, avs::BufferView> bufferViews;
-	std::map<avs::uid, avs::GeometryBuffer> geometryBuffers;
 };
+
 avs::AttributeSemantic IndexToSemantic(int index)
 {
 	switch (index)
@@ -47,7 +47,7 @@ avs::AttributeSemantic IndexToSemantic(int index)
 	return avs::AttributeSemantic::TEXCOORD_0;
 }
 
-bool GeometrySource::InitMesh(GeometrySource::Mesh *m, FStaticMeshLODResources &lod)
+bool GeometrySource::InitMesh(GeometrySource::Mesh *m, FStaticMeshLODResources &lod) const
 {
 	m->primitiveArrays.resize(lod.Sections.Num());
 	for (size_t i = 0; i < m->primitiveArrays.size(); i++)
@@ -56,16 +56,16 @@ bool GeometrySource::InitMesh(GeometrySource::Mesh *m, FStaticMeshLODResources &
 		FPositionVertexBuffer &pb = lod.VertexBuffers.PositionVertexBuffer;
 		FStaticMeshVertexBuffer &vb = lod.VertexBuffers.StaticMeshVertexBuffer;
 		auto &pa = m->primitiveArrays[i];
-		pa.attributeCount = 2 + vb.GetTangentData() ? 1 : 0 + vb.GetTexCoordData() ? vb.GetNumTexCoords() : 0;
+		pa.attributeCount = 2 + (vb.GetTangentData() ? 1 : 0) + (vb.GetTexCoordData() ? vb.GetNumTexCoords() : 0);
 		pa.attributes = new avs::Attribute[pa.attributeCount];
-		auto AddBufferAndView = [this](GeometrySource::Mesh *m,size_t num,size_t stride,const void *data)
+		auto AddBufferAndView = [this](GeometrySource::Mesh *m,avs::uid &b_uid,size_t num,size_t stride,const void *data)
 		{
-			avs::BufferView &bv = m->bufferViews[a.bufferView];
+			avs::BufferView &bv = bufferViews[b_uid];
 			bv.byteOffset = 0;
 			bv.byteLength = num * stride;
 			bv.byteStride = stride;
 			bv.buffer = avs::GenerateUid();
-			avs::GeometryBuffer b = m->geometryBuffers[bv.buffer];
+			avs::GeometryBuffer b = geometryBuffers[bv.buffer];
 			b.byteLength = bv.byteLength;
 			b.data = (const uint8_t *)data;			// Remember, just a pointer: we don't own this data.
 		};
@@ -75,7 +75,7 @@ bool GeometrySource::InitMesh(GeometrySource::Mesh *m, FStaticMeshLODResources &
 			avs::Attribute &attr = pa.attributes[idx++];
 			attr.accessor = avs::GenerateUid();
 			attr.semantic = avs::AttributeSemantic::POSITION;
-			avs::Accessor &a = m->accessors(attr.accessor);
+			avs::Accessor &a = accessors[attr.accessor];
 			a.byteOffset = 0;
 			a.type = avs::Accessor::DataType::VEC3;
 			a.componentType = avs::Accessor::ComponentType::FLOAT;
@@ -88,45 +88,57 @@ bool GeometrySource::InitMesh(GeometrySource::Mesh *m, FStaticMeshLODResources &
 			avs::Attribute &attr = pa.attributes[idx++];
 			attr.accessor = avs::GenerateUid();
 			attr.semantic = avs::AttributeSemantic::NORMAL;
-			avs::Accessor &a = m->accessors(attr.accessor);
+			avs::Accessor &a = accessors[attr.accessor];
 			a.byteOffset = 0;
 			a.type = avs::Accessor::DataType::VEC3;
 			a.componentType = avs::Accessor::ComponentType::FLOAT;
 			a.count = vb.GetNumVertices();// same as pb???
 			a.bufferView = avs::GenerateUid();
-			AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), vb.GetStride(), vb.GetTangentData());
+			AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), vb.GetTangentSize()/vb.GetNumVertices(), vb.GetTangentData());
 		}
 		if(vb.GetTangentData())
 		{
 			avs::Attribute &attr = pa.attributes[idx++];
 			attr.accessor = avs::GenerateUid();
 			attr.semantic = avs::AttributeSemantic::TANGENT;
-			avs::Accessor &a = m->accessors(attr.accessor);
+			avs::Accessor &a = accessors[attr.accessor];
 			a.byteOffset = 0;
 			a.type = avs::Accessor::DataType::VEC4;
 			a.componentType = avs::Accessor::ComponentType::FLOAT;
 			a.count = vb.GetTangentSize();// same as pb???
 			a.bufferView = avs::GenerateUid();
-			AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), vb.GetStride(), vb.GetTangentData());
+			AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), vb.GetTangentSize() / vb.GetNumVertices(), vb.GetTangentData());
 		}
-		for (size_t j = 0; j < vb.GetNumTexCoords; j++)
+		for (size_t j = 0; j < vb.GetNumTexCoords(); j++)
 		{
 			avs::Attribute &attr = pa.attributes[idx++];
 			attr.accessor = avs::GenerateUid();
 			attr.semantic = j==0?avs::AttributeSemantic::TEXCOORD_0: avs::AttributeSemantic::TEXCOORD_1;
-			avs::Accessor &a = m->accessors(attr.accessor);
+			avs::Accessor &a = accessors[attr.accessor];
 			a.byteOffset = 0;
 			a.type = avs::Accessor::DataType::VEC4;
 			a.componentType = avs::Accessor::ComponentType::FLOAT;
 			a.count = vb.GetTangentSize();// same as pb???
 			a.bufferView = avs::GenerateUid();
-			AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), vb.GetStride(), vb.GetTangentData());
+			AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), vb.GetTexCoordSize()/  vb.GetNumTexCoords()/ vb.GetNumVertices(), vb.GetTangentData());
 			idx++;
 		}
 		pa.indices_accessor = avs::GenerateUid();
+
+		FRawStaticIndexBuffer &ib = lod.IndexBuffer;
+		avs::Accessor &i_a = accessors[pa.indices_accessor];
+		i_a.byteOffset = 0;
+		i_a.type = avs::Accessor::DataType::SCALAR;
+		i_a.componentType = avs::Accessor::ComponentType::UINT;
+		i_a.count = ib.GetNumIndices();// same as pb???
+		i_a.bufferView = avs::GenerateUid();
+		FIndexArrayView arr = ib.GetArrayView();
+		AddBufferAndView(m, i_a.bufferView, ib.GetNumIndices(), 4, (const void*)&(arr));
+
 		pa.material = avs::GenerateUid();
 		pa.primitiveMode = avs::PrimitiveMode::TRIANGLES;
 	}
+	return true;
 }
 
 GeometrySource::GeometrySource()
@@ -172,7 +184,7 @@ avs::uid GeometrySource::AddStreamableActor(UStreamableGeometryComponent *Stream
 	TSharedPtr<GeometryInstance> geom(new GeometryInstance);
 	geom->Geometry= StreamableGeometryComponent;
 	bool already_got_geom = false;
-	avs::uid node_uid;
+	avs::uid node_uid=0;
 	for (auto i : GeometryInstances)
 	{
 		if (i.Value->Geometry == geom->Geometry)
@@ -256,16 +268,17 @@ size_t GeometrySource::getMeshPrimitiveArrayCount(avs::uid mesh_uid) const
 {
 	auto &mesh = Meshes[mesh_uid];
 	UStaticMesh *staticMesh = mesh->StaticMesh;
+	if (!staticMesh->RenderData)
+		return 0;
 	auto &lods=staticMesh->RenderData->LODResources;
 	if (!lods.Num())
 		return 0;
 	return lods[0].Sections.Num();
 }
 
-
 bool GeometrySource::getMeshPrimitiveArray(avs::uid mesh_uid, size_t array_index, avs::PrimitiveArray & primitiveArray) const
 {
-	auto &mesh = Meshes[mesh_uid];
+	GeometrySource::Mesh *mesh = Meshes[mesh_uid].Get();
 	UStaticMesh *staticMesh = mesh->StaticMesh;
 	auto &lods = staticMesh->RenderData->LODResources;
 	if (!lods.Num())
@@ -275,22 +288,43 @@ bool GeometrySource::getMeshPrimitiveArray(avs::uid mesh_uid, size_t array_index
 	{
 		InitMesh(mesh, lod);
 	}
-	primitiveArray.attributes;
-	section.
+	primitiveArray = mesh->primitiveArrays[array_index];
+
 	return false;
 }
 
 bool GeometrySource::getAccessor(avs::uid accessor_uid, avs::Accessor & accessor) const
 {
-	return false;
+	auto it = accessors.find(accessor_uid);
+	if (it == accessors.end())
+	{
+		UE_LOG(LogRemotePlay, Error, TEXT("Accessor not found!"));
+		return false;
+	}
+	accessor = accessors[accessor_uid];
+	return true;
 }
 
 bool GeometrySource::getBufferView(avs::uid buffer_view_uid, avs::BufferView & bufferView) const
 {
-	return false;
+	auto it = bufferViews.find(buffer_view_uid);
+	if (it == bufferViews.end())
+	{
+		UE_LOG(LogRemotePlay, Error, TEXT("Buffer View not found!"));
+		return false;
+	}
+	bufferView = bufferViews[buffer_view_uid];
+	return true;
 }
 
 bool GeometrySource::getBuffer(avs::uid buffer_uid, avs::GeometryBuffer & buffer) const
 {
-	return false;
+	auto it = geometryBuffers.find(buffer_uid);
+	if (it == geometryBuffers.end())
+	{
+		UE_LOG(LogRemotePlay, Error, TEXT("Buffer not found!"));
+		return false;
+	}
+	buffer = geometryBuffers[buffer_uid];
+	return true;
 }
