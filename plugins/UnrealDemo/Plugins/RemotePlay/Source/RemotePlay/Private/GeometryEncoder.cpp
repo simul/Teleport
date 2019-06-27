@@ -24,10 +24,18 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp
 	// The source backend will give us the data to encode.
 	// What data it provides depends on the contents of the avs::GeometryRequesterBackendInterface object.
 	size_t num = src->getMeshCount();
-	std::vector<avs::uid> accessors;
+	std::vector<avs::uid> missing;
 	for (size_t i = 0; i < num; i++)
 	{
 		avs::uid uid = src->getMeshUid(i);
+		if (!req->hasMesh(uid))
+			missing.push_back(uid);
+	}
+	put(missing.size());
+	std::vector<avs::uid> accessors;
+	for (size_t i = 0; i < missing.size(); i++)
+	{
+		avs::uid uid = missing[i];
 		if (!req->hasMesh(uid))
 		{
 			put(uid);
@@ -50,12 +58,6 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp
 				}
 			}
 		}
-	}
-	size_t generic_accessor_count = accessors.size();
-	for (size_t i = 0; i < generic_accessor_count; i++)
-	{
-		avs::Accessor accessor;
-		src->getAccessor(accessors[i], accessor);
 	}
 	put(accessors.size());
 	std::vector<avs::uid> bufferViews;
@@ -85,10 +87,10 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp
 	put(buffers.size());
 	for (size_t i = 0; i < buffers.size(); i++)
 	{
-		avs::GeometryBuffer buffer;
-		src->getBuffer(buffers[i], buffer);
-		put(buffer.byteLength);
-		put(buffer.data, buffer.byteLength);
+		avs::GeometryBuffer b;
+		src->getBuffer(buffers[i], b);
+		put(b.byteLength);
+		put(b.data, b.byteLength);
 	}
 #else
 	for (int i = 0; i < strlen(txt); i++)
