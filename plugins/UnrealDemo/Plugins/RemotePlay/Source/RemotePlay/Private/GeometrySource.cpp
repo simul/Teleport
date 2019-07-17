@@ -65,7 +65,7 @@ bool GeometrySource::InitMesh(GeometrySource::Mesh *m, FStaticMeshLODResources &
 			bv.byteLength = num * stride;
 			bv.byteStride = stride;
 			bv.buffer = avs::GenerateUid();
-			avs::GeometryBuffer b = geometryBuffers[bv.buffer];
+			avs::GeometryBuffer& b = geometryBuffers[bv.buffer];
 			b.byteLength = bv.byteLength;
 			b.data = (const uint8_t *)data;			// Remember, just a pointer: we don't own this data.
 		};
@@ -121,7 +121,6 @@ bool GeometrySource::InitMesh(GeometrySource::Mesh *m, FStaticMeshLODResources &
 			a.count = vb.GetTangentSize();// same as pb???
 			a.bufferView = avs::GenerateUid();
 			AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), vb.GetTexCoordSize()/  vb.GetNumTexCoords()/ vb.GetNumVertices(), vb.GetTangentData());
-			idx++;
 		}
 		pa.indices_accessor = avs::GenerateUid();
 
@@ -132,8 +131,8 @@ bool GeometrySource::InitMesh(GeometrySource::Mesh *m, FStaticMeshLODResources &
 		i_a.componentType = avs::Accessor::ComponentType::UINT;
 		i_a.count = ib.GetNumIndices();// same as pb???
 		i_a.bufferView = avs::GenerateUid();
-		FIndexArrayView arr = ib.GetArrayView();
-		AddBufferAndView(m, i_a.bufferView, ib.GetNumIndices(), 4, (const void*)&(arr));
+		const FIndexArrayView arr = ib.GetArrayView();
+		AddBufferAndView(m, i_a.bufferView, ib.GetNumIndices(), 4, arr.GetData());
 
 		pa.material = avs::GenerateUid();
 		pa.primitiveMode = avs::PrimitiveMode::TRIANGLES;
