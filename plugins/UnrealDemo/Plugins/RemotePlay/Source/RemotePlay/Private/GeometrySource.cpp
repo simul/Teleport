@@ -131,8 +131,8 @@ bool GeometrySource::InitMesh(GeometrySource::Mesh *m, FStaticMeshLODResources &
 		i_a.componentType = avs::Accessor::ComponentType::UINT;
 		i_a.count = ib.GetNumIndices();// same as pb???
 		i_a.bufferView = avs::GenerateUid();
-		const FIndexArrayView arr = ib.GetArrayView();
-		AddBufferAndView(m, i_a.bufferView, ib.GetNumIndices(), 4, arr.GetData());
+		FIndexArrayView arr = ib.GetArrayView();
+		AddBufferAndView(m, i_a.bufferView, ib.GetNumIndices(), 4, (const void*)((uint64*)&arr)[0]);
 
 		pa.material = avs::GenerateUid();
 		pa.primitiveMode = avs::PrimitiveMode::TRIANGLES;
@@ -199,6 +199,8 @@ avs::uid GeometrySource::AddStreamableActor(UStreamableGeometryComponent *Stream
 	}
 #ifdef DISABLE
 #endif
+	//USceneComponent* sc = (USceneComponent*)StreamableGeometryComponent;
+	//FTransform modelTranform = sc->GetRelativeTransform();
 
 	return node_uid;
 }
