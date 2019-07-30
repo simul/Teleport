@@ -51,6 +51,10 @@
 		{
 			"Name": "TrueSkyPlugin",
 			"Enabled": true
+		},
+		{
+			"Name": "SteamVR",
+			"Enabled": false
 		}
 	],
 	"TargetPlatforms": [
