@@ -1,6 +1,6 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "{33DC13AF-479E-D33E-330A-22B60C19A432}",
+	"EngineAssociation": "{30EF1976-4C81-4A4A-6F89-BB8E83F812E8}",
 	"Category": "Samples",
 	"Description": "",
 	"Modules": [
@@ -33,15 +33,7 @@
 			"Enabled": true
 		},
 		{
-			"Name": "OnlineSubsystemSteam",
-			"Enabled": true
-		},
-		{
 			"Name": "OnlineSubsystemNull",
-			"Enabled": true
-		},
-		{
-			"Name": "SteamController",
 			"Enabled": true
 		},
 		{
@@ -51,6 +43,10 @@
 		{
 			"Name": "TrueSkyPlugin",
 			"Enabled": true
+		},
+		{
+			"Name": "SteamVR",
+			"Enabled": false
 		}
 	],
 	"TargetPlatforms": [

@@ -64,7 +64,7 @@ void UShooterEngine::HandleNetworkFailure(UWorld *World, UNetDriver *NetDriver, 
 							GI->ShowMessageThenGotoState( FText::FromString(ErrorString), OKButton, FText::GetEmpty(), ShooterGameInstanceState::MainMenu, false );
 						}
 						break;
-					}
+					} 
 					case ENetworkFailure::ConnectionLost:						
 					case ENetworkFailure::ConnectionTimeout:
 					{

@@ -10,11 +10,45 @@
 #include "Misc/Paths.h"
 
 #include "GameFramework/PlayerController.h"
+#include "VisualStudioDebugOutput.h"
 
 #include "enet/enet.h"
 
 #define LOCTEXT_NAMESPACE "FRemotePlayModule"
+VisualStudioDebugOutput debug_buffer(true, 128);
 
+
+void FRemotePlayModule::LogCallback(const char *txt)
+{
+	static FString fstr;
+	fstr += txt;
+	int max_len = 0;
+	for (int i = 0; i < fstr.Len(); i++)
+	{
+		if (fstr[i] == L'\n' || i > 1000)
+		{
+			fstr[i] = L' ';
+			max_len = i + 1;
+			break;
+		}
+	}
+	if (max_len == 0)
+		return;
+	FString substr = fstr.Left(max_len);
+	fstr = fstr.RightChop(max_len);
+	if (substr.Contains("error"))
+	{
+		UE_LOG(LogRemotePlay, Error, TEXT("%s"), *substr);
+	}
+	else if (substr.Contains("warning"))
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("%s"), *substr);
+	}
+	else
+	{
+		UE_LOG(LogRemotePlay, Display, TEXT("%s"), *substr);
+	}
+}
 
 void FRemotePlayModule::StartupModule()
 {
@@ -24,7 +58,7 @@ void FRemotePlayModule::StartupModule()
 		// We are currently linking statically, so this was not needed.
 	}
 	// Assuming successful, create a new avs::Context, which handles passing log messages back from avstream to Unreal.
-
+	debug_buffer.setCallback(LogCallback);
 	Context.Reset(new avs::Context);
 	Context->setMessageHandler(FRemotePlayModule::LogMessageHandler, this);
 	// enet is a library that provides reliable, in-order delivery of UDP packets.

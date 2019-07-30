@@ -20,6 +20,7 @@ public:
 	
 	FString GetPluginDir() const;
 	class GeometrySource *GetGeometrySource();
+	static void LogCallback(const char *txt);
 private:
 	bool LoadLibrary_libavstream();
 	void* Handle_libavstream = nullptr;

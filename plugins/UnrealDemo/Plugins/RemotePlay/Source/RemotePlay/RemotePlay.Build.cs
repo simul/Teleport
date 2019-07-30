@@ -56,26 +56,22 @@ public class RemotePlay : ModuleRules
 		
         PrivateIncludePaths.Add(RemotePlayRootDirectory + "/libavstream/Include");
         PublicLibraryPaths.Add(LibraryPath);
-	
-
 		PublicAdditionalLibraries.Add("libavstream.lib");
-        //PublicDelayLoadDLLs.Add("libavstream.dll");
-        //RuntimeDependencies.Add(Path.Combine(LibraryPath, "libavstream.dll"));
     }
 
     private void Link_libenet(ReadOnlyTargetRules Target)
     {
         PrivateIncludePaths.Add(Path.Combine(LibrariesDirectory, "enet/Include"));
-        PublicLibraryPaths.Add(Path.Combine(LibrariesDirectory, "enet", GetPlatformName(Target), "Release"));
+        PublicLibraryPaths.Add(Path.Combine(LibrariesDirectory, "enet", GetPlatformName(Target)));
         PublicAdditionalLibraries.Add("enet.lib");
     }
-
-    private string GetPlatformName(ReadOnlyTargetRules Target)
+	
+	private string GetPlatformName(ReadOnlyTargetRules Target)
     {
         switch(Target.Platform)
         {
             case UnrealTargetPlatform.Win64:
-				return "x64";// "Win64";
+				return "Win64";
             case UnrealTargetPlatform.Win32:
                 return "Win32";
             default:
