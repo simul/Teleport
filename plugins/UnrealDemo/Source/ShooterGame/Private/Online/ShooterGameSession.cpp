@@ -207,7 +207,7 @@ bool AShooterGameSession::HostSession(TSharedPtr<const FUniqueNetId> UserId, FNa
 		CurrentSessionParams.bIsPresence = bIsPresence;
 		CurrentSessionParams.UserId = UserId;
 		MaxPlayers = MaxNumPlayers;
-
+		 
 		IOnlineSessionPtr Sessions = OnlineSub->GetSessionInterface();
 		if (Sessions.IsValid() && CurrentSessionParams.UserId.IsValid())
 		{
