@@ -18,6 +18,11 @@
 			"Name": "RemotePlay",
 			"Type": "Runtime",
 			"LoadingPhase": "PostConfigInit"
+		},
+		{
+			"Name": "RemotePlayEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
 		}
 	]
 } 

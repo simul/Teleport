@@ -10,6 +10,7 @@
 #include "Engine/GameViewportClient.h"
 
 #include "GameFramework/Actor.h"
+#include "RemotePlaySettings.h"
 
 
 URemotePlayCaptureComponent::URemotePlayCaptureComponent()
@@ -106,6 +107,19 @@ void URemotePlayCaptureComponent::OnViewportDrawn()
 		{
 			RemotePlayContext->EncodePipeline.Reset(new FEncodePipelineMonoscopic);
 			RemotePlayContext->EncodePipeline->Initialize(EncodeParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get());
+		}
+
+		const URemotePlaySettings *RemotePlaySettings = GetDefault<URemotePlaySettings>();
+
+
+		if (RemotePlaySettings&&RemotePlaySettings->VideoEncodeFrequency > 1)
+		{
+			static int u = 1;
+			u--;
+			if (!u)
+				u = RemotePlaySettings->VideoEncodeFrequency;
+			else
+				return;
 		}
 		RemotePlayContext->EncodePipeline->EncodeFrame(GetWorld()->Scene, TextureTarget);
 	}

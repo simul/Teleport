@@ -6,6 +6,7 @@
 
 #include "Common/UdpSocketBuilder.h"
 #include "Serialization/BufferArchive.h"
+#include "RemotePlaySettings.h"
 	
 FRemotePlayDiscoveryService::FRemotePlayDiscoveryService()
 {
@@ -29,6 +30,21 @@ bool FRemotePlayDiscoveryService::Initialize(uint16 InDiscoveryPort, uint16 InSe
 	{
 		UE_LOG(LogRemotePlay, Error, TEXT("Discovery: No useable Service Port"));
 		return false;
+	}
+	const URemotePlaySettings *RemotePlaySettings = GetDefault<URemotePlaySettings>();
+	FIPv4Address addr = FIPv4Address::Any;
+	if (RemotePlaySettings->ClientIP.Len())
+	{
+		uint8 a, b, c, d;
+		TArray<FString> Array;
+		if (RemotePlaySettings->ClientIP.ParseIntoArray(Array, TEXT("."), false) == 4)
+		{
+			a= FCString::Atoi(*Array[0]);
+			b = FCString::Atoi(*Array[1]); 
+			c = FCString::Atoi(*Array[2]);
+			d = FCString::Atoi(*Array[3]);
+			addr = FIPv4Address(a, b, c, d);
+		}
 	}
 	Socket = TUniquePtr<FSocket>(FUdpSocketBuilder(TEXT("RemotePlayDiscoveryService"))
 		.AsReusable()
