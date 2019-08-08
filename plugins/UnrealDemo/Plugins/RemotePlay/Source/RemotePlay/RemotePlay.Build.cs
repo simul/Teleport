@@ -52,11 +52,29 @@ public class RemotePlay : ModuleRules
 
     private void Link_libavstream(ReadOnlyTargetRules Target)
     {
-		string LibraryPath = Path.Combine(LibrariesDirectory,"libavstream/lib/Release");//, GetPlatformName(Target));
-		
+		string LibraryPath = Path.Combine(LibrariesDirectory,"libavstream/lib/Release");
+        string Platform = GetPlatformName(Target);
+
         PrivateIncludePaths.Add(RemotePlayRootDirectory + "/libavstream/Include");
         PublicLibraryPaths.Add(LibraryPath);
 		PublicAdditionalLibraries.Add("libavstream.lib");
+
+        PublicDelayLoadDLLs.Add("libavstream.dll");
+        RuntimeDependencies.Add(Path.Combine(LibraryPath, "libavstream.dll"));
+
+        // Temporary path
+        PublicLibraryPaths.Add("C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v10.1/lib/x64");
+
+        PublicAdditionalLibraries.Add("cudart.lib");
+
+        if (Platform == "Win64" || Platform == "Win32")
+        {
+            PublicAdditionalLibraries.Add("dxgi.lib");
+            PublicAdditionalLibraries.Add("d3d12.lib");
+            string SystemPath = "C:/Windows/System32";
+            RuntimeDependencies.Add(Path.Combine(SystemPath, "dxgi.dll"));
+            RuntimeDependencies.Add(Path.Combine(SystemPath, "D3D12.dll"));
+        }
     }
 
     private void Link_libenet(ReadOnlyTargetRules Target)
@@ -96,3 +114,4 @@ public class RemotePlay : ModuleRules
 		}
 	}
 }
+
