@@ -105,3 +105,9 @@ avs::Pipeline *FNetworkPipeline::GetAvsPipeline()
 {
 	return Pipeline.Get();
 }
+float FNetworkPipeline::GetBandWidthKPS() const
+{
+	if (!NetworkSink.IsValid())
+		return 0.0f;
+	return NetworkSink->getBandwidthKPerS();
+}

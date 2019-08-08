@@ -68,7 +68,7 @@ private:
 	static void TranslateButtons(uint32_t ButtonMask, TArray<FKey>& OutKeys);
 	void StartStreaming();
 	void StopStreaming();
-
+	 
 	TWeakObjectPtr<APlayerController> PlayerController;
 	TWeakObjectPtr<APawn> PlayerPawn;
 	
@@ -87,4 +87,9 @@ private:
 	FGeometryStreamingService GeometryStreamingService;
 
 	struct FRemotePlayContext* RemotePlayContext;
+#if STATS || ENABLE_STATNAMEDEVENTS_UOBJECT
+	/** Stat id of this object, 0 if nobody asked for it yet */
+	mutable TStatId				BandwidthStatID;
+	float						Bandwidth;
+#endif // STATS || ENABLE_STATNAMEDEVENTS
 };

@@ -10,6 +10,77 @@
 #include "GameFramework/Pawn.h"
 
 #include "enet/enet.h"
+DECLARE_STATS_GROUP(TEXT("RemotePlay_Game"), STATGROUP_RemotePlay, STATCAT_Advanced);
+
+template< typename TStatGroup>
+static TStatId CreateStatId(const FName StatNameOrDescription, EStatDataType::Type dataType)
+{
+#if	STATS
+	FString Description;
+	StatNameOrDescription.ToString(Description);
+	FStartupMessages::Get().AddMetadata(StatNameOrDescription, *Description,
+		TStatGroup::GetGroupName(),
+		TStatGroup::GetGroupCategory(),
+		TStatGroup::GetDescription(),
+		false,dataType, false, false);
+	TStatId StatID = IStatGroupEnableManager::Get().GetHighPerformanceEnableForStat(StatNameOrDescription,
+		TStatGroup::GetGroupName(),
+		TStatGroup::GetGroupCategory(),
+		TStatGroup::DefaultEnable,
+		false, dataType, *Description, false, false);
+
+	return StatID;
+#endif // STATS
+
+	return TStatId();
+}
+template< typename TStatGroup >
+static TStatId CreateStatId(const FString& StatNameOrDescription, EStatDataType::Type dataType)
+{
+#if	STATS
+	return CreateStatId<TStatGroup>(FName(*StatNameOrDescription),dataType);
+#endif // STATS
+
+	return TStatId();
+}
+
+/**
+ * This is a utility class for counting the number of cycles during the
+ * lifetime of the object. It creates messages for the stats thread.
+ */
+class FScopeBandwidth
+{
+	/** Name of the stat, usually a short name **/
+	FName StatId;
+
+public:
+
+	/**
+	 * Pushes the specified stat onto the hierarchy for this thread. Starts
+	 * the timing of the cycles used
+	 */
+	 FScopeBandwidth(TStatId InStatId, float bandwidth)
+	{
+		FMinimalName StatMinimalName = InStatId.GetMinimalName(EMemoryOrder::Relaxed);
+		if (StatMinimalName.IsNone())
+		{
+			return;
+		}
+		if ( FThreadStats::IsCollectingData())
+		{
+			FName StatName = MinimalNameToName(StatMinimalName);
+			StatId = StatName;
+			FThreadStats::AddMessage(StatName, EStatOperation::Set, double(bandwidth));
+		}
+	}
+	 ~FScopeBandwidth()
+	{
+		if (!StatId.IsNone())
+		{
+			//FThreadStats::AddMessage(StatId, EStatOperation::CycleScopeEnd);
+		}
+	}
+};
 
 enum ERemotePlaySessionChannel
 {
@@ -28,6 +99,8 @@ URemotePlaySessionComponent::URemotePlaySessionComponent()
 	, InputTouchAxis(0.f, 0.f)
 	, ServerHost(nullptr)
 	, ClientPeer(nullptr)
+	, BandwidthStatID(0)
+	, Bandwidth(0.0f)
 {
 	PrimaryComponentTick.bCanEverTick = true;
 }
@@ -35,6 +108,13 @@ URemotePlaySessionComponent::URemotePlaySessionComponent()
 void URemotePlaySessionComponent::BeginPlay()
 {
 	Super::BeginPlay();
+
+	Bandwidth = 0.0f;
+	//INC_DWORD_STAT(STAT_BANDWIDTH); //Increments the counter by one each call.
+#if STATS
+	FString BandwidthName = GetName() + " Bandwidth kps";
+	BandwidthStatID = CreateStatId<FStatGroup_STATGROUP_RemotePlay>(BandwidthName, EStatDataType::ST_double);
+#endif // ENABLE_STATNAMEDEVENTS
 
 	PlayerController = Cast<APlayerController>(GetOuter());
 	if (!PlayerController.IsValid())
@@ -61,9 +141,19 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	{
 		return;
 	}
-
+	 
 	if (ClientPeer)
 	{
+		if (BandwidthStatID.IsValidStat())
+		{ 
+			//SET_FLOAT_STAT(StatID, 50.0f);
+			//if (FThreadStats::IsCollectingData() )
+			//	FThreadStats::AddMessage(GET_STATFNAME(Stat), EStatOperation::Set, double(Value));
+			Bandwidth *=0.9f;
+			if (RemotePlayContext&&RemotePlayContext->NetworkPipeline.IsValid())
+				Bandwidth+=0.1f*RemotePlayContext->NetworkPipeline->GetBandWidthKPS();
+			FScopeBandwidth Context(BandwidthStatID, Bandwidth);
+		} 
 		if (PlayerPawn != PlayerController->GetPawn())
 		{
 			if(PlayerController->GetPawn())

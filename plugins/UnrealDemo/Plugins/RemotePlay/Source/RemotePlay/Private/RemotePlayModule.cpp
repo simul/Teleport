@@ -17,7 +17,8 @@
 #define LOCTEXT_NAMESPACE "FRemotePlayModule"
 VisualStudioDebugOutput debug_buffer(true, 128);
 
-
+//DECLARE_STATS_GROUP(TEXT("REMOTEPLAY_Game"), STATGROUP_REMOTEPLAY, STATCAT_Advanced);
+//DECLARE_DWORD_ACCUMULATOR_STAT(TEXT("Bandwidth"), STAT_BANDWIDTH, STATGROUP_REMOTEPLAY);
 void FRemotePlayModule::LogCallback(const char *txt)
 {
 	static FString fstr;
@@ -123,8 +124,8 @@ bool FRemotePlayModule::LoadLibrary_libavstream()
 
 void FRemotePlayModule::LogMessageHandler(avs::LogSeverity Severity, const char* Msg, void*)
 {
-	FString errstr;
-	FString outstr;
+	static FString errstr;
+	static FString outstr;
 	switch(Severity)
 	{
 	case avs::LogSeverity::Critical:
@@ -140,7 +141,7 @@ void FRemotePlayModule::LogMessageHandler(avs::LogSeverity Severity, const char*
 				errstr.Empty();
 			}
 			Msg++;
-		}
+		} 
 		break;
 	case avs::LogSeverity::Info:
 	case avs::LogSeverity::Debug:

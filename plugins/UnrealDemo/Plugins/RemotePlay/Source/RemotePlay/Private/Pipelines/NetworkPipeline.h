@@ -18,6 +18,7 @@ public:
 	void Release();
 	void Process();
 	avs::Pipeline *GetAvsPipeline();
+	float GetBandWidthKPS() const;
 private:
 	struct VideoPipe
 	{
