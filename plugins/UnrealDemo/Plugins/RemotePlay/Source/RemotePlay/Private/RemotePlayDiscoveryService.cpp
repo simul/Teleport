@@ -32,24 +32,12 @@ bool FRemotePlayDiscoveryService::Initialize(uint16 InDiscoveryPort, uint16 InSe
 		return false;
 	}
 	const URemotePlaySettings *RemotePlaySettings = GetDefault<URemotePlaySettings>();
-	FIPv4Address addr = FIPv4Address::Any;
-	if (RemotePlaySettings->ClientIP.Len())
-	{
-		uint8 a, b, c, d;
-		TArray<FString> Array;
-		if (RemotePlaySettings->ClientIP.ParseIntoArray(Array, TEXT("."), false) == 4)
-		{
-			a= FCString::Atoi(*Array[0]);
-			b = FCString::Atoi(*Array[1]); 
-			c = FCString::Atoi(*Array[2]);
-			d = FCString::Atoi(*Array[3]);
-			addr = FIPv4Address(a, b, c, d);
-		}
-	}
+	FIPv4Address boundAddr = FIPv4Address::Any;		// i.e. 127.0.0.1, 192.168.3.X (the server's local addr), or the server's global IP address.
+	//FIPv4Address::Parse(FString("192.168.3.6"), boundAddr);
 	Socket = TUniquePtr<FSocket>(FUdpSocketBuilder(TEXT("RemotePlayDiscoveryService"))
 		.AsReusable()
 		.AsNonBlocking()
-		.BoundToAddress(FIPv4Address::Any)
+		.BoundToAddress(boundAddr)
 		.BoundToPort(InDiscoveryPort)
 		.Build());
 
@@ -75,13 +63,37 @@ void FRemotePlayDiscoveryService::Tick()
 	{
 		return;
 	}
+	uint32 Address = 0;
 
 	TSharedRef<FInternetAddr> RecvAddr = SocketSubsystem->CreateInternetAddr();
-	
+	TSharedRef<FInternetAddr> ForcedAddr = SocketSubsystem->CreateInternetAddr();
+	//UE_LOG(LogRemotePlay, Warning, TEXT("Socket bound to %s"), *RecvAddr->ToString(false));
+
+	const URemotePlaySettings *RemotePlaySettings = GetDefault<URemotePlaySettings>();
+	bool bIsValid = true;
+	uint32 ip_forced = 0;
+	if (RemotePlaySettings->ClientIP.Len())
+	{
+		ForcedAddr->SetIp(*RemotePlaySettings->ClientIP, bIsValid);
+		if (!bIsValid)
+		{
+			ForcedAddr->SetAnyAddress();
+		}
+		else
+			ForcedAddr->GetIp(ip_forced);
+	}
 	uint32_t ClientID;
 	int32_t BytesRead;
 	while(Socket->RecvFrom(reinterpret_cast<uint8*>(&ClientID), sizeof(ClientID), BytesRead, *RecvAddr) && BytesRead == sizeof(ClientID))
 	{
+		uint32 ip_recv;
+		RecvAddr->GetIp(ip_recv);
+		if (ip_forced !=0 && ip_recv!=ip_forced)
+		{
+			UE_LOG(LogRemotePlay, Warning, TEXT("Mismatched Client found at %s"), *RecvAddr->ToString(false) );
+			continue;
+		}
+		UE_LOG(LogRemotePlay, Warning, TEXT("Matched Client found at %s"), *RecvAddr->ToString(false));
 		Clients.AddUnique({ RecvAddr, ClientID });
 	}
 
