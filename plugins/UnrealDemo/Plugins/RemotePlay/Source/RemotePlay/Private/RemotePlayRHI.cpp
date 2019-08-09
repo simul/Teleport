@@ -42,18 +42,27 @@ FTexture2DRHIRef FRemotePlayRHI::CreateSurfaceTexture(uint32 Width, uint32 Heigh
 	FTexture2DRHIRef SurfaceRHI;
 	FRHIResourceCreateInfo CreateInfo;
 
+	EDeviceType DevType;
+	GetNativeDevice(DevType);
+
+	uint32 TexFlags = TexCreate_UAV | TexCreate_RenderTargetable;
+	/*if (DevType == EDeviceType::Direct3D12)
+	{
+		TexFlags |= TexCreate_Shared;
+	}*/
+	
 	// HACK: NVENC requires typed D3D11 texture, we're forcing RGBA_UNORM!
 	if(PixelFormat == EPixelFormat::PF_R8G8B8A8)
 	{
 		FPixelFormatInfo& FormatInfo = GPixelFormats[PixelFormat];
 		const uint32 OldPlatformFormat = FormatInfo.PlatformFormat;
 		FormatInfo.PlatformFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
-		SurfaceRHI = RHICmdList.CreateTexture2D(Width, Height, PixelFormat, 1, 1, TexCreate_UAV | TexCreate_RenderTargetable, CreateInfo);
+		SurfaceRHI = RHICmdList.CreateTexture2D(Width, Height, PixelFormat, 1, 1, TexFlags, CreateInfo);
 		FormatInfo.PlatformFormat = OldPlatformFormat;
 	}
 	else
 	{
-		SurfaceRHI = RHICmdList.CreateTexture2D(Width, Height, PixelFormat, 1, 1, TexCreate_UAV | TexCreate_RenderTargetable, CreateInfo);
+		SurfaceRHI = RHICmdList.CreateTexture2D(Width, Height, PixelFormat, 1, 1, TexFlags, CreateInfo);
 	}
 
 	return SurfaceRHI;
