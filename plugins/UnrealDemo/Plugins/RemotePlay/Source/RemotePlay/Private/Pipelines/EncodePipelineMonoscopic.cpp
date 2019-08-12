@@ -354,13 +354,13 @@ void FEncodePipelineMonoscopic::Release_RenderThread(FRHICommandListImmediate& R
 
 	DepthSurfaceTexture.Texture.SafeRelease();
 	DepthSurfaceTexture.UAV.SafeRelease();
-}
-	
+} 
+
 void FEncodePipelineMonoscopic::PrepareFrame_RenderThread(
 	FRHICommandListImmediate& RHICmdList,
 	FTextureRenderTargetResource* TargetResource,
 	ERHIFeatureLevel::Type FeatureLevel)
-{
+{ 
 	if(DepthQueue)
 	{
 		if(Params.bLinearDepth)

@@ -18,6 +18,9 @@ class REMOTEPLAY_API URemotePlaySettings : public UDeveloperSettings
 	UPROPERTY(config, EditAnywhere, Category = RemotePlay)
 	int32 VideoEncodeFrequency;
 
+	UPROPERTY(config, EditAnywhere, Category = RemotePlay)
+	uint32 StreamGeometry : 1;
+
 	// Begin UDeveloperSettings Interface
 	virtual FName GetCategoryName() const override;
 #if WITH_EDITOR

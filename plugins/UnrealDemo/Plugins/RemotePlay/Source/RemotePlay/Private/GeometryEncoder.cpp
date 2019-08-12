@@ -50,7 +50,7 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp
 				put(primitiveArray.indices_accessor);
 				put(primitiveArray.material);
 				put(primitiveArray.primitiveMode);
-				accessors.push_back( primitiveArray.indices_accessor);
+				accessors.push_back( primitiveArray.indices_accessor );
 				for (size_t k = 0; k < primitiveArray.attributeCount; k++)
 				{
 					put(primitiveArray.attributes[k]);

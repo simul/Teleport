@@ -71,18 +71,18 @@ void FRemotePlayDiscoveryService::Tick()
 
 	const URemotePlaySettings *RemotePlaySettings = GetDefault<URemotePlaySettings>();
 	bool bIsValid = true;
-	uint32 ip_forced = 0;
-	if (RemotePlaySettings->ClientIP.Len())
-	{
+	uint32 ip_forced = 0; 
+	if (RemotePlaySettings->ClientIP.Len()) 
+	{ 
 		ForcedAddr->SetIp(*RemotePlaySettings->ClientIP, bIsValid);
 		if (!bIsValid)
-		{
+		{ 
 			ForcedAddr->SetAnyAddress();
 		}
 		else
 			ForcedAddr->GetIp(ip_forced);
 	}
-	uint32_t ClientID;
+	uint32_t ClientID; 
 	int32_t BytesRead;
 	while(Socket->RecvFrom(reinterpret_cast<uint8*>(&ClientID), sizeof(ClientID), BytesRead, *RecvAddr) && BytesRead == sizeof(ClientID))
 	{

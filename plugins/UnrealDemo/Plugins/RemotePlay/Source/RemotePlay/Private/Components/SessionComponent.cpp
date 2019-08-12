@@ -5,22 +5,23 @@
 #include "Components/CaptureComponent.h"
 #include "Components/StreamableGeometryComponent.h"
 #include "RemotePlayModule.h"
+#include "RemotePlaySettings.h"
 
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
-
+ 
 #include "enet/enet.h"
 DECLARE_STATS_GROUP(TEXT("RemotePlay_Game"), STATGROUP_RemotePlay, STATCAT_Advanced);
 
 template< typename TStatGroup>
 static TStatId CreateStatId(const FName StatNameOrDescription, EStatDataType::Type dataType)
-{
+{ 
 #if	STATS
 	FString Description;
 	StatNameOrDescription.ToString(Description);
 	FStartupMessages::Get().AddMetadata(StatNameOrDescription, *Description,
 		TStatGroup::GetGroupName(),
-		TStatGroup::GetGroupCategory(),
+		TStatGroup::GetGroupCategory(), 
 		TStatGroup::GetDescription(),
 		false,dataType, false, false);
 	TStatId StatID = IStatGroupEnableManager::Get().GetHighPerformanceEnableForStat(StatNameOrDescription,
@@ -90,8 +91,7 @@ enum ERemotePlaySessionChannel
 };
 
 URemotePlaySessionComponent::URemotePlaySessionComponent()
-	: bStreamGeometry(true)
-	, bAutoStartSession(true)
+	: bAutoStartSession(true)
 	, AutoListenPort(10500)
 	, AutoDiscoveryPort(10607)
 	, DisconnectTimeout(1000)
@@ -304,7 +304,7 @@ void URemotePlaySessionComponent::StartStreaming()
 	{
 		RemotePlayContext->bCaptureDepth = true;
 		RemotePlayContext->DepthQueue.Reset(new avs::Queue);
-		RemotePlayContext->DepthQueue->configure(16);
+		RemotePlayContext->DepthQueue->configure(16); 
 	}
 	else
 	{
@@ -318,11 +318,11 @@ void URemotePlaySessionComponent::StartStreaming()
 	Client_SendCommand(FString::Printf(TEXT("v %d %d %d"), StreamingPort, EncodeParams.FrameWidth, EncodeParams.FrameHeight));
 	
 	CaptureComponent->StartStreaming(RemotePlayContext);
-	if (bStreamGeometry)
+	const URemotePlaySettings *RemotePlaySettings = GetDefault<URemotePlaySettings>();
+	if (RemotePlaySettings&&RemotePlaySettings->StreamGeometry)
 	{
 		GeometryStreamingService.StartStreaming(GetWorld(), IRemotePlay::Get().GetGeometrySource(), RemotePlayContext);
 	}
-
 
 	if (!RemotePlayContext->NetworkPipeline.IsValid())
 	{
@@ -450,7 +450,7 @@ void URemotePlaySessionComponent::RecvInput(const ENetPacket* Packet)
 	{
 		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Received malfored input state change packet of length: %d"), Packet->dataLength);
 		return;
-	}
+	} 
 
 	FPlatformMemory::Memcpy(&InputState, Packet->data, Packet->dataLength);
 	InputTouchAxis.X = FMath::Clamp(InputState.RelativeTouchX * InputTouchSensitivity, -1.0f, 1.0f);
