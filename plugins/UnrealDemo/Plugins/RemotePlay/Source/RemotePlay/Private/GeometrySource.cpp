@@ -105,7 +105,7 @@ bool GeometrySource::InitMesh(GeometrySource::Mesh *m, FStaticMeshLODResources &
 			a.byteOffset = 0;
 			a.type = avs::Accessor::DataType::VEC4;
 			a.componentType = avs::Accessor::ComponentType::FLOAT;
-			a.count = vb.GetTangentSize();// same as pb???
+			a.count = vb.GetNumVertices();// same as pb???
 			a.bufferView = avs::GenerateUid();
 			AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), vb.GetTangentSize() / vb.GetNumVertices(), vb.GetTangentData());
 		}
@@ -118,9 +118,9 @@ bool GeometrySource::InitMesh(GeometrySource::Mesh *m, FStaticMeshLODResources &
 			a.byteOffset = 0;
 			a.type = avs::Accessor::DataType::VEC4;
 			a.componentType = avs::Accessor::ComponentType::FLOAT;
-			a.count = vb.GetTangentSize();// same as pb???
+			a.count = vb.GetNumVertices();// same as pb???
 			a.bufferView = avs::GenerateUid();
-			AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), vb.GetTexCoordSize()/  vb.GetNumTexCoords()/ vb.GetNumVertices(), vb.GetTangentData());
+			AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), vb.GetTexCoordSize()/  vb.GetNumTexCoords()/ vb.GetNumVertices(), vb.GetTexCoordData());
 		}
 		pa.indices_accessor = avs::GenerateUid();
 
