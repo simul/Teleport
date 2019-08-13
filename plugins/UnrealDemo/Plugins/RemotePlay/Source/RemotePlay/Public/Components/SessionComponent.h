@@ -35,9 +35,6 @@ public:
 	void StopSession();
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
-	uint32 bStreamGeometry:1;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
 	uint32 bAutoStartSession:1;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)

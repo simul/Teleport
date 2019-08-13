@@ -6,6 +6,7 @@ URemotePlaySettings::URemotePlaySettings(const FObjectInitializer& ObjectInitlai
 	: Super(ObjectInitlaizer)
 	,ClientIP("")
 	,VideoEncodeFrequency(1)
+	,StreamGeometry(true)
 {
 
 }
