@@ -13,6 +13,7 @@ public class RemotePlay : ModuleRules
 		PrivateIncludePaths.AddRange(
 			new string[] {
 				"RemotePlay/Private",
+				"RemotePlayEditor/Private",
 			}
 			);
 			
