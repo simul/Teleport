@@ -43,4 +43,14 @@ private:
 	{
 		return false;
 	}
+
+	virtual bool hasTexture(avs::uid texture_uid) const override
+	{
+		return false;
+	}
+
+	virtual bool hasMaterial(avs::uid material_uid) const
+	{
+		return false;
+	}
 };

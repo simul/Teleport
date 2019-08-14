@@ -80,8 +80,10 @@ public class RemotePlay : ModuleRules
 
     private void Link_libenet(ReadOnlyTargetRules Target)
     {
-        PrivateIncludePaths.Add(Path.Combine(LibrariesDirectory, "enet/Include"));
-        PublicLibraryPaths.Add(Path.Combine(LibrariesDirectory, "enet", GetPlatformName(Target)));
+        //PrivateIncludePaths.Add(Path.Combine(LibrariesDirectory, "enet/Include"));
+        //PublicLibraryPaths.Add(Path.Combine(LibrariesDirectory, "enet", GetPlatformName(Target)));
+        PrivateIncludePaths.Add(Path.Combine(RemotePlayRootDirectory, "thirdparty/enet/Include"));
+        PublicLibraryPaths.Add(Path.Combine(LibrariesDirectory, "enet/Release"));
         PublicAdditionalLibraries.Add("enet.lib");
     }
 	

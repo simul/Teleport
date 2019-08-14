@@ -8,6 +8,7 @@
 
 class APawn;
 class APlayerController;
+class UTexture;
 
 typedef struct _ENetHost   ENetHost;
 typedef struct _ENetPeer   ENetPeer;
@@ -29,10 +30,24 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	/* End UActorComponent interface */
 
+	//Returns the amount of materials used by this actor.
+	int32 GetMaterialAmount();
+
 	UStaticMeshComponent *GetMesh();
-
-
+	//Returns the interface of the material used by the mesh.
+	UMaterialInterface* GetMaterial(int32 materialIndex);
+	//Returns all textures used in the material.
+	TArray<UTexture*> GetUsedTextures();
+	//Returns all textures from the property chain.
+	//	materialProperty : Which property chain we are pulling the textures from.
+	TArray<UTexture*> GetTextureChain(EMaterialProperty materialProperty);
+	//Returns the first texture from the property chain.
+	//	materialProperty : Which property chain we are pulling the texture from.
+	UTexture* GetTexture(EMaterialProperty materialProperty);
 private:
 	TWeakObjectPtr<AActor> Actor;
 	TWeakObjectPtr<UStaticMeshComponent> StaticMeshComponent;
+
+	EMaterialQualityLevel::Type textureQualityLevel; //Quality level to retrieve the textures.
+	ERHIFeatureLevel::Type textureFeatureLevel; //Feature level to retrieve the textures.
 };
