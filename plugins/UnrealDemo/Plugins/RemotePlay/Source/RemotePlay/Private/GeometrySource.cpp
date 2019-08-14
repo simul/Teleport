@@ -56,7 +56,8 @@ bool GeometrySource::InitMesh(GeometrySource::Mesh *m, FStaticMeshLODResources &
 		FPositionVertexBuffer &pb = lod.VertexBuffers.PositionVertexBuffer;
 		FStaticMeshVertexBuffer &vb = lod.VertexBuffers.StaticMeshVertexBuffer;
 		auto &pa = m->primitiveArrays[i];
-		pa.attributeCount = 2 + (vb.GetTangentData() ? 1 : 0) + (vb.GetTexCoordData() ? vb.GetNumTexCoords() : 0);
+		// 1 position. 0 or 1 tangent/normal. + num texcoords.
+		pa.attributeCount = 1 + (vb.GetTangentData() ? 1 : 0) + (vb.GetTexCoordData() ? vb.GetNumTexCoords() : 0);
 		pa.attributes = new avs::Attribute[pa.attributeCount];
 		auto AddBufferAndView = [this](GeometrySource::Mesh *m,avs::uid &b_uid,size_t num,size_t stride,const void *data)
 		{
@@ -83,31 +84,22 @@ bool GeometrySource::InitMesh(GeometrySource::Mesh *m, FStaticMeshLODResources &
 			a.bufferView = avs::GenerateUid();
 			AddBufferAndView(m,a.bufferView, pb.GetNumVertices(), pb.GetStride(), pb.GetVertexData());
 		}
-		// Normal:
-		{
-			avs::Attribute &attr = pa.attributes[idx++];
-			attr.accessor = avs::GenerateUid();
-			attr.semantic = avs::AttributeSemantic::NORMAL;
-			avs::Accessor &a = accessors[attr.accessor];
-			a.byteOffset = 0;
-			a.type = avs::Accessor::DataType::VEC3;
-			a.componentType = avs::Accessor::ComponentType::FLOAT;
-			a.count = vb.GetNumVertices();// same as pb???
-			a.bufferView = avs::GenerateUid();
-			AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), vb.GetTangentSize()/vb.GetNumVertices(), vb.GetTangentData());
-		}
+		// Normal and tangent are packed together as XZ:
 		if(vb.GetTangentData())
 		{
 			avs::Attribute &attr = pa.attributes[idx++];
 			attr.accessor = avs::GenerateUid();
-			attr.semantic = avs::AttributeSemantic::TANGENT;
+			attr.semantic = avs::AttributeSemantic::TANGENTNORMALXZ;
 			avs::Accessor &a = accessors[attr.accessor];
 			a.byteOffset = 0;
-			a.type = avs::Accessor::DataType::VEC4;
-			a.componentType = avs::Accessor::ComponentType::FLOAT;
+			a.type = avs::Accessor::DataType::VEC2;
+			a.componentType = avs::Accessor::ComponentType::UINT;		// VEC2 of UINT's unpack to two VEC4's of signed BYTE.
+			if (vb.GetTangentSize() == 16)
+				a.type = avs::Accessor::DataType::VEC4;					// VEC4 of UINT's unpack to two VEC4's of signed SHORT
+			size_t tangentStride = vb.GetTangentSize() / vb.GetNumVertices();
 			a.count = vb.GetNumVertices();// same as pb???
 			a.bufferView = avs::GenerateUid();
-			AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), vb.GetTangentSize() / vb.GetNumVertices(), vb.GetTangentData());
+			AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), tangentStride, vb.GetTangentData());
 		}
 		for (size_t j = 0; j < vb.GetNumTexCoords(); j++)
 		{
