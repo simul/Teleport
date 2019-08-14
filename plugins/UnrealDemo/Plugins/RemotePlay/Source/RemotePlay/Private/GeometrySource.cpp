@@ -300,7 +300,7 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 		unsigned char* rawPixelData = new unsigned char[texSize];
 		memcpy(rawPixelData, mipData.GetData(), texSize);
 
-		textures[uid] = {baseMip.SizeX, baseMip.SizeY, textureSource.GetBytesPerPixel() * 8, rawPixelData};
+		textures[uid] = {baseMip.SizeX, baseMip.SizeY, textureSource.GetBytesPerPixel(), rawPixelData};
 		//Store a reference to the texture, so we know we have processed it.
 		processedTextures[texture] = uid;
 	}

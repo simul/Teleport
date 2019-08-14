@@ -1,5 +1,7 @@
 #include "GeometryEncoder.h"
 
+#include "libavstream/common.hpp"
+
 GeometryEncoder::GeometryEncoder()
 { 
 }
@@ -21,6 +23,9 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp
 	buffer.push_back(GALU_code[2]);
 	buffer.push_back(GALU_code[3]);
 #if 1
+	//Place payload type onto the buffer.
+	put(avs::GeometryPayloadType::Mesh);
+
 	// The source backend will give us the data to encode.
 	// What data it provides depends on the contents of the avs::GeometryRequesterBackendInterface object.
 	size_t num = src->getMeshCount();
@@ -138,7 +143,7 @@ avs::Result GeometryEncoder::encodeTextures(avs::GeometrySourceBackendInterface 
 	}
 
 	//Push amount of textures we are sending.
-	buffer.push_back(textureUIDs.size());
+	put(textureUIDs.size());
 	for(avs::uid uid : textureUIDs)
 	{
 		avs::Texture outTexture;
@@ -146,23 +151,23 @@ avs::Result GeometryEncoder::encodeTextures(avs::GeometrySourceBackendInterface 
 		if(src->getTexture(uid, outTexture))
 		{
 			//Push identifier.
-			buffer.push_back(uid);
+			put(uid);
 
 			//Push dimensions.
-			buffer.push_back(outTexture.width);
-			buffer.push_back(outTexture.height);
+			put(outTexture.width);
+			put(outTexture.height);
 
-			//Push bits per pixel.
-			buffer.push_back(outTexture.bitsPerPixel);
+			//Push bytes per pixel.
+			put(outTexture.bytesPerPixel);
 
 			//Push size (channels * width * height)
 			size_t textureSize = 4 * outTexture.width * outTexture.height;
-			buffer.push_back(textureSize);
+			put(textureSize);
 
 			//Push pixel data.
 			for(int i = 0; i < textureSize; i++)
 			{
-				buffer.push_back(outTexture.data[i]);
+				put(outTexture.data[i]);
 			}
 		}
 	}
@@ -188,7 +193,7 @@ avs::Result GeometryEncoder::encodeMaterial(avs::GeometrySourceBackendInterface 
 	}
 
 	//Push amount of materials.
-	buffer.push_back(materialUIDs.size());
+	put(materialUIDs.size());
 	for(avs::uid uid : materialUIDs)
 	{
 		avs::Material outMaterial;
@@ -196,12 +201,12 @@ avs::Result GeometryEncoder::encodeMaterial(avs::GeometrySourceBackendInterface 
 		if(src->getMaterial(uid, outMaterial))
 		{
 			//Push identifier.
-			buffer.push_back(uid);
+			put(uid);
 
 			//Push identifiers for textures forming material.
-			buffer.push_back(outMaterial.diffuse_uid);
-			buffer.push_back(outMaterial.normal_uid);
-			buffer.push_back(outMaterial.mro_uid);
+			put(outMaterial.diffuse_uid);
+			put(outMaterial.normal_uid);
+			put(outMaterial.mro_uid);
 		}
 	}
 
