@@ -1,6 +1,7 @@
 #pragma once
 #include <libavstream/geometry/mesh_interface.hpp>
 #include <map>
+#include <unordered_map>
 
 /*! The Geometry Source keeps all the geometry ready for streaming, and returns geometry
 	data in glTF-style when asked for.
@@ -28,6 +29,12 @@ public:
 	virtual bool getAccessor(avs::uid accessor_uid, avs::Accessor & accessor) const override;
 	virtual bool getBufferView(avs::uid buffer_view_uid, avs::BufferView & bufferView) const override;
 	virtual bool getBuffer(avs::uid buffer_uid, avs::GeometryBuffer & buffer) const override;
+
+	virtual std::vector<avs::uid> getTextureUIDs() const override;
+	virtual bool getTexture(avs::uid texture_uid, avs::Texture & outTexture) const override;
+
+	virtual std::vector<avs::uid> getMaterialUIDs() const override;
+	virtual bool getMaterial(avs::uid material_uid, avs::Material & outMaterial) const override;
 protected:
 	struct Mesh;
 	TArray<UStreamableGeometryComponent*> ToAdd;
@@ -43,7 +50,19 @@ protected:
 	mutable std::map<avs::uid, avs::Accessor> accessors;
 	mutable std::map<avs::uid, avs::BufferView> bufferViews;
 	mutable std::map<avs::uid, avs::GeometryBuffer> geometryBuffers;
+
+	std::unordered_map<UTexture*, avs::uid> processedTextures; //Textures we have already stored in the GeometrySource; the pointer points to the uid of the stored texture information.
+	std::vector<UMaterialInterface*> processedMaterials; //Materials we have already stored in the GeometrySource.
+
+	std::map<avs::uid, avs::Texture> textures;
+	std::map<avs::uid, avs::Material> materials;
+
 	void PrepareMesh(Mesh &m);
 	void SendMesh(Mesh &m);
 	bool InitMesh(Mesh *mesh, struct FStaticMeshLODResources &lod) const;
+
+	//Determines if the texture has already been stored, and pulls apart the texture data and stores it in a avs::Texture.
+	//	texture : UTexture to pull the texture data from.
+	//Returns the uid for this texture.
+	avs::uid StoreTexture(UTexture *texture);
 };
