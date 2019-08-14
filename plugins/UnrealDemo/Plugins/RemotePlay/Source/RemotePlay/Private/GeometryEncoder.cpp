@@ -153,7 +153,7 @@ avs::Result GeometryEncoder::encodeTextures(avs::GeometrySourceBackendInterface 
 			buffer.push_back(outTexture.height);
 
 			//Push bits per pixel.
-			buffer.push_back(outTexture.bitsPerPixel);
+			buffer.push_back(outTexture.bytesPerPixel);
 
 			//Push size (channels * width * height)
 			size_t textureSize = 4 * outTexture.width * outTexture.height;
