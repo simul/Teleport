@@ -98,10 +98,12 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp
 		buffer.push_back(txt[i]);
 	}
 #endif
+
 	buffer.push_back(GALU_code[0]);
 	buffer.push_back(GALU_code[1]);
 	buffer.push_back(GALU_code[2]);
 	buffer.push_back(GALU_code[3]);
+
 	return avs::Result::OK;
 }
 
@@ -115,5 +117,93 @@ avs::Result GeometryEncoder::mapOutputBuffer(void *& bufferPtr, size_t & bufferS
 avs::Result GeometryEncoder::unmapOutputBuffer()
 {
 	buffer.clear();
+	return avs::Result::OK;
+}
+
+avs::Result GeometryEncoder::encodeTextures(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req)
+{
+	std::vector<avs::uid> textureUIDs = src->getTextureUIDs();
+
+	//Remove uids the requester has.
+	for(auto it = textureUIDs.begin(); it != textureUIDs.end();)
+	{
+		if(req->hasTexture(*it))
+		{
+			it = textureUIDs.erase(it);
+		}
+		else
+		{
+			++it;
+		}
+	}
+
+	//Push amount of textures we are sending.
+	buffer.push_back(textureUIDs.size());
+	for(avs::uid uid : textureUIDs)
+	{
+		avs::Texture outTexture;
+
+		if(src->getTexture(uid, outTexture))
+		{
+			//Push identifier.
+			buffer.push_back(uid);
+
+			//Push dimensions.
+			buffer.push_back(outTexture.width);
+			buffer.push_back(outTexture.height);
+
+			//Push bits per pixel.
+			buffer.push_back(outTexture.bitsPerPixel);
+
+			//Push size (channels * width * height)
+			size_t textureSize = 4 * outTexture.width * outTexture.height;
+			buffer.push_back(textureSize);
+
+			//Push pixel data.
+			for(int i = 0; i < textureSize; i++)
+			{
+				buffer.push_back(outTexture.data[i]);
+			}
+		}
+	}
+
+	return avs::Result::OK;
+}
+
+avs::Result GeometryEncoder::encodeMaterial(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req)
+{
+	std::vector<avs::uid> materialUIDs = src->getMaterialUIDs();
+
+	//Remove uids the requester has.
+	for(auto it = materialUIDs.begin(); it != materialUIDs.end();)
+	{
+		if(req->hasMaterial(*it))
+		{
+			it = materialUIDs.erase(it);
+		}
+		else
+		{
+			++it;
+		}
+	}
+
+	//Push amount of materials.
+	buffer.push_back(materialUIDs.size());
+	for(avs::uid uid : materialUIDs)
+	{
+		avs::Material outMaterial;
+
+		if(src->getMaterial(uid, outMaterial))
+		{
+			//Push identifier.
+			buffer.push_back(uid);
+
+			//Push identifiers for textures forming material.
+			buffer.push_back(outMaterial.diffuse_uid);
+			buffer.push_back(outMaterial.normal_uid);
+			buffer.push_back(outMaterial.mro_uid);
+		}
+	}
+
 	return avs::Result::OK;
 }

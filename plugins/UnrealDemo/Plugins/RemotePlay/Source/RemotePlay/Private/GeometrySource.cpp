@@ -11,6 +11,7 @@ std::default_random_engine generator;
 std::uniform_int_distribution<int> distribution(1, 6);
 int dice_roll = distribution(generator);
 #endif
+
 struct GeometrySource::Mesh
 {
 	~Mesh()
@@ -194,6 +195,40 @@ avs::uid GeometrySource::AddStreamableActor(UStreamableGeometryComponent *Stream
 	//USceneComponent* sc = (USceneComponent*)StreamableGeometryComponent;
 	//FTransform modelTranform = sc->GetRelativeTransform();
 
+	UTexture* diffuseTex = StreamableGeometryComponent->GetTexture(EMaterialProperty::MP_BaseColor);
+	UTexture* normalTex = StreamableGeometryComponent->GetTexture(EMaterialProperty::MP_Normal);
+	//Assuming if it is used on one it is used on them all.
+	UTexture* metNorOccTex = StreamableGeometryComponent->GetTexture(EMaterialProperty::MP_Metallic);
+
+	avs::Material newMaterial;
+
+	//Store the texture if it exists.
+	if(diffuseTex)
+	{
+		newMaterial.diffuse_uid = StoreTexture(diffuseTex);
+	}
+
+	if(normalTex)
+	{
+		newMaterial.diffuse_uid = StoreTexture(normalTex);
+	}
+
+	if(metNorOccTex)
+	{
+		newMaterial.mro_uid = StoreTexture(metNorOccTex);
+	}
+
+	//Assuming there is only one material.
+	UMaterialInterface *materialInterface = StreamableGeometryComponent->GetMaterial(0);
+	//Store the material if it exists, and we have not already processed it.
+	if(materialInterface && std::find(processedMaterials.begin(), processedMaterials.end(), materialInterface) == processedMaterials.end())
+	{
+		avs::uid mat_uid = avs::GenerateUid();
+		materials[mat_uid] = newMaterial;
+
+		processedMaterials.push_back(materialInterface);
+	}
+
 	return node_uid;
 }
 
@@ -234,6 +269,45 @@ void GeometrySource::PrepareMesh(Mesh &m)
 #ifdef DISABLE
 #endif
 }
+
+avs::uid GeometrySource::StoreTexture(UTexture * texture)
+{
+	avs::uid uid;
+	auto it = processedTextures.find(texture);
+
+	//Retrieve the uid if we have already processed this texture.
+	if(it != processedTextures.end())
+	{
+		uid = it->second;
+	}
+	//Otherwise, store it.
+	else
+	{
+		uid = avs::GenerateUid();
+
+		FTextureSource &textureSource = texture->Source;
+		///This will be needed in the future, but for now we'll assume RGBA.
+		///ETextureSourceFormat format = textureSource.GetFormat();
+
+		TArray<uint8> mipData;
+		textureSource.GetMipData(mipData, 0);
+
+		//Assuming the first running platform is the desired running platform.
+		FTexture2DMipMap baseMip = texture->GetRunningPlatformData()[0]->Mips[0];
+
+		//Channels * Width * Height
+		std::size_t texSize = 4 * baseMip.SizeX * baseMip.SizeY;
+		unsigned char* rawPixelData = new unsigned char[texSize];
+		memcpy(rawPixelData, mipData.GetData(), texSize);
+
+		textures[uid] = {baseMip.SizeX, baseMip.SizeY, textureSource.GetBytesPerPixel() * 8, rawPixelData};
+		//Store a reference to the texture, so we know we have processed it.
+		processedTextures[texture] = uid;
+	}
+
+	return uid;
+}
+
 
 size_t GeometrySource::getNodeCount() const
 {
@@ -320,4 +394,58 @@ bool GeometrySource::getBuffer(avs::uid buffer_uid, avs::GeometryBuffer & buffer
 	}
 	buffer = geometryBuffers[buffer_uid];
 	return true;
+}
+
+std::vector<avs::uid> GeometrySource::getTextureUIDs() const
+{
+	std::vector<avs::uid> textureUIDs(textures.size());
+
+	for(const auto &it : textures)
+	{
+		textureUIDs.push_back(it.first);
+	}
+
+	return textureUIDs;
+}
+
+bool GeometrySource::getTexture(avs::uid texture_uid, avs::Texture & outTexture) const
+{
+	//Assuming an incorrect texture uid should not happen, or at least not frequently.
+	try
+	{
+		outTexture = textures.at(texture_uid);
+
+		return true;
+	}
+	catch(std::out_of_range oor)
+	{
+		return false;
+	}
+}
+
+std::vector<avs::uid> GeometrySource::getMaterialUIDs() const
+{
+	std::vector<avs::uid> materialUIDs(materials.size());
+
+	for(const auto &it : materials)
+	{
+		materialUIDs.push_back(it.first);
+	}
+
+	return materialUIDs;
+}
+
+bool GeometrySource::getMaterial(avs::uid material_uid, avs::Material & outMaterial) const
+{
+	//Assuming an incorrect material uid should not happen, or at least not frequently.
+	try
+	{
+		outMaterial = materials.at(material_uid);
+
+		return true;
+	}
+	catch(std::out_of_range oor)
+	{
+		return false;
+	}
 }
