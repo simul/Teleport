@@ -300,6 +300,10 @@ void URemotePlaySessionComponent::StartStreaming()
 	RemotePlayContext->ColorQueue.Reset(new avs::Queue);
 	RemotePlayContext->ColorQueue->configure(16);
 
+#if 0
+
+	// Roderick: with consumer GPU's we can't have more than one video stream.
+	// So we're encoding depth as alpha: no need for a separate source.
 	if (CaptureComponent->CaptureSource == ESceneCaptureSource::SCS_SceneColorSceneDepth)
 	{
 		RemotePlayContext->bCaptureDepth = true;
@@ -307,6 +311,7 @@ void URemotePlaySessionComponent::StartStreaming()
 		RemotePlayContext->DepthQueue->configure(16); 
 	}
 	else
+#endif
 	{
 		RemotePlayContext->bCaptureDepth = false;
 	}
