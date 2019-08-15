@@ -1,5 +1,7 @@
 #include "GeometryEncoder.h"
 
+#include "libavstream/common.hpp"
+
 GeometryEncoder::GeometryEncoder()
 { 
 }
@@ -21,6 +23,9 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp
 	buffer.push_back(GALU_code[2]);
 	buffer.push_back(GALU_code[3]);
 #if 1
+	//Place payload type onto the buffer.
+	put(static_cast<size_t>(avs::GeometryPayloadType::Mesh));
+
 	// The source backend will give us the data to encode.
 	// What data it provides depends on the contents of the avs::GeometryRequesterBackendInterface object.
 	size_t num = src->getMeshCount();
@@ -98,10 +103,12 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp
 		buffer.push_back(txt[i]);
 	}
 #endif
+
 	buffer.push_back(GALU_code[0]);
 	buffer.push_back(GALU_code[1]);
 	buffer.push_back(GALU_code[2]);
 	buffer.push_back(GALU_code[3]);
+
 	return avs::Result::OK;
 }
 
@@ -115,5 +122,93 @@ avs::Result GeometryEncoder::mapOutputBuffer(void *& bufferPtr, size_t & bufferS
 avs::Result GeometryEncoder::unmapOutputBuffer()
 {
 	buffer.clear();
+	return avs::Result::OK;
+}
+
+avs::Result GeometryEncoder::encodeTextures(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req)
+{
+	std::vector<avs::uid> textureUIDs = src->getTextureUIDs();
+
+	//Remove uids the requester has.
+	for(auto it = textureUIDs.begin(); it != textureUIDs.end();)
+	{
+		if(req->hasTexture(*it))
+		{
+			it = textureUIDs.erase(it);
+		}
+		else
+		{
+			++it;
+		}
+	}
+
+	//Push amount of textures we are sending.
+	put(textureUIDs.size());
+	for(avs::uid uid : textureUIDs)
+	{
+		avs::Texture outTexture;
+
+		if(src->getTexture(uid, outTexture))
+		{
+			//Push identifier.
+			put(uid);
+
+			//Push dimensions.
+			put(outTexture.width);
+			put(outTexture.height);
+
+			//Push bytes per pixel.
+			put(outTexture.bytesPerPixel);
+
+			//Push size (channels * width * height)
+			size_t textureSize = 4 * outTexture.width * outTexture.height;
+			put(textureSize);
+
+			//Push pixel data.
+			for(int i = 0; i < textureSize; i++)
+			{
+				put(outTexture.data[i]);
+			}
+		}
+	}
+
+	return avs::Result::OK;
+}
+
+avs::Result GeometryEncoder::encodeMaterial(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req)
+{
+	std::vector<avs::uid> materialUIDs = src->getMaterialUIDs();
+
+	//Remove uids the requester has.
+	for(auto it = materialUIDs.begin(); it != materialUIDs.end();)
+	{
+		if(req->hasMaterial(*it))
+		{
+			it = materialUIDs.erase(it);
+		}
+		else
+		{
+			++it;
+		}
+	}
+
+	//Push amount of materials.
+	put(materialUIDs.size());
+	for(avs::uid uid : materialUIDs)
+	{
+		avs::Material outMaterial;
+
+		if(src->getMaterial(uid, outMaterial))
+		{
+			//Push identifier.
+			put(uid);
+
+			//Push identifiers for textures forming material.
+			put(outMaterial.diffuse_uid);
+			put(outMaterial.normal_uid);
+			put(outMaterial.mro_uid);
+		}
+	}
+
 	return avs::Result::OK;
 }
