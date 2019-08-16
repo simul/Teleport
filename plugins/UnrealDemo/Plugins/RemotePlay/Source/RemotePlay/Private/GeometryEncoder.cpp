@@ -73,6 +73,8 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp
 		encodeMeshes(src, req, meshUIDs);
 	}
 
+	encodeNodes(src, req, meshUIDs);
+	
 	if(materialUIDs.size() != 0)
 	{
 		buffer.push_back(GALU_code[0]);
@@ -197,6 +199,39 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 		src->getBuffer(buffers[i], b);
 		put(b.byteLength);
 		put(b.data, b.byteLength);
+	}
+
+	return avs::Result::OK;
+}
+
+avs::Result GeometryEncoder::encodeNodes(uint32_t timestamp
+	, avs::GeometrySourceBackendInterface * src
+	, avs::GeometryRequesterBackendInterface *req)
+{
+	unsigned char GALU_code[] = { 0x01,0x00,0x80,0xFF };
+	buffer.push_back(GALU_code[0]);
+	buffer.push_back(GALU_code[1]);
+	buffer.push_back(GALU_code[2]);
+	buffer.push_back(GALU_code[3]);
+
+	put(avs::GeometryPayloadType::Node);
+
+	const auto& nodes = src->getNodes();
+	put(nodes.size());
+	for (const auto& element : nodes) 
+	{
+		auto& uid = element.first;
+		auto& node = element.second;
+
+		put(uid);
+		put(node->transform);
+		put(node->data_uid);
+		put(node->data_type);
+		put(node->childrenUids.size());
+		for (const auto& id : node->childrenUids)
+		{
+			put(id);
+		}
 	}
 
 	return avs::Result::OK;
