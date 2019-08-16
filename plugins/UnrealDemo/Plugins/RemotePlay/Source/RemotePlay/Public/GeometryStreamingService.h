@@ -39,7 +39,7 @@ private:
 	GeometrySource *geometrySource;
 	GeometryEncoder geometryEncoder;
 
-	avs::uid AddNode(UMeshComponent* component);
+	avs::uid AddNode(class UMeshComponent* component);
 	
 	bool hasMesh(avs::uid mesh_uid) const override
 	{
