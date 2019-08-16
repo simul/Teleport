@@ -46,12 +46,12 @@ void FGeometryStreamingService::StartStreaming(UWorld* World, GeometrySource *ge
 	// These should be disposed of when they move out of range.
 	TArray<AActor*> GSActors;
 	UGameplayStatics::GetAllActorsOfClass(World, AStaticMeshActor::StaticClass(), GSActors);
-	for (auto i : GSActors)
+	for (auto actor : GSActors)
 	{
-		auto j = i->GetComponentByClass(UStreamableGeometryComponent::StaticClass());
-		if (!j)
+		auto c = actor->GetComponentByClass(UStreamableGeometryComponent::StaticClass());
+		if (!c)
 			continue;
-		geometrySource->AddStreamableActor((UStreamableGeometryComponent*)(j));
+		AddNode((Cast<UStreamableGeometryComponent>(c))->GetMesh());
 	}
 }
  
