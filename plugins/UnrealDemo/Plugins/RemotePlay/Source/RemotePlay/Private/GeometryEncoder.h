@@ -42,7 +42,7 @@ private:
 	//	src : Source we are taking the data from.
 	//	req : Object that defines what needs to transfered across.
 	//Returns a code to determine how the encoding went.
-	avs::Result encode_nodes(uint32_t timestamp, avs::GeometrySourceBackendInterface *src, avs::GeometryRequesterBackendInterface *req);
+	avs::Result encodeNodes(uint32_t timestamp, avs::GeometrySourceBackendInterface *src, avs::GeometryRequesterBackendInterface *req);
 	//Pushes the data of the textures from the source onto the buffer, depending on what the requester needs.
 	//	src : Source we are taking the data from.
 	//	req : Object that defines what needs to transfered across.
