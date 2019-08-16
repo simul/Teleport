@@ -1,10 +1,11 @@
 #include "GeometrySource.h"
-#include "StreamableGeometryComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Rendering/StaticMeshVertexBuffer.h"
 #include "Rendering/PositionVertexBuffer.h"
 #include "StaticMeshResources.h"
-#include <map>
+
 #if 0
 #include <random>
 std::default_random_engine generator;
@@ -17,7 +18,7 @@ struct GeometrySource::Mesh
 	~Mesh()
 	{
 	}
-	class UStaticMesh* StaticMesh;
+	UMeshComponent* MeshComponent;
 	unsigned long long SentFrame;
 	bool Confirmed;
 	std::vector<avs::PrimitiveArray> primitiveArrays;
@@ -48,8 +49,20 @@ avs::AttributeSemantic IndexToSemantic(int index)
 	return avs::AttributeSemantic::TEXCOORD_0;
 }
 
-bool GeometrySource::InitMesh(GeometrySource::Mesh *m, FStaticMeshLODResources &lod) const
+bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 {
+	if (m->MeshComponent->GetClass()->IsChildOf(USkeletalMeshComponent::StaticClass()))
+	{
+		return false;
+	}
+
+	UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(m->MeshComponent);
+	UStaticMesh *StaticMesh = StaticMeshComponent->GetStaticMesh();
+	auto &lods = StaticMesh->RenderData->LODResources;
+	if (!lods.Num())
+		return false;
+
+	auto &lod = lods[lodIndex];
 	m->primitiveArrays.resize(lod.Sections.Num());
 	for (size_t i = 0; i < m->primitiveArrays.size(); i++)
 	{
@@ -57,10 +70,9 @@ bool GeometrySource::InitMesh(GeometrySource::Mesh *m, FStaticMeshLODResources &
 		FPositionVertexBuffer &pb = lod.VertexBuffers.PositionVertexBuffer;
 		FStaticMeshVertexBuffer &vb = lod.VertexBuffers.StaticMeshVertexBuffer;
 		auto &pa = m->primitiveArrays[i];
-		// 1 position. 0 or 1 tangent/normal. + num texcoords.
-		pa.attributeCount = 1 + (vb.GetTangentData() ? 1 : 0) + (vb.GetTexCoordData() ? vb.GetNumTexCoords() : 0);
+		pa.attributeCount = 2 + (vb.GetTangentData() ? 1 : 0) + (vb.GetTexCoordData() ? vb.GetNumTexCoords() : 0);
 		pa.attributes = new avs::Attribute[pa.attributeCount];
-		auto AddBufferAndView = [this](GeometrySource::Mesh *m,avs::uid &b_uid,size_t num,size_t stride,const void *data)
+		auto AddBufferAndView = [this](GeometrySource::Mesh *m, avs::uid &b_uid, size_t num, size_t stride, const void *data)
 		{
 			avs::BufferView &bv = bufferViews[b_uid];
 			bv.byteOffset = 0;
@@ -83,37 +95,46 @@ bool GeometrySource::InitMesh(GeometrySource::Mesh *m, FStaticMeshLODResources &
 			a.componentType = avs::Accessor::ComponentType::FLOAT;
 			a.count = pb.GetNumVertices();
 			a.bufferView = avs::GenerateUid();
-			AddBufferAndView(m,a.bufferView, pb.GetNumVertices(), pb.GetStride(), pb.GetVertexData());
+			AddBufferAndView(m, a.bufferView, pb.GetNumVertices(), pb.GetStride(), pb.GetVertexData());
 		}
-		// Normal and tangent are packed together as XZ:
-		if(vb.GetTangentData())
+		// Normal:
 		{
 			avs::Attribute &attr = pa.attributes[idx++];
 			attr.accessor = avs::GenerateUid();
-			attr.semantic = avs::AttributeSemantic::TANGENTNORMALXZ;
+			attr.semantic = avs::AttributeSemantic::NORMAL;
 			avs::Accessor &a = accessors[attr.accessor];
 			a.byteOffset = 0;
-			a.type = avs::Accessor::DataType::VEC2;
-			a.componentType = avs::Accessor::ComponentType::UINT;		// VEC2 of UINT's unpack to two VEC4's of signed BYTE.
-			if (vb.GetTangentSize() == 16)
-				a.type = avs::Accessor::DataType::VEC4;					// VEC4 of UINT's unpack to two VEC4's of signed SHORT
-			size_t tangentStride = vb.GetTangentSize() / vb.GetNumVertices();
+			a.type = avs::Accessor::DataType::VEC3;
+			a.componentType = avs::Accessor::ComponentType::FLOAT;
 			a.count = vb.GetNumVertices();// same as pb???
 			a.bufferView = avs::GenerateUid();
-			AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), tangentStride, vb.GetTangentData());
+			AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), vb.GetTangentSize() / vb.GetNumVertices(), vb.GetTangentData());
+		}
+		if (vb.GetTangentData())
+		{
+			avs::Attribute &attr = pa.attributes[idx++];
+			attr.accessor = avs::GenerateUid();
+			attr.semantic = avs::AttributeSemantic::TANGENT;
+			avs::Accessor &a = accessors[attr.accessor];
+			a.byteOffset = 0;
+			a.type = avs::Accessor::DataType::VEC4;
+			a.componentType = avs::Accessor::ComponentType::FLOAT;
+			a.count = vb.GetTangentSize();// same as pb???
+			a.bufferView = avs::GenerateUid();
+			AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), vb.GetTangentSize() / vb.GetNumVertices(), vb.GetTangentData());
 		}
 		for (size_t j = 0; j < vb.GetNumTexCoords(); j++)
 		{
 			avs::Attribute &attr = pa.attributes[idx++];
 			attr.accessor = avs::GenerateUid();
-			attr.semantic = j==0?avs::AttributeSemantic::TEXCOORD_0: avs::AttributeSemantic::TEXCOORD_1;
+			attr.semantic = j == 0 ? avs::AttributeSemantic::TEXCOORD_0 : avs::AttributeSemantic::TEXCOORD_1;
 			avs::Accessor &a = accessors[attr.accessor];
 			a.byteOffset = 0;
 			a.type = avs::Accessor::DataType::VEC4;
 			a.componentType = avs::Accessor::ComponentType::FLOAT;
-			a.count = vb.GetNumVertices();// same as pb???
+			a.count = vb.GetTangentSize();// same as pb???
 			a.bufferView = avs::GenerateUid();
-			AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), vb.GetTexCoordSize()/  vb.GetNumTexCoords()/ vb.GetNumVertices(), vb.GetTexCoordData());
+			AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), vb.GetTexCoordSize() / vb.GetNumTexCoords() / vb.GetNumVertices(), vb.GetTangentData());
 		}
 		pa.indices_accessor = avs::GenerateUid();
 
@@ -121,11 +142,11 @@ bool GeometrySource::InitMesh(GeometrySource::Mesh *m, FStaticMeshLODResources &
 		avs::Accessor &i_a = accessors[pa.indices_accessor];
 		i_a.byteOffset = 0;
 		i_a.type = avs::Accessor::DataType::SCALAR;
-		i_a.componentType = ib.Is32Bit()?avs::Accessor::ComponentType::UINT: avs::Accessor::ComponentType::USHORT;
+		i_a.componentType = avs::Accessor::ComponentType::UINT;
 		i_a.count = ib.GetNumIndices();// same as pb???
 		i_a.bufferView = avs::GenerateUid();
 		FIndexArrayView arr = ib.GetArrayView();
-		AddBufferAndView(m, i_a.bufferView, ib.GetNumIndices(), ib.Is32Bit()?4:2, (const void*)((uint64*)&arr)[0]);
+		AddBufferAndView(m, i_a.bufferView, ib.GetNumIndices(), 4, (const void*)((uint64*)&arr)[0]);
 
 		pa.material = avs::GenerateUid();
 		pa.primitiveMode = avs::PrimitiveMode::TRIANGLES;
@@ -140,36 +161,42 @@ GeometrySource::GeometrySource()
 GeometrySource::~GeometrySource()
 {
 	Meshes.Empty();
-	GeometryInstances.Empty();
-
-	//Free all allocated data for the textures.
-	for(auto &texMap : textures)
-	{
-		delete[] texMap.second.data;
-	}
+	nodes.clear();
 }
 
 // By adding a m, we also add a pipe, including the InputMesh, which must be configured with the appropriate 
-avs::uid GeometrySource::AddMesh(UStaticMesh *StaticMesh)
+avs::uid GeometrySource::AddMesh(UMeshComponent *MeshComponent)
 {
 	avs::uid uid = avs::GenerateUid();
-	TSharedPtr<Mesh> m ( new Mesh);
+	TSharedPtr<Mesh> m(new Mesh);
 	Meshes.Add(uid, m);
-	m->StaticMesh = StaticMesh;
+	m->MeshComponent = MeshComponent;
 	m->SentFrame = (unsigned long long)0;
 	m->Confirmed = false;
 	PrepareMesh(*m);
 	return uid;
 }
- 
-avs::uid GeometrySource::AddStreamableActor(UStreamableGeometryComponent *StreamableGeometryComponent)
+
+avs::uid GeometrySource::AddStreamableMeshComponent(UMeshComponent *MeshComponent)
 {
+	if (MeshComponent->GetClass()->IsChildOf(USkeletalMeshComponent::StaticClass()))
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Skeletal meshes not supported yet"));
+		return -1;
+	}
+
 	avs::uid mesh_uid;
-	UStaticMesh *StaticMesh = StreamableGeometryComponent->GetMesh()->GetStaticMesh();
+	UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(MeshComponent);
+	UStaticMesh *StaticMesh = StaticMeshComponent->GetStaticMesh();
 	bool already_got_mesh = false;
 	for (auto &i : Meshes)
 	{
-		if (i.Value->StaticMesh == StaticMesh)
+		if (i.Value->MeshComponent->GetClass()->IsChildOf(USkeletalMeshComponent::StaticClass()))
+		{
+			continue;
+		}
+		UStaticMeshComponent* c = Cast<UStaticMeshComponent>(i.Value->MeshComponent);
+		if (c->GetStaticMesh() == StaticMeshComponent->GetStaticMesh())
 		{
 			already_got_mesh = true;
 			mesh_uid = i.Key;
@@ -177,120 +204,59 @@ avs::uid GeometrySource::AddStreamableActor(UStreamableGeometryComponent *Stream
 	}
 	if (!already_got_mesh)
 	{
-		mesh_uid =AddMesh(StaticMesh);
-	}
-	TSharedPtr<GeometryInstance> geom(new GeometryInstance);
-	geom->Geometry= StreamableGeometryComponent;
-	bool already_got_geom = false;
-	avs::uid node_uid=0;
-	for (auto i : GeometryInstances)
-	{
-		if (i.Value->Geometry == geom->Geometry)
-		{
-			already_got_geom = true;
-			node_uid = i.Key;
-		}
-	}
-	if (!already_got_geom)
-	{
-		node_uid = avs::GenerateUid();
-		GeometryInstances.Add(node_uid, geom);
-	}
-#ifdef DISABLE
-#endif
-	//USceneComponent* sc = (USceneComponent*)StreamableGeometryComponent;
-	//FTransform modelTranform = sc->GetRelativeTransform();
-
-	///ASSUMPTION: Assuming that if a material has been processed, then its sub-resources have been processed.
-
-	//Assuming there is only one material.
-	UMaterialInterface *materialInterface = StreamableGeometryComponent->GetMaterial(0);
-
-	//Store the material if it exists, and we have not already processed it.
-	if(materialInterface && std::find(processedMaterials.begin(), processedMaterials.end(), materialInterface) == processedMaterials.end())
-	{
-		const unsigned long long DUMMY_TEX_COORD = 0;
-
-		UTexture* diffuseTex = StreamableGeometryComponent->GetTexture(EMaterialProperty::MP_BaseColor);
-		//Assuming if it is used on one it is used on them all.
-		UTexture* metalRoughOcclusTex = StreamableGeometryComponent->GetTexture(EMaterialProperty::MP_Metallic);
-		UTexture* normalTex = StreamableGeometryComponent->GetTexture(EMaterialProperty::MP_Normal);
-		UTexture* emissiveTex = StreamableGeometryComponent->GetTexture(EMaterialProperty::MP_EmissiveColor);
-
-		avs::Material newMaterial;
-
-		newMaterial.name = TCHAR_TO_ANSI(*materialInterface->GetName());
-
-		//Store the texture if it exists.
-		if(diffuseTex)
-		{
-			newMaterial.pbrMetallicRoughness.baseColorTexture = avs::TextureAccessor{StoreTexture(diffuseTex), DUMMY_TEX_COORD};
-		}
-
-		if(metalRoughOcclusTex)
-		{
-			avs::TextureAccessor metNorOccAccessor = {StoreTexture(metalRoughOcclusTex), DUMMY_TEX_COORD};
-
-			newMaterial.pbrMetallicRoughness.metallicRoughnessTexture = metNorOccAccessor;
-			newMaterial.normalTexture = metNorOccAccessor;
-			newMaterial.occlusionTexture = metNorOccAccessor;
-		}
-
-		if(normalTex)
-		{
-			newMaterial.normalTexture = avs::TextureAccessor{StoreTexture(normalTex), DUMMY_TEX_COORD};
-		}
-
-		if(emissiveTex)
-		{
-			newMaterial.emissiveTexture = avs::TextureAccessor{StoreTexture(emissiveTex), DUMMY_TEX_COORD};
-		}
-				
-		avs::uid mat_uid = avs::GenerateUid();
-		materials[mat_uid] = newMaterial;
-
-		processedMaterials.push_back(materialInterface);
+		mesh_uid = AddMesh(MeshComponent);
 	}
 
-	return node_uid;
+	return mesh_uid;
+}
+
+avs::uid GeometrySource::CreateNode(const FTransform& transform, avs::uid data_uid, avs::NodeDataType data_type)
+{
+	avs::uid uid = avs::GenerateUid();
+	auto node = std::make_shared<avs::DataNode>();
+	const FVector t = transform.GetTranslation();
+	const FQuat r = transform.GetRotation();
+	const FVector s = transform.GetScale3D();
+	node->transform = { t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z };
+	node->data_uid = data_uid;
+	node->data_type = data_type;
+	nodes[uid] = node;
+	return uid;
 }
 
 void GeometrySource::Tick()
 {
-	for (auto a : ToAdd)
-	{
-		AddStreamableActor(a);
-	}
-	ToAdd.Empty();
+
 }
 
 void GeometrySource::PrepareMesh(Mesh &m)
 {
 	// We will pre-encode the mesh to prepare it for streaming.
-	UStaticMesh* StaticMesh = m.StaticMesh;
-	int verts = StaticMesh->GetNumVertices(0);
-	FStaticMeshRenderData *StaticMeshRenderData = StaticMesh->RenderData.Get();
-	if (!StaticMeshRenderData->IsInitialized())
+	if (m.MeshComponent->GetClass()->IsChildOf(UStaticMeshComponent::StaticClass()))
 	{
-		UE_LOG(LogRemotePlay, Warning, TEXT("StaticMeshRenderData Not ready"));
-		return;
+		UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(m.MeshComponent);
+		UStaticMesh* StaticMesh = StaticMeshComponent->GetStaticMesh();
+		int verts = StaticMesh->GetNumVertices(0);
+		FStaticMeshRenderData *StaticMeshRenderData = StaticMesh->RenderData.Get();
+		if (!StaticMeshRenderData->IsInitialized())
+		{
+			UE_LOG(LogRemotePlay, Warning, TEXT("StaticMeshRenderData Not ready"));
+			return;
+		}
+		FStaticMeshLODResources &LODResources = StaticMeshRenderData->LODResources[0];
+
+		FPositionVertexBuffer &PositionVertexBuffer = LODResources.VertexBuffers.PositionVertexBuffer;
+		FStaticMeshVertexBuffer &StaticMeshVertexBuffer = LODResources.VertexBuffers.StaticMeshVertexBuffer;
+
+		uint32 pos_stride = PositionVertexBuffer.GetStride();
+		const float *pos_data = (const float*)PositionVertexBuffer.GetVertexData();
+
+		int numVertices = PositionVertexBuffer.GetNumVertices();
+		for (int i = 0; i < numVertices; i++)
+		{
+			pos_data += pos_stride / sizeof(float);
+		}
 	}
-	FStaticMeshLODResources &LODResources = StaticMeshRenderData->LODResources[0];
-
-	FPositionVertexBuffer &PositionVertexBuffer		= LODResources.VertexBuffers.PositionVertexBuffer;
-	FStaticMeshVertexBuffer &StaticMeshVertexBuffer = LODResources.VertexBuffers.StaticMeshVertexBuffer;
-
-	uint32 pos_stride		= PositionVertexBuffer.GetStride();
-	const float *pos_data	= (const float*)PositionVertexBuffer.GetVertexData();
-
-	int numVertices = PositionVertexBuffer.GetNumVertices();
-	for (int i = 0; i < numVertices; i++)
-	{
-		pos_data += pos_stride / sizeof(float);
-	}
-	//LODResources.IndexBuffer.GetCopy(m.Indices);
-#ifdef DISABLE
-#endif
 }
 
 avs::uid GeometrySource::StoreTexture(UTexture * texture)
@@ -375,18 +341,21 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 
 size_t GeometrySource::getNodeCount() const
 {
-	return size_t();
+	return nodes.size();
 }
 
 avs::uid GeometrySource::getNodeUid(size_t index) const
 {
-	return avs::uid();
+	auto it(nodes.begin());
+	std::advance(it, index);
+	return it->first;
 }
 
 std::shared_ptr<avs::DataNode> GeometrySource::getNode(avs::uid node_uid) const
 {
 	return nodes[node_uid];
 }
+
 std::map<avs::uid, std::shared_ptr<avs::DataNode>>& GeometrySource::getNodes() const
 {
 	return nodes;
@@ -407,30 +376,30 @@ avs::uid GeometrySource::getMeshUid(size_t index) const
 size_t GeometrySource::getMeshPrimitiveArrayCount(avs::uid mesh_uid) const
 {
 	auto &mesh = Meshes[mesh_uid];
-	UStaticMesh *staticMesh = mesh->StaticMesh;
-	if (!staticMesh->RenderData)
-		return 0;
-	auto &lods=staticMesh->RenderData->LODResources;
-	if (!lods.Num())
-		return 0;
-	return lods[0].Sections.Num();
+	if (mesh->MeshComponent->GetClass()->IsChildOf(UStaticMeshComponent::StaticClass()))
+	{
+		UStaticMeshComponent* staticMeshComponent = Cast<UStaticMeshComponent>(mesh->MeshComponent);
+		UStaticMesh* staticMesh = staticMeshComponent->GetStaticMesh();
+		if (!staticMesh->RenderData)
+			return 0;
+		auto &lods = staticMesh->RenderData->LODResources;
+		if (!lods.Num())
+			return 0;
+		return lods[0].Sections.Num();
+	}
+	return 0;
 }
 
 bool GeometrySource::getMeshPrimitiveArray(avs::uid mesh_uid, size_t array_index, avs::PrimitiveArray & primitiveArray) const
 {
 	GeometrySource::Mesh *mesh = Meshes[mesh_uid].Get();
-	UStaticMesh *staticMesh = mesh->StaticMesh;
-	auto &lods = staticMesh->RenderData->LODResources;
-	if (!lods.Num())
-		return false;
-	auto &lod=lods[0];
+	bool result = true;
 	if (!mesh->primitiveArrays.size())
 	{
-		InitMesh(mesh, lod);
+		result = InitMesh(mesh, 0);
 	}
 	primitiveArray = mesh->primitiveArrays[array_index];
-
-	return false;
+	return result;
 }
 
 bool GeometrySource::getAccessor(avs::uid accessor_uid, avs::Accessor & accessor) const
