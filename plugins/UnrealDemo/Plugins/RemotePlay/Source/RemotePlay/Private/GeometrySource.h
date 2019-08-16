@@ -41,7 +41,7 @@ public:
 	virtual bool getMaterial(avs::uid material_uid, avs::Material & outMaterial) const override;
 protected:
 	struct Mesh;
-	TArray<UStreamableGeometryComponent*> ToAdd;
+
 	struct GeometryInstance
 	{
 		class UStreamableGeometryComponent* Geometry;
@@ -63,7 +63,7 @@ protected:
 
 	void PrepareMesh(Mesh &m);
 	void SendMesh(Mesh &m);
-	bool InitMesh(Mesh *mesh, struct FStaticMeshLODResources &lod) const;
+	bool InitMesh(Mesh *mesh, uint8 lodIndex) const;
 
 	//Determines if the texture has already been stored, and pulls apart the texture data and stores it in a avs::Texture.
 	//	texture : UTexture to pull the texture data from.
