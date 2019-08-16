@@ -47,10 +47,10 @@ void MainCS(uint2 ThreadID : SV_DispatchThreadID)
 	);
 	float4 SceneColor = InputCubeMap.SampleLevel(DefaultSampler, CubeSampleVec, 0);
 #if WRITE_DEPTH
-#if WRITE_DEPTH_LINEAR
+#if 0//WRITE_DEPTH_LINEAR
 	float DepthValue = ConvertToDeviceZ(SceneColor.a);
 #else
-	float DepthValue = SceneColor.a;
+	float DepthValue = SceneColor.a / 100.0 / 50.0;
 #endif // WRITE_DEPTH_LINEAR
 #else
 	float DepthValue = 0.0;

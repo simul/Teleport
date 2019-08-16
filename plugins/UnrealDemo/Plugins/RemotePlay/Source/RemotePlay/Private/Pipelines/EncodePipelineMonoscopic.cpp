@@ -37,7 +37,7 @@ enum class EProjectCubemapVariant
 
 template<EProjectCubemapVariant Variant>
 class FProjectCubemapCS : public FGlobalShader
-{
+{ 
 	DECLARE_SHADER_TYPE(FProjectCubemapCS, Global);
 public:
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -419,7 +419,7 @@ void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediat
 		UE_LOG(LogRemotePlay, Warning, TEXT("Encode pipeline processing encountered an error"));
 	}
 }
-	 
+
 template<typename ShaderType>
 void FEncodePipelineMonoscopic::DispatchProjectCubemapShader(FRHICommandListImmediate& RHICmdList, FTextureRHIRef TextureRHI, ERHIFeatureLevel::Type FeatureLevel)
 {

@@ -24,7 +24,7 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp
 	buffer.push_back(GALU_code[3]);
 #if 1
 	//Place payload type onto the buffer.
-	put(avs::GeometryPayloadType::Mesh);
+	put(static_cast<size_t>(avs::GeometryPayloadType::Mesh));
 
 	// The source backend will give us the data to encode.
 	// What data it provides depends on the contents of the avs::GeometryRequesterBackendInterface object.

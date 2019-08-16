@@ -20,7 +20,7 @@ URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
 	bCaptureEveryFrame = false;
-	bCaptureOnMovement = false;
+	bCaptureOnMovement = false; 
 
 	EncodeParams.FrameWidth = 3840;
 	EncodeParams.FrameHeight = 1920;
