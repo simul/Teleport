@@ -21,6 +21,9 @@ public:
 	// Inherited via GeometrySourceBackendInterface
 	virtual size_t getNodeCount() const override;
 	virtual avs::uid getNodeUid(size_t index) const override;
+	virtual std::shared_ptr<avs::DataNode> getNode(avs::uid node_uid) const override;
+	//! Nodes make up the hierarchy of the scene
+	virtual std::map<avs::uid, std::shared_ptr<avs::DataNode>>& getNodes() const override;
 
 	virtual size_t getMeshCount() const override;
 	virtual avs::uid getMeshUid(size_t index) const override;
@@ -50,6 +53,7 @@ protected:
 	mutable std::map<avs::uid, avs::Accessor> accessors;
 	mutable std::map<avs::uid, avs::BufferView> bufferViews;
 	mutable std::map<avs::uid, avs::GeometryBuffer> geometryBuffers;
+	mutable std::map<avs::uid, std::shared_ptr<avs::DataNode>> nodes;
 
 	std::unordered_map<UTexture*, avs::uid> processedTextures; //Textures we have already stored in the GeometrySource; the pointer points to the uid of the stored texture information.
 	std::vector<UMaterialInterface*> processedMaterials; //Materials we have already stored in the GeometrySource.
@@ -65,4 +69,6 @@ protected:
 	//	texture : UTexture to pull the texture data from.
 	//Returns the uid for this texture.
 	avs::uid StoreTexture(UTexture *texture);
+
+	std::map<avs::uid, std::shared_ptr<avs::DataNode>> nullMap;
 };

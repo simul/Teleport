@@ -33,14 +33,19 @@ protected:
 		memcpy(buffer.data() + pos, &data, sizeof(T));
 	}
 private:
+	//Pushes the data of the meshes from the source onto the buffer, depending on what the requester needs.
+	//	src : Source we are taking the data from.
+	//	req : Object that defines what needs to transfered across.
+	//Returns a code to determine how the encoding went.
+	avs::Result encodeMeshes(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req, std::vector<avs::uid> missingUIDs);
 	//Pushes the data of the textures from the source onto the buffer, depending on what the requester needs.
 	//	src : Source we are taking the data from.
 	//	req : Object that defines what needs to transfered across.
 	//Returns a code to determine how the encoding went.
-	avs::Result encodeTextures(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req);
+	avs::Result encodeTextures(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req, std::vector<avs::uid> missingUIDs);
 	//Pushes the data of the materials from the source onto the buffer, depending on what the requester needs.
 	//	src : Source we are taking the data from.
 	//	req : Object that defines what needs to transfered across.
 	//Returns a code to determine how the encoding went.
-	avs::Result encodeMaterial(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req);
+	avs::Result encodeMaterials(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req, std::vector<avs::uid> missingUIDs);
 };

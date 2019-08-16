@@ -141,6 +141,12 @@ GeometrySource::~GeometrySource()
 {
 	Meshes.Empty();
 	GeometryInstances.Empty();
+
+	//Free all allocated data for the textures.
+	for(auto &texMap : textures)
+	{
+		delete[] texMap.second.data;
+	}
 }
 
 // By adding a m, we also add a pipe, including the InputMesh, which must be configured with the appropriate 
@@ -195,34 +201,51 @@ avs::uid GeometrySource::AddStreamableActor(UStreamableGeometryComponent *Stream
 	//USceneComponent* sc = (USceneComponent*)StreamableGeometryComponent;
 	//FTransform modelTranform = sc->GetRelativeTransform();
 
-	UTexture* diffuseTex = StreamableGeometryComponent->GetTexture(EMaterialProperty::MP_BaseColor);
-	UTexture* normalTex = StreamableGeometryComponent->GetTexture(EMaterialProperty::MP_Normal);
-	//Assuming if it is used on one it is used on them all.
-	UTexture* metNorOccTex = StreamableGeometryComponent->GetTexture(EMaterialProperty::MP_Metallic);
-
-	avs::Material newMaterial;
-
-	//Store the texture if it exists.
-	if(diffuseTex)
-	{
-		newMaterial.diffuse_uid = StoreTexture(diffuseTex);
-	}
-
-	if(normalTex)
-	{
-		newMaterial.diffuse_uid = StoreTexture(normalTex);
-	}
-
-	if(metNorOccTex)
-	{
-		newMaterial.mro_uid = StoreTexture(metNorOccTex);
-	}
+	///ASSUMPTION: Assuming that if a material has been processed, then its sub-resources have been processed.
 
 	//Assuming there is only one material.
 	UMaterialInterface *materialInterface = StreamableGeometryComponent->GetMaterial(0);
+
 	//Store the material if it exists, and we have not already processed it.
 	if(materialInterface && std::find(processedMaterials.begin(), processedMaterials.end(), materialInterface) == processedMaterials.end())
 	{
+		const unsigned long long DUMMY_TEX_COORD = 0;
+
+		UTexture* diffuseTex = StreamableGeometryComponent->GetTexture(EMaterialProperty::MP_BaseColor);
+		//Assuming if it is used on one it is used on them all.
+		UTexture* metalRoughOcclusTex = StreamableGeometryComponent->GetTexture(EMaterialProperty::MP_Metallic);
+		UTexture* normalTex = StreamableGeometryComponent->GetTexture(EMaterialProperty::MP_Normal);
+		UTexture* emissiveTex = StreamableGeometryComponent->GetTexture(EMaterialProperty::MP_EmissiveColor);
+
+		avs::Material newMaterial;
+
+		newMaterial.name = TCHAR_TO_ANSI(*materialInterface->GetName());
+
+		//Store the texture if it exists.
+		if(diffuseTex)
+		{
+			newMaterial.pbrMetallicRoughness.baseColorTexture = avs::TextureAccessor{StoreTexture(diffuseTex), DUMMY_TEX_COORD};
+		}
+
+		if(metalRoughOcclusTex)
+		{
+			avs::TextureAccessor metNorOccAccessor = {StoreTexture(metalRoughOcclusTex), DUMMY_TEX_COORD};
+
+			newMaterial.pbrMetallicRoughness.metallicRoughnessTexture = metNorOccAccessor;
+			newMaterial.normalTexture = metNorOccAccessor;
+			newMaterial.occlusionTexture = metNorOccAccessor;
+		}
+
+		if(normalTex)
+		{
+			newMaterial.normalTexture = avs::TextureAccessor{StoreTexture(normalTex), DUMMY_TEX_COORD};
+		}
+
+		if(emissiveTex)
+		{
+			newMaterial.emissiveTexture = avs::TextureAccessor{StoreTexture(emissiveTex), DUMMY_TEX_COORD};
+		}
+				
 		avs::uid mat_uid = avs::GenerateUid();
 		materials[mat_uid] = newMaterial;
 
@@ -272,40 +295,81 @@ void GeometrySource::PrepareMesh(Mesh &m)
 
 avs::uid GeometrySource::StoreTexture(UTexture * texture)
 {
-	avs::uid uid;
+	avs::uid texture_uid;
 	auto it = processedTextures.find(texture);
 
 	//Retrieve the uid if we have already processed this texture.
 	if(it != processedTextures.end())
 	{
-		uid = it->second;
+		texture_uid = it->second;
 	}
 	//Otherwise, store it.
 	else
 	{
-		uid = avs::GenerateUid();
+		texture_uid = avs::GenerateUid();
 
-		FTextureSource &textureSource = texture->Source;
-		///This will be needed in the future, but for now we'll assume RGBA.
-		///ETextureSourceFormat format = textureSource.GetFormat();
-
-		TArray<uint8> mipData;
-		textureSource.GetMipData(mipData, 0);
+		std::string textureName = TCHAR_TO_ANSI(*texture->GetName());
 
 		//Assuming the first running platform is the desired running platform.
 		FTexture2DMipMap baseMip = texture->GetRunningPlatformData()[0]->Mips[0];
+		FTextureSource &textureSource = texture->Source;
+		ETextureSourceFormat unrealFormat = textureSource.GetFormat();
+
+		uint32_t width = baseMip.SizeX;
+		uint32_t height = baseMip.SizeY;
+		uint32_t depth = baseMip.SizeZ; ///!!! Is this actually where Unreal stores its depth information for a texture? !!!
+		uint32_t bytesPerPixel = textureSource.GetBytesPerPixel();
+		uint32_t arrayCount = textureSource.GetNumSlices(); ///!!! Is this actually the array count? !!!
+		uint32_t mipCount = textureSource.GetNumMips();
+		avs::TextureFormat format;
+
+		switch(unrealFormat)
+		{
+			case ETextureSourceFormat::TSF_Invalid:
+				format = avs::TextureFormat::INVALID;
+				break;
+			case ETextureSourceFormat::TSF_G8:
+				format = avs::TextureFormat::G8;
+				break;
+			case ETextureSourceFormat::TSF_BGRA8:
+				format = avs::TextureFormat::BGRA8;
+				break;
+			case ETextureSourceFormat::TSF_BGRE8:
+				format = avs::TextureFormat::BGRE8;
+				break;
+			case ETextureSourceFormat::TSF_RGBA16:
+				format = avs::TextureFormat::RGBA16;
+				break;
+			case ETextureSourceFormat::TSF_RGBA16F:
+				format = avs::TextureFormat::RGBA16F;
+				break;
+			case ETextureSourceFormat::TSF_RGBA8:
+				format = avs::TextureFormat::RGBA8;
+				break;
+			case ETextureSourceFormat::TSF_RGBE8:
+				format = avs::TextureFormat::INVALID;
+				break;
+			case ETextureSourceFormat::TSF_MAX:
+				format = avs::TextureFormat::INVALID;
+				break;
+		}
+
+		TArray<uint8> mipData;
+		textureSource.GetMipData(mipData, 0);		
 
 		//Channels * Width * Height
 		std::size_t texSize = 4 * baseMip.SizeX * baseMip.SizeY;
 		unsigned char* rawPixelData = new unsigned char[texSize];
-		memcpy(rawPixelData, mipData.GetData(), texSize);
+		memcpy(rawPixelData, mipData.GetData(), texSize);		
 
-		textures[uid] = {baseMip.SizeX, baseMip.SizeY, textureSource.GetBytesPerPixel(), rawPixelData};
-		//Store a reference to the texture, so we know we have processed it.
-		processedTextures[texture] = uid;
+		//We're using a single sampler for now.
+		avs::uid sampler_uid = 0;
+
+		textures[texture_uid] = {textureName, width, height, depth, bytesPerPixel, arrayCount, mipCount, format, rawPixelData, sampler_uid};
+		processedTextures[texture] = texture_uid;
 	}
 
-	return uid;
+	return texture_uid;
 }
 
 
@@ -317,6 +381,15 @@ size_t GeometrySource::getNodeCount() const
 avs::uid GeometrySource::getNodeUid(size_t index) const
 {
 	return avs::uid();
+}
+
+std::shared_ptr<avs::DataNode> GeometrySource::getNode(avs::uid node_uid) const
+{
+	return nodes[node_uid];
+}
+std::map<avs::uid, std::shared_ptr<avs::DataNode>>& GeometrySource::getNodes() const
+{
+	return nodes;
 }
 
 size_t GeometrySource::getMeshCount() const
@@ -400,9 +473,10 @@ std::vector<avs::uid> GeometrySource::getTextureUIDs() const
 {
 	std::vector<avs::uid> textureUIDs(textures.size());
 
+	size_t i = 0;
 	for(const auto &it : textures)
 	{
-		textureUIDs.push_back(it.first);
+		textureUIDs[i++] = it.first;
 	}
 
 	return textureUIDs;
@@ -427,9 +501,10 @@ std::vector<avs::uid> GeometrySource::getMaterialUIDs() const
 {
 	std::vector<avs::uid> materialUIDs(materials.size());
 
+	size_t i = 0;
 	for(const auto &it : materials)
 	{
-		materialUIDs.push_back(it.first);
+		materialUIDs[i++] = it.first;
 	}
 
 	return materialUIDs;

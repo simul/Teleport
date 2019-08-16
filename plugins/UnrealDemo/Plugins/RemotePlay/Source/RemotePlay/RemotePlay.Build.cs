@@ -83,7 +83,7 @@ public class RemotePlay : ModuleRules
         //PrivateIncludePaths.Add(Path.Combine(LibrariesDirectory, "enet/Include"));
         //PublicLibraryPaths.Add(Path.Combine(LibrariesDirectory, "enet", GetPlatformName(Target)));
 		PrivateIncludePaths.Add(Path.Combine(RemotePlayRootDirectory, "thirdparty/enet/Include"));
-        PublicLibraryPaths.Add(Path.Combine(RemotePlayRootDirectory, "thirdparty/enet/Release"));
+        PublicLibraryPaths.Add(Path.Combine(RemotePlayRootDirectory, "thirdparty/enet/x64/Release"));
         PublicAdditionalLibraries.Add("enet.lib");
 	}
 
