@@ -69,6 +69,4 @@ protected:
 	//	texture : UTexture to pull the texture data from.
 	//Returns the uid for this texture.
 	avs::uid StoreTexture(UTexture *texture);
-
-	std::map<avs::uid, std::shared_ptr<avs::DataNode>> nodes;
 };
