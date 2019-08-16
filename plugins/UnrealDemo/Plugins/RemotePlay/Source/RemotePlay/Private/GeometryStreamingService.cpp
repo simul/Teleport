@@ -54,7 +54,34 @@ void FGeometryStreamingService::StartStreaming(UWorld* World, GeometrySource *ge
 		AddNode((Cast<UStreamableGeometryComponent>(c))->GetMesh());
 	}
 }
- 
+
+avs::uid FGeometryStreamingService::AddNode(UMeshComponent* component)
+{
+	auto mesh_uid = geometrySource->AddStreamableMeshComponent(component);
+
+	auto node_uid = geometrySource->CreateNode(component->GetRelativeTransform(), mesh_uid, avs::NodeDataType::Mesh);
+	auto node = geometrySource->getNode(node_uid);
+
+	TArray<USceneComponent*> children;
+	component->GetChildrenComponents(false, children);
+
+	TArray<UMeshComponent*> meshChildren;
+	for (auto child : children)
+	{
+		if (child->GetClass()->IsChildOf(UMeshComponent::StaticClass()))
+		{
+			meshChildren.Add(Cast<UMeshComponent>(child));
+		}
+	}
+
+	for (auto child : meshChildren)
+	{
+		node->childrenUids.push_back(AddNode(child));
+	}
+
+	return node_uid;
+}
+
 void FGeometryStreamingService::StopStreaming()
 { 
 	if(avsPipeline)
