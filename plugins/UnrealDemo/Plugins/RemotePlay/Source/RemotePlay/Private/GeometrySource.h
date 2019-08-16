@@ -2,6 +2,7 @@
 #include <libavstream/geometry/mesh_interface.hpp>
 #include <map>
 #include <unordered_map>
+#include <CoreMinimal.h>
 
 /*! The Geometry Source keeps all the geometry ready for streaming, and returns geometry
 	data in glTF-style when asked for.
