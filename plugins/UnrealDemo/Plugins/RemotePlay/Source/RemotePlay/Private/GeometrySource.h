@@ -13,8 +13,9 @@ class GeometrySource : public avs::GeometrySourceBackendInterface
 public:
 	GeometrySource();
 	~GeometrySource();
-	avs::uid AddMesh(UStaticMesh *StaticMesh);
-	avs::uid AddStreamableActor(class UStreamableGeometryComponent *StreamableGeometryComponent);
+	avs::uid AddMesh(class UMeshComponent *MeshComponent);
+	avs::uid AddStreamableMeshComponent(UMeshComponent *MeshComponent);
+	avs::uid CreateNode(const struct FTransform& transform, avs::uid data_uid, avs::NodeDataType data_type);
 
 	void Tick();
 
@@ -22,7 +23,6 @@ public:
 	virtual size_t getNodeCount() const override;
 	virtual avs::uid getNodeUid(size_t index) const override;
 	virtual std::shared_ptr<avs::DataNode> getNode(avs::uid node_uid) const override;
-	//! Nodes make up the hierarchy of the scene
 	virtual std::map<avs::uid, std::shared_ptr<avs::DataNode>>& getNodes() const override;
 
 	virtual size_t getMeshCount() const override;
@@ -47,7 +47,6 @@ protected:
 		//unsigned long long SentFrame;
 	};
 	mutable TMap<avs::uid, TSharedPtr<Mesh>> Meshes;
-	mutable TMap<avs::uid, TSharedPtr<GeometryInstance> > GeometryInstances;
 	// We store buffers, views and accessors in one big list. But we should
 	// PROBABLY refcount these so that unused ones can be cleared.
 	mutable std::map<avs::uid, avs::Accessor> accessors;
@@ -70,5 +69,5 @@ protected:
 	//Returns the uid for this texture.
 	avs::uid StoreTexture(UTexture *texture);
 
-	std::map<avs::uid, std::shared_ptr<avs::DataNode>> nullMap;
+	std::map<avs::uid, std::shared_ptr<avs::DataNode>> nodes;
 };
