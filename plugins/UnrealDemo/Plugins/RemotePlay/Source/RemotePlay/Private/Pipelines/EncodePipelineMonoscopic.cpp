@@ -23,6 +23,7 @@
 #include "libavstream/surfaces/surface_dx12.hpp"
 #include "HideWindowsPlatformTypes.h"
 #endif
+#include <algorithm>
 
 DECLARE_FLOAT_COUNTER_STAT(TEXT("RemotePlayEncodePipelineMonoscopic"), Stat_GPU_RemotePlayEncodePipelineMonoscopic, STATGROUP_GPU);
 
@@ -269,7 +270,8 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 		return; 
 	} 
 	// Roderick: we create a DOUBLE-HEIGHT texture, and encode colour in the top half, depth in the bottom.
-	ColorSurfaceTexture.Texture = RHI.CreateSurfaceTexture(Params.FrameWidth, Params.FrameHeight*2, EPixelFormat::PF_R8G8B8A8);
+	int32 w = std::max<int32>(Params.FrameWidth, Params.DepthWidth);
+	ColorSurfaceTexture.Texture = RHI.CreateSurfaceTexture(w, Params.FrameHeight+Params.DepthHeight, EPixelFormat::PF_R8G8B8A8);
 	if(ColorSurfaceTexture.Texture.IsValid())
 	{
 		ColorSurfaceTexture.UAV = RHI.CreateSurfaceUAV(ColorSurfaceTexture.Texture);
@@ -342,15 +344,14 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	Encoder.SetNum(NumStreams);
 	InputSurface.SetNum(NumStreams);
 	for(uint32_t i=0; i<NumStreams; ++i)
-	{
+	{ 
 		if(!InputSurface[i].configure(avsSurfaceBackends[i]))
 		{
 			UE_LOG(LogRemotePlay, Error, TEXT("Failed to configure input surface node #%d"), i);
 			return;
 		}
-
 		EncoderParams.inputFormat = avsInputFormats[i];
-		if(!Encoder[i].configure(avs::DeviceHandle{avsDeviceType, DeviceHandle}, Params.FrameWidth, Params.FrameHeight*2, EncoderParams))
+		if(!Encoder[i].configure(avs::DeviceHandle{avsDeviceType, DeviceHandle}, Params.FrameWidth, Params.FrameHeight+Params.DepthHeight, EncoderParams))
 		{
 			UE_LOG(LogRemotePlay, Error, TEXT("Failed to configure encoder #%d"), i);
 			return;

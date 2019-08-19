@@ -33,9 +33,9 @@ void MainCS(uint2 ThreadID : SV_DispatchThreadID)
 	uint OutputW, OutputH;
 	RWOutputColorTexture.GetDimensions(OutputW, OutputH);
 #if DEPTH_STACKED
-	float2 UV = float2(ThreadID.x / float(OutputW), ThreadID.y / float(OutputH/2));
+	float2 UV = float2(ThreadID.x / float(OutputW), ThreadID.y / float(DepthPos));
 #else
-	float2 UV   = float2(ThreadID.x / float(OutputW), ThreadID.y / float(OutputH));
+	float2 UV  = float2(ThreadID.x / float(OutputW), ThreadID.y / float(OutputH));
 #endif
 	float Phi   = UV.x * TwoPI;
 	float Theta = UV.y * PI;
@@ -58,7 +58,10 @@ void MainCS(uint2 ThreadID : SV_DispatchThreadID)
 
 	RWOutputColorTexture[int2(ThreadID.x, ThreadID.y)] = float4(PrepareTonemap(SceneColor).rgb, 0);
 #if DEPTH_STACKED
-	RWOutputColorTexture[int2(ThreadID.x,ThreadID.y+ OutputH / 2)] = float4(DepthValue, DepthValue, DepthValue, DepthValue);
+	//DepthValue goes from 0 to 1.
+	float4 d4 = float4(DepthValue, DepthValue, DepthValue, DepthValue);
+	RWOutputColorTexture[int2(ThreadID.x/2,ThreadID.y/2+ DepthPos)] = d4;
+	RWOutputColorTexture[int2(OutputW/2+ThreadID.x / 2, ThreadID.y / 2 + DepthPos)] = d4;;
 #endif
 
 

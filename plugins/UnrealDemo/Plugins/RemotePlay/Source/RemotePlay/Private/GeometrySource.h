@@ -21,7 +21,7 @@ public:
 	// Inherited via GeometrySourceBackendInterface
 	virtual size_t getNodeCount() const override;
 	virtual avs::uid getNodeUid(size_t index) const override;
-
+	 
 	virtual size_t getMeshCount() const override;
 	virtual avs::uid getMeshUid(size_t index) const override;
 	virtual size_t getMeshPrimitiveArrayCount(avs::uid mesh_uid) const override;
