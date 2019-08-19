@@ -40,7 +40,7 @@ private:
 	//	req : Object that defines what needs to transfered across.
 	//Returns a code to determine how the encoding went.
 	avs::Result encodeMeshes(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req, std::vector<avs::uid> missingUIDs);
-	avs::Result encodeNodes(avs::GeometrySourceBackendInterface *src, avs::GeometryRequesterBackendInterface *req);
+	avs::Result encodeNodes(avs::GeometrySourceBackendInterface *src, avs::GeometryRequesterBackendInterface *req, std::vector<avs::uid> missingUIDs);
 	avs::Result encodeTextures(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req, std::vector<avs::uid> missingUIDs);
 	avs::Result encodeMaterials(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req, std::vector<avs::uid> missingUIDs);
 };

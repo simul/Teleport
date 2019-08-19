@@ -80,6 +80,8 @@ private:
 	ENetHost* ServerHost;
 	ENetPeer* ClientPeer;
 
+	bool isReadyForPayloads = false;
+
 	FRemotePlayDiscoveryService DiscoveryService;
 	FGeometryStreamingService GeometryStreamingService;
 

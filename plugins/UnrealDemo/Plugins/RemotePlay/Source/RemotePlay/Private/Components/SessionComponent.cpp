@@ -85,8 +85,9 @@ public:
 
 enum ERemotePlaySessionChannel
 {
-	RPCH_Control = 0,
-	RPCH_HeadPose = 1,
+	RPCH_HANDSHAKE = 0,
+	RPCH_Control = 1,
+	RPCH_HeadPose = 2,
 	RPCH_NumChannels,
 };
 
@@ -163,7 +164,12 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 		{
 			RemotePlayContext->NetworkPipeline->Process();
 		}
-		GeometryStreamingService.Tick();
+
+		//Only send the payloads if the client is ready to receive the payloads.
+		if(isReadyForPayloads)
+		{
+			GeometryStreamingService.Tick();
+		}
 	}
 	else
 	{
@@ -402,6 +408,9 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 {
 	switch (Event.channelID)
 	{
+	case RPCH_HANDSHAKE:
+		memcpy(&isReadyForPayloads, Event.packet->data, Event.packet->dataLength);
+		break;
 	case RPCH_Control:
 		RecvInput(Event.packet);
 		break;

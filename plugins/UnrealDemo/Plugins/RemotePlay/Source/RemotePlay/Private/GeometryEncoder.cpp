@@ -13,21 +13,35 @@ GeometryEncoder::~GeometryEncoder()
 
 unsigned char GeometryEncoder::GALU_code[] = { 0x01,0x00,0x80,0xFF };
 
-avs::Result GeometryEncoder::encode(uint32_t timestamp
-	, avs::GeometrySourceBackendInterface * src
-	, avs::GeometryRequesterBackendInterface *req)
+avs::Result GeometryEncoder::encode(uint32_t timestamp,
+	avs::GeometrySourceBackendInterface * src,
+	avs::GeometryRequesterBackendInterface *req)
 {
-	
 	buffer.clear();
 	// The source backend will give us the data to encode.
 	// What data it provides depends on the contents of the avs::GeometryRequesterBackendInterface object.
-	size_t num = src->getMeshCount();
+	size_t numMeshes = src->getMeshCount();
 	std::vector<avs::uid> meshUIDs;
-	for(size_t i = 0; i < num; i++)
+	for(size_t i = 0; i < numMeshes; i++)
 	{
 		avs::uid uid = src->getMeshUid(i);
-		if(!req->hasMesh(uid))
+		if(!req->HasResource(uid))
 			meshUIDs.push_back(uid);
+	}
+
+	std::vector<avs::uid> nodeUIDs = src->getNodeUIDs();
+
+	//Remove uids the requester has.
+	for(auto it = nodeUIDs.begin(); it != nodeUIDs.end();)
+	{
+		if(req->HasResource(*it))
+		{
+			it = nodeUIDs.erase(it);
+		}
+		else
+		{
+			++it;
+		}
 	}
 
 	std::vector<avs::uid> materialUIDs = src->getMaterialUIDs();
@@ -35,7 +49,7 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp
 	//Remove uids the requester has.
 	for(auto it = materialUIDs.begin(); it != materialUIDs.end();)
 	{
-		if(req->hasMaterial(*it))
+		if(req->HasResource(*it))
 		{
 			it = materialUIDs.erase(it);
 		}
@@ -50,7 +64,7 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp
 	//Remove texture uids the requester has.
 	for(auto it = textureUIDs.begin(); it != textureUIDs.end();)
 	{
-		if(req->hasTexture(*it))
+		if(req->HasResource(*it))
 		{
 			it = textureUIDs.erase(it);
 		}
@@ -65,20 +79,25 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp
 		encodeMeshes(src, req, meshUIDs);
 	}
 
-	encodeNodes(src, req);
+	if(nodeUIDs.size() != 0)
+	{
+		encodeNodes(src, req, nodeUIDs);
+	}
 	
 	if(materialUIDs.size() != 0)
 	{
 		encodeMaterials(src, req, materialUIDs);
 	}
 
-	///Causes major slowdown while we always determine we need to send the payloads every frame.
-/*
 	if(textureUIDs.size() != 0)
 	{
 		encodeTextures(src, req, textureUIDs);
 	}
-*/
+
+	buffer.push_back(GALU_code[0]);
+	buffer.push_back(GALU_code[1]);
+	buffer.push_back(GALU_code[2]);
+	buffer.push_back(GALU_code[3]);
 
 	return avs::Result::OK;
 }
@@ -110,28 +129,27 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 	for(size_t i = 0; i < missingUIDs.size(); i++)
 	{
 		avs::uid uid = missingUIDs[i];
-		if(!req->hasMesh(uid))
+		put(uid);
+		// Requester doesn't have this mesh, and needs it, so we will encode the mesh for transport.
+		size_t prims = src->getMeshPrimitiveArrayCount(uid);
+		put(prims);
+		for(size_t j = 0; j < prims; j++)
 		{
-			put(uid);
-			// Requester doesn't have this mesh, and needs it, so we will encode the mesh for transport.
-			size_t prims = src->getMeshPrimitiveArrayCount(uid);
-			put(prims);
-			for(size_t j = 0; j < prims; j++)
+			avs::PrimitiveArray primitiveArray;
+			src->getMeshPrimitiveArray(uid, j, primitiveArray);
+			put(primitiveArray.attributeCount);
+			put(primitiveArray.indices_accessor);
+			put(primitiveArray.material);
+			put(primitiveArray.primitiveMode);
+			accessors.push_back(primitiveArray.indices_accessor);
+			for(size_t k = 0; k < primitiveArray.attributeCount; k++)
 			{
-				avs::PrimitiveArray primitiveArray;
-				src->getMeshPrimitiveArray(uid, j, primitiveArray);
-				put(primitiveArray.attributeCount);
-				put(primitiveArray.indices_accessor);
-				put(primitiveArray.material);
-				put(primitiveArray.primitiveMode);
-				accessors.push_back(primitiveArray.indices_accessor);
-				for(size_t k = 0; k < primitiveArray.attributeCount; k++)
-				{
-					put(primitiveArray.attributes[k]);
-					accessors.push_back(primitiveArray.attributes[k].accessor);
-				}
+				put(primitiveArray.attributes[k]);
+				accessors.push_back(primitiveArray.attributes[k].accessor);
 			}
 		}
+
+		req->EncodedResource(uid);
 	}
 	put(accessors.size());
 	std::vector<avs::uid> bufferViews;
@@ -167,15 +185,10 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 		put(b.data, b.byteLength);
 	}
 
-	buffer.push_back(GALU_code[0]);
-	buffer.push_back(GALU_code[1]);
-	buffer.push_back(GALU_code[2]);
-	buffer.push_back(GALU_code[3]);
-
 	return avs::Result::OK;
 }
 
-avs::Result GeometryEncoder::encodeNodes(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface *req)
+avs::Result GeometryEncoder::encodeNodes(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface *req, std::vector<avs::uid> missingUIDs)
 {
 	buffer.push_back(GALU_code[0]);
 	buffer.push_back(GALU_code[1]);
@@ -184,12 +197,11 @@ avs::Result GeometryEncoder::encodeNodes(avs::GeometrySourceBackendInterface * s
 
 	put(avs::GeometryPayloadType::Node);
 
-	const auto& nodes = src->getNodes();
-	put(nodes.size());
-	for (const auto& element : nodes) 
+	put(missingUIDs.size());
+	for (const avs::uid &uid : missingUIDs) 
 	{
-		auto& uid = element.first;
-		auto& node = element.second;
+		std::shared_ptr<avs::DataNode> node;
+		src->getNode(uid, node);
 
 		put(uid);
 		put(node->transform);
@@ -200,12 +212,9 @@ avs::Result GeometryEncoder::encodeNodes(avs::GeometrySourceBackendInterface * s
 		{
 			put(id);
 		}
-	}
 
-	buffer.push_back(GALU_code[0]);
-	buffer.push_back(GALU_code[1]);
-	buffer.push_back(GALU_code[2]);
-	buffer.push_back(GALU_code[3]);
+		req->EncodedResource(uid);
+	}
 
 	return avs::Result::OK;
 }
@@ -260,13 +269,11 @@ avs::Result GeometryEncoder::encodeTextures(avs::GeometrySourceBackendInterface 
 
 			//Push sampler identifier.
 			put(outTexture.sampler_uid);
+
+			//Flag we have encoded the texture.
+			req->EncodedResource(uid);
 		}
 	}
-
-	buffer.push_back(GALU_code[0]);
-	buffer.push_back(GALU_code[1]);
-	buffer.push_back(GALU_code[2]);
-	buffer.push_back(GALU_code[3]);
 
 	return avs::Result::OK;
 }
@@ -329,13 +336,11 @@ avs::Result GeometryEncoder::encodeMaterials(avs::GeometrySourceBackendInterface
 			put(outMaterial.emissiveFactor.x);
 			put(outMaterial.emissiveFactor.y);
 			put(outMaterial.emissiveFactor.z);
+
+			//Flag we have encoded the material.
+			req->EncodedResource(uid);
 		}
 	}
-
-	buffer.push_back(GALU_code[0]);
-	buffer.push_back(GALU_code[1]);
-	buffer.push_back(GALU_code[2]);
-	buffer.push_back(GALU_code[3]);
 
 	return avs::Result::OK;
 }

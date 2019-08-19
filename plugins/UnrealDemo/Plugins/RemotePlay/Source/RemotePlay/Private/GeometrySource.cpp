@@ -338,22 +338,32 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 	return texture_uid;
 }
 
-
-size_t GeometrySource::getNodeCount() const
+std::vector<avs::uid> GeometrySource::getNodeUIDs() const
 {
-	return nodes.size();
+	std::vector<avs::uid> nodeUIDs(nodes.size());
+
+	size_t i = 0;
+	for(const auto &it : nodes)
+	{
+		nodeUIDs[i++] = it.first;
+	}
+
+	return nodeUIDs;
 }
 
-avs::uid GeometrySource::getNodeUid(size_t index) const
+bool GeometrySource::getNode(avs::uid node_uid, std::shared_ptr<avs::DataNode> & outNode) const
 {
-	auto it(nodes.begin());
-	std::advance(it, index);
-	return it->first;
-}
+	//Assuming an incorrect node uid should not happen, or at least not frequently.
+	try
+	{
+		outNode = nodes.at(node_uid);
 
-std::shared_ptr<avs::DataNode> GeometrySource::getNode(avs::uid node_uid) const
-{
-	return nodes[node_uid];
+		return true;
+	}
+	catch(std::out_of_range oor)
+	{
+		return false;
+	}
 }
 
 std::map<avs::uid, std::shared_ptr<avs::DataNode>>& GeometrySource::getNodes() const

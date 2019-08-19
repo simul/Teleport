@@ -7,6 +7,8 @@
 #include "GeometrySource.h"
 #include <libavstream/pipeline.hpp>
 
+#include <unordered_map>
+
 /*!
 	A Geometry Streaming Service instance manages the streaming of geometry to a particular connected client. It
 	is owned by the SessionComponent attached to the client's Pawn.
@@ -21,9 +23,17 @@ public:
 	FGeometryStreamingService();
 	virtual ~FGeometryStreamingService();
 
+	//avs::GeometryRequesterBackendInterface
+	virtual bool HasResource(avs::uid resource_uid) const override;
+
+	virtual void EncodedResource(avs::uid resource_uid) override;
+	virtual void RequestResource(avs::uid resource_uid) override;
+
 	void StartStreaming(UWorld* World,GeometrySource *geometrySource,struct FRemotePlayContext* RemotePlayContext);
 	void StopStreaming();
 	void Tick();
+
+	
 
 	// avs::GeometryTransferState
 	size_t getNumRequiredNodes() const;
@@ -39,20 +49,7 @@ private:
 	GeometrySource *geometrySource;
 	GeometryEncoder geometryEncoder;
 
+	std::unordered_map<avs::uid, bool> sentResources; //Tracks the resources sent to the user; <resource identifier, doesClientHave>.
+
 	avs::uid AddNode(class UMeshComponent* component);
-	
-	bool hasMesh(avs::uid mesh_uid) const override
-	{
-		return false;
-	}
-
-	virtual bool hasTexture(avs::uid texture_uid) const override
-	{
-		return false;
-	}
-
-	virtual bool hasMaterial(avs::uid material_uid) const
-	{
-		return false;
-	}
 };
