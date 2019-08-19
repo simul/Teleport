@@ -322,7 +322,14 @@ void URemotePlaySessionComponent::StartStreaming()
 
 	const auto& EncodeParams = CaptureComponent->EncodeParams;
 	const int32 StreamingPort = ServerHost->address.port + 1;
-	Client_SendCommand(FString::Printf(TEXT("v %d %d %d"), StreamingPort, EncodeParams.FrameWidth, EncodeParams.FrameHeight));
+	avs::SetupCommand setupCommand;
+	setupCommand.video_width = EncodeParams.FrameWidth;
+	setupCommand.video_height = EncodeParams.FrameHeight;
+	setupCommand.depth_height = EncodeParams.DepthHeight;
+	setupCommand.depth_width = EncodeParams.DepthWidth;
+	setupCommand.port = StreamingPort;
+	Client_SendCommand(setupCommand);
+	//Client_SendCommand(FString::Printf(TEXT("v %d %d %d"), StreamingPort, EncodeParams.FrameWidth, EncodeParams.FrameHeight));
 }
 
 void URemotePlaySessionComponent::ReleasePlayerPawn()
@@ -476,7 +483,26 @@ void URemotePlaySessionComponent::RecvInput(const ENetPacket* Packet)
 inline bool URemotePlaySessionComponent::Client_SendCommand(const FString& Cmd) const
 {
 	check(ClientPeer);
-	ENetPacket* Packet = enet_packet_create(TCHAR_TO_UTF8(*Cmd), Cmd.Len(), ENET_PACKET_FLAG_RELIABLE);
+	// Convert the string to UTF8:
+	TStringConversion<FTCHARToUTF8_Convert> utf8((const TCHAR*)(*Cmd));
+	// first we send a payload type id. We here send the id that means "this is a text packet".
+	std::vector<uint8_t> packet_buffer;
+	avs::TextCommand textCommand;
+	size_t cmdSize = avs::GetCommandSize(textCommand.commandPayloadType);
+	packet_buffer.resize(cmdSize+utf8.Length()+1);
+	memcpy(packet_buffer.data() + cmdSize, utf8.Get(), utf8.Length()+1);// 1 extra char, should be zero!
+	check(packet_buffer[packet_buffer.size() - 1] == (uint8_t)0);
+	memcpy(packet_buffer.data(), &textCommand.commandPayloadType, cmdSize);
+	ENetPacket* Packet = enet_packet_create(packet_buffer.data(),packet_buffer.size(), ENET_PACKET_FLAG_RELIABLE);
+	check(Packet);
+	return enet_peer_send(ClientPeer, RPCH_Control, Packet) == 0;
+}
+
+bool URemotePlaySessionComponent::Client_SendCommand(const avs::Command &avsCommand) const
+{
+	check(ClientPeer);
+	ENetPacket* Packet = enet_packet_create(&avsCommand, avs::GetCommandSize(avsCommand.commandPayloadType), ENET_PACKET_FLAG_RELIABLE);
+	check(Packet);
 	return enet_peer_send(ClientPeer, RPCH_Control, Packet) == 0;
 }
 

@@ -24,6 +24,10 @@ URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 
 	EncodeParams.FrameWidth = 3840;
 	EncodeParams.FrameHeight = 1920;
+
+	EncodeParams.DepthWidth = 1920;
+	EncodeParams.DepthHeight = 960;
+
 	EncodeParams.IDRInterval = 120;
 	EncodeParams.TargetFPS = 60; 
 	EncodeParams.bDeferOutput = true;
