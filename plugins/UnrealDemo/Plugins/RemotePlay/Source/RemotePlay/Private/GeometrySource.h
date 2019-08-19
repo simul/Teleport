@@ -17,6 +17,7 @@ public:
 	avs::uid AddMesh(class UMeshComponent *MeshComponent);
 	avs::uid AddStreamableMeshComponent(UMeshComponent *MeshComponent);
 	avs::uid CreateNode(const struct FTransform& transform, avs::uid data_uid, avs::NodeDataType data_type);
+	void AddMaterial(class UStreamableGeometryComponent *StreamableGeometryComponent);
 
 	void Tick();
 

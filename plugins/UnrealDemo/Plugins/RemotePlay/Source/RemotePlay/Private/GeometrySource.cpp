@@ -1,4 +1,5 @@
 #include "GeometrySource.h"
+#include "StreamableGeometryComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -222,6 +223,72 @@ avs::uid GeometrySource::CreateNode(const FTransform& transform, avs::uid data_u
 	node->data_type = data_type;
 	nodes[uid] = node;
 	return uid;
+}
+
+void GeometrySource::AddMaterial(UStreamableGeometryComponent * StreamableGeometryComponent)
+{
+	///ASSUMPTION: Assuming that if a material has been processed, then its sub-resources have been processed.	
+
+	//Assuming there is only one material.	
+	UMaterialInterface *materialInterface = StreamableGeometryComponent->GetMaterial(0);
+
+	//Store the material if it exists, and we have not already processed it.	
+	if(materialInterface && std::find(processedMaterials.begin(), processedMaterials.end(), materialInterface) == processedMaterials.end())
+	{
+		const unsigned long long DUMMY_TEX_COORD = 0;
+
+		UTexture* diffuseTex = StreamableGeometryComponent->GetTexture(EMaterialProperty::MP_BaseColor);
+		//Assuming if it is used on one it is used on them all.	
+		UTexture* metalRoughOcclusTex = StreamableGeometryComponent->GetTexture(EMaterialProperty::MP_Metallic);
+		UTexture* normalTex = StreamableGeometryComponent->GetTexture(EMaterialProperty::MP_Normal);
+		UTexture* emissiveTex = StreamableGeometryComponent->GetTexture(EMaterialProperty::MP_EmissiveColor);
+
+		avs::Material newMaterial;
+
+		newMaterial.name = TCHAR_TO_ANSI(*materialInterface->GetName());
+
+		//Store the texture if it exists.	
+		if(diffuseTex)
+		{
+			newMaterial.pbrMetallicRoughness.baseColorTexture = avs::TextureAccessor{StoreTexture(diffuseTex), DUMMY_TEX_COORD};
+		}
+
+		if(metalRoughOcclusTex)
+		{
+			avs::TextureAccessor metNorOccAccessor = {StoreTexture(metalRoughOcclusTex), DUMMY_TEX_COORD};
+
+			newMaterial.pbrMetallicRoughness.metallicRoughnessTexture = metNorOccAccessor;
+			newMaterial.normalTexture = metNorOccAccessor;
+			newMaterial.occlusionTexture = metNorOccAccessor;
+		}
+
+		if(normalTex)
+		{
+			newMaterial.normalTexture = avs::TextureAccessor{StoreTexture(normalTex), DUMMY_TEX_COORD};
+		}
+
+		if(emissiveTex)
+		{
+			newMaterial.emissiveTexture = avs::TextureAccessor{StoreTexture(emissiveTex), DUMMY_TEX_COORD};
+		}
+
+		///!!! Initalising material values that need to be set, but aren't due to currently lacking a way to cross-reference them to an Unreal Material Parameter/Expression.
+
+		newMaterial.pbrMetallicRoughness.baseColorFactor = {1, 1, 1, 1};
+		newMaterial.pbrMetallicRoughness.metallicFactor = 1;
+		newMaterial.pbrMetallicRoughness.roughnessFactor = 1;
+		newMaterial.normalTexture.scale = 1;
+		newMaterial.occlusionTexture.strength = 1;
+		newMaterial.emissiveFactor = {1, 1, 1};
+
+		///!!!
+
+		avs::uid mat_uid = avs::GenerateUid();
+		materials[mat_uid] = newMaterial;
+
+
+		processedMaterials.push_back(materialInterface);
+	}
 }
 
 void GeometrySource::Tick()

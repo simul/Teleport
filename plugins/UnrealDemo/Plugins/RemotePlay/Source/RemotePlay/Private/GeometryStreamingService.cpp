@@ -51,8 +51,12 @@ void FGeometryStreamingService::StartStreaming(UWorld* World, GeometrySource *ge
 		auto c = actor->GetComponentByClass(UStreamableGeometryComponent::StaticClass());
 		if (!c)
 			continue;
-		AddNode((Cast<UStreamableGeometryComponent>(c))->GetMesh());
 
+		UStreamableGeometryComponent *geometryComponent = static_cast<UStreamableGeometryComponent*>(c);
+		AddNode(geometryComponent->GetMesh());
+		
+		//Add material, and textures, for streaming to clients.
+		geometrySource->AddMaterial(geometryComponent);
 	}
 }
 
