@@ -85,8 +85,9 @@ public:
 
 enum ERemotePlaySessionChannel
 {
-	RPCH_Control = 0,
-	RPCH_HeadPose = 1,
+	RPCH_HANDSHAKE = 0,
+	RPCH_Control = 1,
+	RPCH_HeadPose = 2,
 	RPCH_NumChannels,
 };
 
@@ -163,6 +164,7 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 		{
 			RemotePlayContext->NetworkPipeline->Process();
 		}
+
 		GeometryStreamingService.Tick();
 	}
 	else
@@ -321,26 +323,6 @@ void URemotePlaySessionComponent::StartStreaming()
 	const auto& EncodeParams = CaptureComponent->EncodeParams;
 	const int32 StreamingPort = ServerHost->address.port + 1;
 	Client_SendCommand(FString::Printf(TEXT("v %d %d %d"), StreamingPort, EncodeParams.FrameWidth, EncodeParams.FrameHeight));
-	
-	CaptureComponent->StartStreaming(RemotePlayContext);
-	const URemotePlaySettings *RemotePlaySettings = GetDefault<URemotePlaySettings>();
-	if (RemotePlaySettings&&RemotePlaySettings->StreamGeometry)
-	{
-		GeometryStreamingService.StartStreaming(GetWorld(), IRemotePlay::Get().GetGeometrySource(), RemotePlayContext);
-	}
-
-	if (!RemotePlayContext->NetworkPipeline.IsValid())
-	{
-		FRemotePlayNetworkParameters NetworkParams;
-		NetworkParams.RemoteIP = Client_GetIPAddress();
-		NetworkParams.LocalPort = StreamingPort;
-		NetworkParams.RemotePort = NetworkParams.LocalPort + 1;
-
-		RemotePlayContext->NetworkPipeline.Reset(new FNetworkPipeline);
-		RemotePlayContext->NetworkPipeline->Initialize(NetworkParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get(), RemotePlayContext->GeometryQueue.Get());
-	}
-
-	UE_LOG(LogRemotePlay, Log, TEXT("RemotePlay: Started streaming to %s:%d"), *Client_GetIPAddress(), StreamingPort);
 }
 
 void URemotePlaySessionComponent::ReleasePlayerPawn()
@@ -407,6 +389,33 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 {
 	switch (Event.channelID)
 	{
+	case RPCH_HANDSHAKE:
+		//Delay the actual start of streaming until we receive a confirmation from the client that they are ready.
+	{
+		URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
+		const int32 StreamingPort = ServerHost->address.port + 1;
+
+		CaptureComponent->StartStreaming(RemotePlayContext);
+		const URemotePlaySettings *RemotePlaySettings = GetDefault<URemotePlaySettings>();
+		if(RemotePlaySettings&&RemotePlaySettings->StreamGeometry)
+		{
+			GeometryStreamingService.StartStreaming(GetWorld(), IRemotePlay::Get().GetGeometrySource(), RemotePlayContext);
+		}
+
+		if(!RemotePlayContext->NetworkPipeline.IsValid())
+		{
+			FRemotePlayNetworkParameters NetworkParams;
+			NetworkParams.RemoteIP = Client_GetIPAddress();
+			NetworkParams.LocalPort = StreamingPort;
+			NetworkParams.RemotePort = NetworkParams.LocalPort + 1;
+
+			RemotePlayContext->NetworkPipeline.Reset(new FNetworkPipeline);
+			RemotePlayContext->NetworkPipeline->Initialize(NetworkParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get(), RemotePlayContext->GeometryQueue.Get());
+		}
+
+		UE_LOG(LogRemotePlay, Log, TEXT("RemotePlay: Started streaming to %s:%d"), *Client_GetIPAddress(), StreamingPort);
+		break;
+	}
 	case RPCH_Control:
 		RecvInput(Event.packet);
 		break;

@@ -2,6 +2,7 @@
 #include <libavstream/geometry/mesh_interface.hpp>
 #include <map>
 #include <unordered_map>
+#include <CoreMinimal.h>
 
 /*! The Geometry Source keeps all the geometry ready for streaming, and returns geometry
 	data in glTF-style when asked for.
@@ -13,14 +14,17 @@ class GeometrySource : public avs::GeometrySourceBackendInterface
 public:
 	GeometrySource();
 	~GeometrySource();
-	avs::uid AddMesh(UStaticMesh *StaticMesh);
-	avs::uid AddStreamableActor(class UStreamableGeometryComponent *StreamableGeometryComponent);
+	avs::uid AddMesh(class UMeshComponent *MeshComponent);
+	avs::uid AddStreamableMeshComponent(UMeshComponent *MeshComponent);
+	avs::uid CreateNode(const struct FTransform& transform, avs::uid data_uid, avs::NodeDataType data_type);
+	void AddMaterial(class UStreamableGeometryComponent *StreamableGeometryComponent);
 
 	void Tick();
 
 	// Inherited via GeometrySourceBackendInterface
-	virtual size_t getNodeCount() const override;
-	virtual avs::uid getNodeUid(size_t index) const override;
+	virtual std::vector<avs::uid> getNodeUIDs() const override;
+	virtual bool getNode(avs::uid node_uid, std::shared_ptr<avs::DataNode> & outNode) const override;
+	virtual std::map<avs::uid, std::shared_ptr<avs::DataNode>>& getNodes() const override;
 
 	virtual size_t getMeshCount() const override;
 	virtual avs::uid getMeshUid(size_t index) const override;
@@ -37,19 +41,19 @@ public:
 	virtual bool getMaterial(avs::uid material_uid, avs::Material & outMaterial) const override;
 protected:
 	struct Mesh;
-	TArray<UStreamableGeometryComponent*> ToAdd;
+
 	struct GeometryInstance
 	{
 		class UStreamableGeometryComponent* Geometry;
 		//unsigned long long SentFrame;
 	};
 	mutable TMap<avs::uid, TSharedPtr<Mesh>> Meshes;
-	mutable TMap<avs::uid, TSharedPtr<GeometryInstance> > GeometryInstances;
 	// We store buffers, views and accessors in one big list. But we should
 	// PROBABLY refcount these so that unused ones can be cleared.
 	mutable std::map<avs::uid, avs::Accessor> accessors;
 	mutable std::map<avs::uid, avs::BufferView> bufferViews;
 	mutable std::map<avs::uid, avs::GeometryBuffer> geometryBuffers;
+	mutable std::map<avs::uid, std::shared_ptr<avs::DataNode>> nodes;
 
 	std::unordered_map<UTexture*, avs::uid> processedTextures; //Textures we have already stored in the GeometrySource; the pointer points to the uid of the stored texture information.
 	std::vector<UMaterialInterface*> processedMaterials; //Materials we have already stored in the GeometrySource.
@@ -59,7 +63,7 @@ protected:
 
 	void PrepareMesh(Mesh &m);
 	void SendMesh(Mesh &m);
-	bool InitMesh(Mesh *mesh, struct FStaticMeshLODResources &lod) const;
+	bool InitMesh(Mesh *mesh, uint8 lodIndex) const;
 
 	//Determines if the texture has already been stored, and pulls apart the texture data and stores it in a avs::Texture.
 	//	texture : UTexture to pull the texture data from.
