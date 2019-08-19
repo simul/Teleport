@@ -33,7 +33,6 @@ public:
 	void StopStreaming();
 	void Tick();
 
-	
 
 	// avs::GeometryTransferState
 	size_t getNumRequiredNodes() const;
@@ -52,4 +51,24 @@ private:
 	std::unordered_map<avs::uid, bool> sentResources; //Tracks the resources sent to the user; <resource identifier, doesClientHave>.
 
 	avs::uid AddNode(class UMeshComponent* component);
+	
+	bool hasMesh(avs::uid mesh_uid) const override
+	{
+		return false;
+	}
+
+	virtual bool hasTexture(avs::uid texture_uid) const override
+	{
+		return false;
+	}
+
+	virtual bool hasMaterial(avs::uid material_uid) const
+	{
+		return false;
+	}
+
+	virtual bool hasNodesToSend() const
+	{
+		return true;
+	}
 };

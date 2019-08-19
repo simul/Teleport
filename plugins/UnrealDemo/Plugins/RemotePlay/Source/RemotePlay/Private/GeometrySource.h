@@ -14,6 +14,8 @@ class GeometrySource : public avs::GeometrySourceBackendInterface
 public:
 	GeometrySource();
 	~GeometrySource();
+	void clearData();
+
 	avs::uid AddMesh(class UMeshComponent *MeshComponent);
 	avs::uid AddStreamableMeshComponent(UMeshComponent *MeshComponent);
 	avs::uid CreateNode(const struct FTransform& transform, avs::uid data_uid, avs::NodeDataType data_type);
@@ -39,6 +41,8 @@ public:
 
 	virtual std::vector<avs::uid> getMaterialUIDs() const override;
 	virtual bool getMaterial(avs::uid material_uid, avs::Material & outMaterial) const override;
+
+
 protected:
 	struct Mesh;
 

@@ -161,8 +161,15 @@ GeometrySource::GeometrySource()
 
 GeometrySource::~GeometrySource()
 {
+	clearData();
+}
+
+void GeometrySource::clearData()
+{
 	Meshes.Empty();
 	nodes.clear();
+	textures.clear();
+	materials.clear();
 }
 
 // By adding a m, we also add a pipe, including the InputMesh, which must be configured with the appropriate 

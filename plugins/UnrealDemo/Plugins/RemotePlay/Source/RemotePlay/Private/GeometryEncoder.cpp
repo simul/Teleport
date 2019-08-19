@@ -13,9 +13,9 @@ GeometryEncoder::~GeometryEncoder()
 
 unsigned char GeometryEncoder::GALU_code[] = { 0x01,0x00,0x80,0xFF };
 
-avs::Result GeometryEncoder::encode(uint32_t timestamp,
-	avs::GeometrySourceBackendInterface * src,
-	avs::GeometryRequesterBackendInterface *req)
+avs::Result GeometryEncoder::encode(uint32_t timestamp
+	, avs::GeometrySourceBackendInterface * src
+	, avs::GeometryRequesterBackendInterface *req)
 {
 	buffer.clear();
 	// The source backend will give us the data to encode.
@@ -94,10 +94,13 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp,
 		encodeTextures(src, req, textureUIDs);
 	}
 
-	buffer.push_back(GALU_code[0]);
-	buffer.push_back(GALU_code[1]);
-	buffer.push_back(GALU_code[2]);
-	buffer.push_back(GALU_code[3]);
+	if (buffer.size() >= 4)
+	{
+		buffer.push_back(GALU_code[0]);
+		buffer.push_back(GALU_code[1]);
+		buffer.push_back(GALU_code[2]);
+		buffer.push_back(GALU_code[3]);
+	}
 
 	return avs::Result::OK;
 }
@@ -125,6 +128,7 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 	put(avs::GeometryPayloadType::Mesh);
 
 	put(missingUIDs.size());
+
 	std::vector<avs::uid> accessors;
 	for(size_t i = 0; i < missingUIDs.size(); i++)
 	{
