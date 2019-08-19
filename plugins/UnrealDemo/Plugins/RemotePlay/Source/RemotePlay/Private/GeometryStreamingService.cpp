@@ -84,6 +84,10 @@ avs::uid FGeometryStreamingService::AddNode(UMeshComponent* component)
 
 void FGeometryStreamingService::StopStreaming()
 { 
+	if (geometrySource != nullptr)
+	{
+		geometrySource->clearData();
+	}
 	if(avsPipeline)
 		avsPipeline->deconfigure();
 	if (avsGeometrySource)

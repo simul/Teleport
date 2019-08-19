@@ -55,4 +55,9 @@ private:
 	{
 		return false;
 	}
+
+	virtual bool hasNodesToSend() const
+	{
+		return true;
+	}
 };
