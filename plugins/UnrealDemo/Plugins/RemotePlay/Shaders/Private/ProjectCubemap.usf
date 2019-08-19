@@ -14,7 +14,9 @@ RWTexture2D<float4> RWOutputColorTexture;
 
 #if WRITE_DEPTH
 RWTexture2D<float> RWOutputDepthTexture;
-
+#if DEPTH_STACKED
+uint DepthPos;
+#endif
 #if WRITE_DEPTH_LINEAR
 float2 WorldZToDeviceZTransform;
 float ConvertToDeviceZ(float SceneDepth)
@@ -30,8 +32,11 @@ void MainCS(uint2 ThreadID : SV_DispatchThreadID)
 {
 	uint OutputW, OutputH;
 	RWOutputColorTexture.GetDimensions(OutputW, OutputH);
-
-	float2 UV   = float2(ThreadID.x / float(OutputW), ThreadID.y / float(OutputH));
+#if DEPTH_STACKED
+	float2 UV = float2(ThreadID.x / float(OutputW), ThreadID.y / float(DepthPos));
+#else
+	float2 UV  = float2(ThreadID.x / float(OutputW), ThreadID.y / float(OutputH));
+#endif
 	float Phi   = UV.x * TwoPI;
 	float Theta = UV.y * PI;
 
@@ -40,16 +45,27 @@ void MainCS(uint2 ThreadID : SV_DispatchThreadID)
 		sin(Theta) * sin(Phi),
 		cos(Theta)
 	);
-
 	float4 SceneColor = InputCubeMap.SampleLevel(DefaultSampler, CubeSampleVec, 0);
-	RWOutputColorTexture[int2(ThreadID.x, ThreadID.y)] = PrepareTonemap(SceneColor);
-
 #if WRITE_DEPTH
-#if WRITE_DEPTH_LINEAR
+#if 0//WRITE_DEPTH_LINEAR
 	float DepthValue = ConvertToDeviceZ(SceneColor.a);
 #else
-	float DepthValue = SceneColor.a;
+	float DepthValue = SceneColor.a / 100.0 / 50.0;
 #endif // WRITE_DEPTH_LINEAR
+#else
+	float DepthValue = 0.0;
+#endif
+
+	RWOutputColorTexture[int2(ThreadID.x, ThreadID.y)] = float4(PrepareTonemap(SceneColor).rgb, 0);
+#if DEPTH_STACKED
+	//DepthValue goes from 0 to 1.
+	float4 d4 = float4(DepthValue, DepthValue, DepthValue, DepthValue);
+	RWOutputColorTexture[int2(ThreadID.x/2,ThreadID.y/2+ DepthPos)] = d4;
+	RWOutputColorTexture[int2(OutputW/2+ThreadID.x / 2, ThreadID.y / 2 + DepthPos)] = d4;;
+#endif
+
+
+#if WRITE_DEPTH_TEXTURE
 	RWOutputDepthTexture[int2(ThreadID.x, ThreadID.y)] = DepthValue;
 #endif // WRITE_DEPTH
 }

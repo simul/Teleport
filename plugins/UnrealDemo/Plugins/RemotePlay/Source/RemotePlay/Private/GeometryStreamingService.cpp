@@ -51,16 +51,22 @@ void FGeometryStreamingService::StartStreaming(UWorld* World, GeometrySource *ge
 		auto c = actor->GetComponentByClass(UStreamableGeometryComponent::StaticClass());
 		if (!c)
 			continue;
-		AddNode((Cast<UStreamableGeometryComponent>(c))->GetMesh());
+
+		UStreamableGeometryComponent *geometryComponent = static_cast<UStreamableGeometryComponent*>(c);
+		AddNode(geometryComponent->GetMesh());
+		
+		//Add material, and textures, for streaming to clients.
+		geometrySource->AddMaterial(geometryComponent);
 	}
 }
 
 avs::uid FGeometryStreamingService::AddNode(UMeshComponent* component)
 {
-	auto mesh_uid = geometrySource->AddStreamableMeshComponent(component);
+	avs::uid mesh_uid = geometrySource->AddStreamableMeshComponent(component);
 
-	auto node_uid = geometrySource->CreateNode(component->GetRelativeTransform(), mesh_uid, avs::NodeDataType::Mesh);
-	auto node = geometrySource->getNode(node_uid);
+	avs::uid node_uid = geometrySource->CreateNode(component->GetRelativeTransform(), mesh_uid, avs::NodeDataType::Mesh);
+	std::shared_ptr<avs::DataNode> node;
+	geometrySource->getNode(node_uid, node);
 
 	TArray<USceneComponent*> children;
 	component->GetChildrenComponents(false, children);
@@ -96,6 +102,8 @@ void FGeometryStreamingService::StopStreaming()
 		avsGeometryEncoder->deconfigure();
 	avsPipeline.Reset();
 	RemotePlayContext = nullptr;
+
+	sentResources.clear();
 }
  
 void FGeometryStreamingService::Tick()
@@ -113,4 +121,21 @@ void FGeometryStreamingService::Tick()
 	//geometrySource->
 	if(avsPipeline)
 		avsPipeline->process();
+}
+
+bool FGeometryStreamingService::HasResource(avs::uid resource_uid) const
+{
+	///We need clientside to handshake when it is ready to receive payloads of resources.
+	//return false;
+	return sentResources.find(resource_uid) != sentResources.end() && sentResources.at(resource_uid) == true;
+}
+
+void FGeometryStreamingService::EncodedResource(avs::uid resource_uid)
+{
+	sentResources[resource_uid] = true;
+}
+
+void FGeometryStreamingService::RequestResource(avs::uid resource_uid)
+{
+	sentResources[resource_uid] = false;
 }

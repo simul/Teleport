@@ -20,15 +20,21 @@ URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
 	bCaptureEveryFrame = false;
-	bCaptureOnMovement = false;
+	bCaptureOnMovement = false; 
 
 	EncodeParams.FrameWidth = 3840;
 	EncodeParams.FrameHeight = 1920;
+
+	EncodeParams.DepthWidth = 1920;
+	EncodeParams.DepthHeight = 960;
+
 	EncodeParams.IDRInterval = 120;
-	EncodeParams.TargetFPS = 60;
+	EncodeParams.TargetFPS = 60; 
 	EncodeParams.bDeferOutput = true;
-	EncodeParams.bLinearDepth = false;
-	EncodeParams.MaxDepth = 10000.0f;
+	EncodeParams.bLinearDepth = true;
+	EncodeParams.bWriteDepthTexture = false;
+	EncodeParams.bStackDepth = true;
+	EncodeParams.MaxDepth = 10000.0f; 
 }
 
 URemotePlayCaptureComponent::~URemotePlayCaptureComponent()
@@ -119,7 +125,7 @@ void URemotePlayCaptureComponent::OnViewportDrawn()
 			if (!u)
 				u = RemotePlaySettings->VideoEncodeFrequency;
 			else
-				return;
+				return; 
 		}
 		RemotePlayContext->EncodePipeline->EncodeFrame(GetWorld()->Scene, TextureTarget);
 	}

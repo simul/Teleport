@@ -19,13 +19,13 @@ public:
 	avs::uid AddMesh(class UMeshComponent *MeshComponent);
 	avs::uid AddStreamableMeshComponent(UMeshComponent *MeshComponent);
 	avs::uid CreateNode(const struct FTransform& transform, avs::uid data_uid, avs::NodeDataType data_type);
+	void AddMaterial(class UStreamableGeometryComponent *StreamableGeometryComponent);
 
 	void Tick();
 
 	// Inherited via GeometrySourceBackendInterface
-	virtual size_t getNodeCount() const override;
-	virtual avs::uid getNodeUid(size_t index) const override;
-	virtual std::shared_ptr<avs::DataNode> getNode(avs::uid node_uid) const override;
+	virtual std::vector<avs::uid> getNodeUIDs() const override;
+	virtual bool getNode(avs::uid node_uid, std::shared_ptr<avs::DataNode> & outNode) const override;
 	virtual std::map<avs::uid, std::shared_ptr<avs::DataNode>>& getNodes() const override;
 
 	virtual size_t getMeshCount() const override;

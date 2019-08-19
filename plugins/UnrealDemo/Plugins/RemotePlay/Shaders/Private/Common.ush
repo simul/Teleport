@@ -9,14 +9,14 @@ static const float TonemapPureWhite = 1.0;
 
 // Reinhard tonemapping operator with gamma correction.
 // TODO: Switch to filmic tonemapping ala Uncharted 2.
-float4 PrepareTonemap(float4 SceneColor)
+float3 PrepareTonemap(float4 SceneColor)
 {
 	const float PureWhiteSq = TonemapPureWhite * TonemapPureWhite;
 	float Luminance = dot(SceneColor.rgb, float3(0.2126, 0.7152, 0.0722));
 
 	float MappedLuminance = (Luminance * (1.0 + Luminance/PureWhiteSq)) / (1.0 + Luminance);
 	float3 MappedColor = (MappedLuminance / Luminance) * SceneColor.rgb;
-	return SceneColor;
+	return float3(MappedColor.rgb);
 }
 
 float4 Prepare(float4 SceneColour)
