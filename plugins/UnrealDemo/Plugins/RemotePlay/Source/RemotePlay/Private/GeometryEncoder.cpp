@@ -1,5 +1,7 @@
 #include "GeometryEncoder.h"
 
+#include <algorithm>
+
 #include "libavstream/common.hpp"
 
 GeometryEncoder::GeometryEncoder()
@@ -211,49 +213,8 @@ avs::Result GeometryEncoder::encodeTextures(avs::GeometrySourceBackendInterface 
 
 	//Push amount of textures we are sending.
 	put(missingUIDs.size());
-	for(avs::uid uid : missingUIDs)
-	{
-		avs::Texture outTexture;
 
-		if(src->getTexture(uid, outTexture))
-		{
-			//Push identifier.
-			put(uid);
-
-			size_t nameLength = outTexture.name.length();
-
-			//Push name length.
-			put(nameLength);
-			//Push name.
-			put((uint8_t*)outTexture.name.data(), nameLength);
-
-			//Push dimensions.
-			put(outTexture.width);
-			put(outTexture.height);
-
-			//Push additional information.
-			put(outTexture.depth);
-			put(outTexture.bytesPerPixel);
-			put(outTexture.arrayCount);
-			put(outTexture.mipCount);
-
-			//Push format.
-			put(outTexture.format);
-
-			//Push size (channels * width * height)
-			size_t textureSize = 4 * outTexture.width * outTexture.height;
-			put(textureSize);
-
-			//Push pixel data.
-			put(outTexture.data, textureSize);
-
-			//Push sampler identifier.
-			put(outTexture.sampler_uid);
-
-			//Flag we have encoded the texture.
-			req->EncodedResource(uid);
-		}
-	}
+	encodeTexturesBackend(src, req, missingUIDs);
 
 	return avs::Result::OK;
 }
@@ -317,7 +278,76 @@ avs::Result GeometryEncoder::encodeMaterials(avs::GeometrySourceBackendInterface
 			put(outMaterial.emissiveFactor.y);
 			put(outMaterial.emissiveFactor.z);
 
+			//UIDs used by textures in material.
+			std::vector<avs::uid> materialTexture_uids =
+			{
+				outMaterial.pbrMetallicRoughness.baseColorTexture.index,
+				outMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index,
+				outMaterial.normalTexture.index,
+				outMaterial.occlusionTexture.index,
+				outMaterial.emissiveTexture.index
+			};
+			//Remove 0s from vector.
+			materialTexture_uids.erase(std::remove(materialTexture_uids.begin(), materialTexture_uids.end(), 0), materialTexture_uids.end());
+			
+			//Don't send what we have already sent.
+			GetNewUIDs(materialTexture_uids, req);
+
+			//Push amount of textures we are sending.
+			put(materialTexture_uids.size());
+			//Push textures.
+			encodeTexturesBackend(src, req, materialTexture_uids);
+
 			//Flag we have encoded the material.
+			req->EncodedResource(uid);
+		}
+	}
+
+	return avs::Result::OK;
+}
+
+avs::Result GeometryEncoder::encodeTexturesBackend(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req, std::vector<avs::uid> missingUIDs)
+{
+	for(avs::uid uid : missingUIDs)
+	{
+		avs::Texture outTexture;
+
+		if(src->getTexture(uid, outTexture))
+		{
+			//Push identifier.
+			put(uid);
+
+			size_t nameLength = outTexture.name.length();
+
+			//Push name length.
+			put(nameLength);
+			//Push name.
+			put((uint8_t*)outTexture.name.data(), nameLength);
+
+			//Push dimensions.
+			put(outTexture.width);
+			put(outTexture.height);
+
+			//Push additional information.
+			put(outTexture.depth);
+			put(outTexture.bytesPerPixel);
+			put(outTexture.arrayCount);
+			put(outTexture.mipCount);
+
+			//Push format.
+			put(outTexture.format);
+
+			//Push size (width * height * channels)
+			size_t textureSize = outTexture.width * outTexture.height * (1 ? outTexture.format == avs::TextureFormat::G8 : 4);
+			put(textureSize);
+
+			//Push pixel data.
+			put(outTexture.data, textureSize);
+
+			//Push sampler identifier.
+			put(outTexture.sampler_uid);
+
+			//Flag we have encoded the texture.
 			req->EncodedResource(uid);
 		}
 	}

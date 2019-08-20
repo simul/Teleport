@@ -371,6 +371,9 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 		uint32_t mipCount = textureSource.GetNumMips();
 		avs::TextureFormat format;
 
+		//Width * Height * Channels
+		std::size_t texSize = baseMip.SizeX * baseMip.SizeY * 4;
+
 		switch(unrealFormat)
 		{
 			case ETextureSourceFormat::TSF_Invalid:
@@ -378,6 +381,8 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 				break;
 			case ETextureSourceFormat::TSF_G8:
 				format = avs::TextureFormat::G8;
+				//Unique amount of channels.
+				texSize = baseMip.SizeX * baseMip.SizeY * 1;
 				break;
 			case ETextureSourceFormat::TSF_BGRA8:
 				format = avs::TextureFormat::BGRA8;
@@ -405,8 +410,6 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 		TArray<uint8> mipData;
 		textureSource.GetMipData(mipData, 0);		
 
-		//Channels * Width * Height
-		std::size_t texSize = 4 * baseMip.SizeX * baseMip.SizeY;
 		unsigned char* rawPixelData = new unsigned char[texSize];
 		memcpy(rawPixelData, mipData.GetData(), texSize);		
 
