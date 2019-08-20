@@ -11,13 +11,34 @@ GeometryEncoder::~GeometryEncoder()
 {
 }
 
+//Clear a passed vector of UIDs that are believed to have already been sent to the client.
+//	outUIDs : Vector of all UIDs of resources that could potentially need to be sent across.
+//	req : Object that defines what needs to transfered across.
+//Returns the size of the vector after having UIDs of already sent resources removed, and puts the new UIDs in the outUIDs vector.
+size_t GetNewUIDs(std::vector<avs::uid> & outUIDs, avs::GeometryRequesterBackendInterface * req)
+{
+	//Remove uids the requester has.
+	for(auto it = outUIDs.begin(); it != outUIDs.end();)
+	{
+		if(req->HasResource(*it))
+		{
+			it = outUIDs.erase(it);
+		}
+		else
+		{
+			++it;
+		}
+	}
+
+	return outUIDs.size();
+}
+
 unsigned char GeometryEncoder::GALU_code[] = { 0x01,0x00,0x80,0xFF };
 
-avs::Result GeometryEncoder::encode(uint32_t timestamp
-	, avs::GeometrySourceBackendInterface * src
-	, avs::GeometryRequesterBackendInterface *req)
+avs::Result GeometryEncoder::encode(uint32_t timestamp, avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req)
 {
 	buffer.clear();
+
 	// The source backend will give us the data to encode.
 	// What data it provides depends on the contents of the avs::GeometryRequesterBackendInterface object.
 	size_t numMeshes = src->getMeshCount();
@@ -27,80 +48,35 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp
 		avs::uid uid = src->getMeshUid(i);
 		if(!req->HasResource(uid))
 			meshUIDs.push_back(uid);
-	}
-
-	std::vector<avs::uid> nodeUIDs = src->getNodeUIDs();
-
-	//Remove uids the requester has.
-	for(auto it = nodeUIDs.begin(); it != nodeUIDs.end();)
-	{
-		if(req->HasResource(*it))
-		{
-			it = nodeUIDs.erase(it);
-		}
-		else
-		{
-			++it;
-		}
-	}
-
-	std::vector<avs::uid> materialUIDs = src->getMaterialUIDs();
-
-	//Remove uids the requester has.
-	for(auto it = materialUIDs.begin(); it != materialUIDs.end();)
-	{
-		if(req->HasResource(*it))
-		{
-			it = materialUIDs.erase(it);
-		}
-		else
-		{
-			++it;
-		}
-	}
-
-	std::vector<avs::uid> textureUIDs = src->getTextureUIDs();
-
-	//Remove texture uids the requester has.
-	for(auto it = textureUIDs.begin(); it != textureUIDs.end();)
-	{
-		if(req->HasResource(*it))
-		{
-			it = textureUIDs.erase(it);
-		}
-		else
-		{
-			++it;
-		}
-	}
+	}	
 
 	if(meshUIDs.size() != 0)
 	{
 		encodeMeshes(src, req, meshUIDs);
 	}
 
-	if(nodeUIDs.size() != 0)
+	std::vector<avs::uid> nodeUIDs = src->getNodeUIDs();
+	if(GetNewUIDs(nodeUIDs, req) != 0)
 	{
 		encodeNodes(src, req, nodeUIDs);
 	}
 	
-	if(materialUIDs.size() != 0)
+	std::vector<avs::uid> materialUIDs = src->getMaterialUIDs();
+	if(GetNewUIDs(materialUIDs, req) != 0)
 	{
 		encodeMaterials(src, req, materialUIDs);
 	}
 
-	if(textureUIDs.size() != 0)
+	std::vector<avs::uid> textureUIDs = src->getTextureUIDs();
+	if(GetNewUIDs(textureUIDs, req) != 0)
 	{
 		encodeTextures(src, req, textureUIDs);
 	}
 
-	if (buffer.size() >= 4)
-	{
-		buffer.push_back(GALU_code[0]);
-		buffer.push_back(GALU_code[1]);
-		buffer.push_back(GALU_code[2]);
-		buffer.push_back(GALU_code[3]);
-	}
+	buffer.push_back(GALU_code[0]);
+	buffer.push_back(GALU_code[1]);
+	buffer.push_back(GALU_code[2]);
+	buffer.push_back(GALU_code[3]);
 
 	return avs::Result::OK;
 }

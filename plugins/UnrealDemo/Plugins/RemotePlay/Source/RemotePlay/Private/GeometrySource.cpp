@@ -167,7 +167,15 @@ GeometrySource::~GeometrySource()
 void GeometrySource::clearData()
 {
 	Meshes.Empty();
+	accessors.clear();
+	bufferViews.clear();
+	geometryBuffers.clear();
+
 	nodes.clear();
+
+	processedTextures.clear();
+	processedMaterials.clear();
+
 	textures.clear();
 	materials.clear();
 }
