@@ -26,6 +26,21 @@ struct GeometrySource::Mesh
 	std::vector<avs::Attribute> attributes;
 };
 
+GeometrySource::GeometrySource()
+{
+
+}
+
+GeometrySource::~GeometrySource()
+{
+	clearData();
+}
+
+void GeometrySource::Initialize()
+{
+	rootNodeUid = CreateNode(FTransform::Identity, -1, avs::NodeDataType::Scene);
+}
+
 avs::AttributeSemantic IndexToSemantic(int index)
 {
 	switch (index)
@@ -155,15 +170,6 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 	return true;
 }
 
-GeometrySource::GeometrySource()
-{
-}
-
-GeometrySource::~GeometrySource()
-{
-	clearData();
-}
-
 void GeometrySource::clearData()
 {
 	Meshes.Empty();
@@ -238,6 +244,16 @@ avs::uid GeometrySource::CreateNode(const FTransform& transform, avs::uid data_u
 	node->data_type = data_type;
 	nodes[uid] = node;
 	return uid;
+}
+
+avs::uid GeometrySource::GetRootNodeUid()
+{
+	return rootNodeUid;
+}
+
+bool GeometrySource::GetRootNode(std::shared_ptr<avs::DataNode>& node)
+{
+	return getNode(rootNodeUid, node);
 }
 
 void GeometrySource::AddMaterial(UStreamableGeometryComponent * StreamableGeometryComponent)
