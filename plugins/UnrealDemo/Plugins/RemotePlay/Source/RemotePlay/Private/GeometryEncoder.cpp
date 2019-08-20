@@ -54,12 +54,6 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp, avs::GeometrySourceBacke
 	{
 		encodeMeshes(src, req, meshUIDs);
 	}
-
-	std::vector<avs::uid> nodeUIDs = src->getNodeUIDs();
-	if(GetNewUIDs(nodeUIDs, req) != 0)
-	{
-		encodeNodes(src, req, nodeUIDs);
-	}
 	
 	std::vector<avs::uid> materialUIDs = src->getMaterialUIDs();
 	if(GetNewUIDs(materialUIDs, req) != 0)
@@ -73,6 +67,12 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp, avs::GeometrySourceBacke
 		encodeTextures(src, req, textureUIDs);
 	}
 
+	std::vector<avs::uid> nodeUIDs = src->getNodeUIDs();
+	if(GetNewUIDs(nodeUIDs, req) != 0)
+	{
+		encodeNodes(src, req, nodeUIDs);
+	}
+	
 	buffer.push_back(GALU_code[0]);
 	buffer.push_back(GALU_code[1]);
 	buffer.push_back(GALU_code[2]);
