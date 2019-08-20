@@ -46,17 +46,54 @@ void FGeometryStreamingService::StartStreaming(UWorld* World, GeometrySource *ge
 	// These should be disposed of when they move out of range.
 	TArray<AActor*> GSActors;
 	UGameplayStatics::GetAllActorsOfClass(World, AStaticMeshActor::StaticClass(), GSActors);
-	for (auto i : GSActors)
+	for (auto actor : GSActors)
 	{
-		auto j = i->GetComponentByClass(UStreamableGeometryComponent::StaticClass());
-		if (!j)
+		auto c = actor->GetComponentByClass(UStreamableGeometryComponent::StaticClass());
+		if (!c)
 			continue;
-		geometrySource->AddStreamableActor((UStreamableGeometryComponent*)(j));
+
+		UStreamableGeometryComponent *geometryComponent = static_cast<UStreamableGeometryComponent*>(c);
+		AddNode(geometryComponent->GetMesh());
+		
+		//Add material, and textures, for streaming to clients.
+		geometrySource->AddMaterial(geometryComponent);
 	}
 }
- 
+
+avs::uid FGeometryStreamingService::AddNode(UMeshComponent* component)
+{
+	avs::uid mesh_uid = geometrySource->AddStreamableMeshComponent(component);
+
+	avs::uid node_uid = geometrySource->CreateNode(component->GetRelativeTransform(), mesh_uid, avs::NodeDataType::Mesh);
+	std::shared_ptr<avs::DataNode> node;
+	geometrySource->getNode(node_uid, node);
+
+	TArray<USceneComponent*> children;
+	component->GetChildrenComponents(false, children);
+
+	TArray<UMeshComponent*> meshChildren;
+	for (auto child : children)
+	{
+		if (child->GetClass()->IsChildOf(UMeshComponent::StaticClass()))
+		{
+			meshChildren.Add(Cast<UMeshComponent>(child));
+		}
+	}
+
+	for (auto child : meshChildren)
+	{
+		node->childrenUids.push_back(AddNode(child));
+	}
+
+	return node_uid;
+}
+
 void FGeometryStreamingService::StopStreaming()
 { 
+	if (geometrySource != nullptr)
+	{
+		geometrySource->clearData();
+	}
 	if(avsPipeline)
 		avsPipeline->deconfigure();
 	if (avsGeometrySource)
@@ -65,6 +102,8 @@ void FGeometryStreamingService::StopStreaming()
 		avsGeometryEncoder->deconfigure();
 	avsPipeline.Reset();
 	RemotePlayContext = nullptr;
+
+	sentResources.clear();
 }
  
 void FGeometryStreamingService::Tick()
@@ -82,4 +121,21 @@ void FGeometryStreamingService::Tick()
 	//geometrySource->
 	if(avsPipeline)
 		avsPipeline->process();
+}
+
+bool FGeometryStreamingService::HasResource(avs::uid resource_uid) const
+{
+	///We need clientside to handshake when it is ready to receive payloads of resources.
+	//return false;
+	return sentResources.find(resource_uid) != sentResources.end() && sentResources.at(resource_uid) == true;
+}
+
+void FGeometryStreamingService::EncodedResource(avs::uid resource_uid)
+{
+	sentResources[resource_uid] = true;
+}
+
+void FGeometryStreamingService::RequestResource(avs::uid resource_uid)
+{
+	sentResources[resource_uid] = false;
 }

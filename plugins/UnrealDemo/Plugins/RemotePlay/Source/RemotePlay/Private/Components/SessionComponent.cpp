@@ -85,8 +85,9 @@ public:
 
 enum ERemotePlaySessionChannel
 {
-	RPCH_Control = 0,
-	RPCH_HeadPose = 1,
+	RPCH_HANDSHAKE = 0,
+	RPCH_Control = 1,
+	RPCH_HeadPose = 2,
 	RPCH_NumChannels,
 };
 
@@ -163,6 +164,7 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 		{
 			RemotePlayContext->NetworkPipeline->Process();
 		}
+
 		GeometryStreamingService.Tick();
 	}
 	else
@@ -300,6 +302,10 @@ void URemotePlaySessionComponent::StartStreaming()
 	RemotePlayContext->ColorQueue.Reset(new avs::Queue);
 	RemotePlayContext->ColorQueue->configure(16);
 
+#if 0
+
+	// Roderick: with consumer GPU's we can't have more than one video stream.
+	// So we're encoding depth as alpha: no need for a separate source.
 	if (CaptureComponent->CaptureSource == ESceneCaptureSource::SCS_SceneColorSceneDepth)
 	{
 		RemotePlayContext->bCaptureDepth = true;
@@ -307,6 +313,7 @@ void URemotePlaySessionComponent::StartStreaming()
 		RemotePlayContext->DepthQueue->configure(16); 
 	}
 	else
+#endif
 	{
 		RemotePlayContext->bCaptureDepth = false;
 	}
@@ -315,27 +322,14 @@ void URemotePlaySessionComponent::StartStreaming()
 
 	const auto& EncodeParams = CaptureComponent->EncodeParams;
 	const int32 StreamingPort = ServerHost->address.port + 1;
-	Client_SendCommand(FString::Printf(TEXT("v %d %d %d"), StreamingPort, EncodeParams.FrameWidth, EncodeParams.FrameHeight));
-	
-	CaptureComponent->StartStreaming(RemotePlayContext);
-	const URemotePlaySettings *RemotePlaySettings = GetDefault<URemotePlaySettings>();
-	if (RemotePlaySettings&&RemotePlaySettings->StreamGeometry)
-	{
-		GeometryStreamingService.StartStreaming(GetWorld(), IRemotePlay::Get().GetGeometrySource(), RemotePlayContext);
-	}
-
-	if (!RemotePlayContext->NetworkPipeline.IsValid())
-	{
-		FRemotePlayNetworkParameters NetworkParams;
-		NetworkParams.RemoteIP = Client_GetIPAddress();
-		NetworkParams.LocalPort = StreamingPort;
-		NetworkParams.RemotePort = NetworkParams.LocalPort + 1;
-
-		RemotePlayContext->NetworkPipeline.Reset(new FNetworkPipeline);
-		RemotePlayContext->NetworkPipeline->Initialize(NetworkParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get(), RemotePlayContext->GeometryQueue.Get());
-	}
-
-	UE_LOG(LogRemotePlay, Log, TEXT("RemotePlay: Started streaming to %s:%d"), *Client_GetIPAddress(), StreamingPort);
+	avs::SetupCommand setupCommand;
+	setupCommand.video_width = EncodeParams.FrameWidth;
+	setupCommand.video_height = EncodeParams.FrameHeight;
+	setupCommand.depth_height = EncodeParams.DepthHeight;
+	setupCommand.depth_width = EncodeParams.DepthWidth;
+	setupCommand.port = StreamingPort;
+	Client_SendCommand(setupCommand);
+	//Client_SendCommand(FString::Printf(TEXT("v %d %d %d"), StreamingPort, EncodeParams.FrameWidth, EncodeParams.FrameHeight));
 }
 
 void URemotePlaySessionComponent::ReleasePlayerPawn()
@@ -402,6 +396,33 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 {
 	switch (Event.channelID)
 	{
+	case RPCH_HANDSHAKE:
+		//Delay the actual start of streaming until we receive a confirmation from the client that they are ready.
+	{
+		URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
+		const int32 StreamingPort = ServerHost->address.port + 1;
+
+		CaptureComponent->StartStreaming(RemotePlayContext);
+		const URemotePlaySettings *RemotePlaySettings = GetDefault<URemotePlaySettings>();
+		if(RemotePlaySettings&&RemotePlaySettings->StreamGeometry)
+		{
+			GeometryStreamingService.StartStreaming(GetWorld(), IRemotePlay::Get().GetGeometrySource(), RemotePlayContext);
+		}
+
+		if(!RemotePlayContext->NetworkPipeline.IsValid())
+		{
+			FRemotePlayNetworkParameters NetworkParams;
+			NetworkParams.RemoteIP = Client_GetIPAddress();
+			NetworkParams.LocalPort = StreamingPort;
+			NetworkParams.RemotePort = NetworkParams.LocalPort + 1;
+
+			RemotePlayContext->NetworkPipeline.Reset(new FNetworkPipeline);
+			RemotePlayContext->NetworkPipeline->Initialize(NetworkParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get(), RemotePlayContext->GeometryQueue.Get());
+		}
+
+		UE_LOG(LogRemotePlay, Log, TEXT("RemotePlay: Started streaming to %s:%d"), *Client_GetIPAddress(), StreamingPort);
+		break;
+	}
 	case RPCH_Control:
 		RecvInput(Event.packet);
 		break;
@@ -462,7 +483,26 @@ void URemotePlaySessionComponent::RecvInput(const ENetPacket* Packet)
 inline bool URemotePlaySessionComponent::Client_SendCommand(const FString& Cmd) const
 {
 	check(ClientPeer);
-	ENetPacket* Packet = enet_packet_create(TCHAR_TO_UTF8(*Cmd), Cmd.Len(), ENET_PACKET_FLAG_RELIABLE);
+	// Convert the string to UTF8:
+	TStringConversion<FTCHARToUTF8_Convert> utf8((const TCHAR*)(*Cmd));
+	// first we send a payload type id. We here send the id that means "this is a text packet".
+	std::vector<uint8_t> packet_buffer;
+	avs::TextCommand textCommand;
+	size_t cmdSize = avs::GetCommandSize(textCommand.commandPayloadType);
+	packet_buffer.resize(cmdSize+utf8.Length()+1);
+	memcpy(packet_buffer.data() + cmdSize, utf8.Get(), utf8.Length()+1);// 1 extra char, should be zero!
+	check(packet_buffer[packet_buffer.size() - 1] == (uint8_t)0);
+	memcpy(packet_buffer.data(), &textCommand.commandPayloadType, cmdSize);
+	ENetPacket* Packet = enet_packet_create(packet_buffer.data(),packet_buffer.size(), ENET_PACKET_FLAG_RELIABLE);
+	check(Packet);
+	return enet_peer_send(ClientPeer, RPCH_Control, Packet) == 0;
+}
+
+bool URemotePlaySessionComponent::Client_SendCommand(const avs::Command &avsCommand) const
+{
+	check(ClientPeer);
+	ENetPacket* Packet = enet_packet_create(&avsCommand, avs::GetCommandSize(avsCommand.commandPayloadType), ENET_PACKET_FLAG_RELIABLE);
+	check(Packet);
 	return enet_peer_send(ClientPeer, RPCH_Control, Packet) == 0;
 }
 

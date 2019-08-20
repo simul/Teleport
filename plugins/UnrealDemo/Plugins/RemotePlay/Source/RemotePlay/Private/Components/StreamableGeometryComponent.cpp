@@ -20,7 +20,7 @@ UStreamableGeometryComponent::UStreamableGeometryComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
 }
-	
+
 void UStreamableGeometryComponent::BeginPlay()
 {
 	Super::BeginPlay();
