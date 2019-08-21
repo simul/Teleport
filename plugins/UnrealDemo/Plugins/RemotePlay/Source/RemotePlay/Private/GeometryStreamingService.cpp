@@ -50,7 +50,7 @@ void FGeometryStreamingService::StartStreaming(UWorld* World, GeometrySource *ge
 	TArray<AActor*> GSActors;
 	UGameplayStatics::GetAllActorsOfClass(World, AStaticMeshActor::StaticClass(), GSActors);
 
-	avs::uid root_node_uid = geometrySource->GetRootNodeUid;
+	avs::uid root_node_uid = geometrySource->GetRootNodeUid();
 
 	for (auto actor : GSActors)
 	{
