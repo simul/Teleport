@@ -26,6 +26,21 @@ struct GeometrySource::Mesh
 	std::vector<avs::Attribute> attributes;
 };
 
+GeometrySource::GeometrySource()
+{
+
+}
+
+GeometrySource::~GeometrySource()
+{
+	clearData();
+}
+
+void GeometrySource::Initialize()
+{
+	rootNodeUid = CreateNode(FTransform::Identity, -1, avs::NodeDataType::Scene);
+}
+
 avs::AttributeSemantic IndexToSemantic(int index)
 {
 	switch (index)
@@ -155,14 +170,20 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 	return true;
 }
 
-GeometrySource::GeometrySource()
-{
-}
-
-GeometrySource::~GeometrySource()
+void GeometrySource::clearData()
 {
 	Meshes.Empty();
+	accessors.clear();
+	bufferViews.clear();
+	geometryBuffers.clear();
+
 	nodes.clear();
+
+	processedTextures.clear();
+	processedMaterials.clear();
+
+	textures.clear();
+	materials.clear();
 }
 
 // By adding a m, we also add a pipe, including the InputMesh, which must be configured with the appropriate 
@@ -186,7 +207,7 @@ avs::uid GeometrySource::AddStreamableMeshComponent(UMeshComponent *MeshComponen
 		return -1;
 	}
 
-	avs::uid mesh_uid;
+	avs::uid mesh_uid=avs::uid(0);
 	UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(MeshComponent);
 	UStaticMesh *StaticMesh = StaticMeshComponent->GetStaticMesh();
 	bool already_got_mesh = false;
@@ -223,6 +244,16 @@ avs::uid GeometrySource::CreateNode(const FTransform& transform, avs::uid data_u
 	node->data_type = data_type;
 	nodes[uid] = node;
 	return uid;
+}
+
+avs::uid GeometrySource::GetRootNodeUid()
+{
+	return rootNodeUid;
+}
+
+bool GeometrySource::GetRootNode(std::shared_ptr<avs::DataNode>& node)
+{
+	return getNode(rootNodeUid, node);
 }
 
 void GeometrySource::AddMaterial(UStreamableGeometryComponent * StreamableGeometryComponent)
@@ -356,6 +387,9 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 		uint32_t mipCount = textureSource.GetNumMips();
 		avs::TextureFormat format;
 
+		//Width * Height * Channels
+		std::size_t texSize = baseMip.SizeX * baseMip.SizeY * 4;
+
 		switch(unrealFormat)
 		{
 			case ETextureSourceFormat::TSF_Invalid:
@@ -363,6 +397,8 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 				break;
 			case ETextureSourceFormat::TSF_G8:
 				format = avs::TextureFormat::G8;
+				//Unique amount of channels.
+				texSize = baseMip.SizeX * baseMip.SizeY * 1;
 				break;
 			case ETextureSourceFormat::TSF_BGRA8:
 				format = avs::TextureFormat::BGRA8;
@@ -385,13 +421,14 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 			case ETextureSourceFormat::TSF_MAX:
 				format = avs::TextureFormat::INVALID;
 				break;
+			default:
+				UE_LOG(LogRemotePlay, Warning, TEXT("Invalid texture format"));
+				break;
 		}
 
 		TArray<uint8> mipData;
 		textureSource.GetMipData(mipData, 0);		
 
-		//Channels * Width * Height
-		std::size_t texSize = 4 * baseMip.SizeX * baseMip.SizeY;
 		unsigned char* rawPixelData = new unsigned char[texSize];
 		memcpy(rawPixelData, mipData.GetData(), texSize);		
 

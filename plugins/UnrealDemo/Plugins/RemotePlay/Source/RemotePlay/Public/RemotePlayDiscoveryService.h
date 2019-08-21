@@ -11,7 +11,7 @@ class FRemotePlayDiscoveryService
 public:
 	FRemotePlayDiscoveryService();
 
-	bool Initialize(uint16 InDiscoveryPort=0, uint16 InServicePort=0);
+	bool Initialize(class ARemotePlayMonitor*m,uint16 InDiscoveryPort=0, uint16 InServicePort=0);
 	void Shutdown();
 	void Tick();
 
@@ -32,4 +32,5 @@ private:
 		}
 	};
 	TArray<FClient> Clients;
+	class ARemotePlayMonitor *Monitor;
 };
