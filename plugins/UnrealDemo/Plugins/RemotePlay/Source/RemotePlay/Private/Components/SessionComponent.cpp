@@ -6,6 +6,7 @@
 #include "Components/StreamableGeometryComponent.h"
 #include "RemotePlayModule.h"
 #include "RemotePlaySettings.h"
+#include "RemotePlayMonitor.h"
 
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
@@ -109,7 +110,7 @@ URemotePlaySessionComponent::URemotePlaySessionComponent()
 void URemotePlaySessionComponent::BeginPlay()
 {
 	Super::BeginPlay();
-
+	ARemotePlayMonitor::Instantiate(this->GetWorld());
 	Bandwidth = 0.0f;
 	//INC_DWORD_STAT(STAT_BANDWIDTH); //Increments the counter by one each call.
 #if STATS
