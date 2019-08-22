@@ -11,7 +11,7 @@
 
 #include "GameFramework/Actor.h"
 #include "RemotePlaySettings.h"
-
+#include "RemotePlayMonitor.h"
 
 URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 	: bRenderOwner(false)
@@ -115,15 +115,14 @@ void URemotePlayCaptureComponent::OnViewportDrawn()
 			RemotePlayContext->EncodePipeline->Initialize(EncodeParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get());
 		}
 
-		const URemotePlaySettings *RemotePlaySettings = GetDefault<URemotePlaySettings>();
+		ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
 
-
-		if (RemotePlaySettings&&RemotePlaySettings->VideoEncodeFrequency > 1)
+		if (Monitor&&Monitor->VideoEncodeFrequency > 1)
 		{
 			static int u = 1;
 			u--;
 			if (!u)
-				u = RemotePlaySettings->VideoEncodeFrequency;
+				u = Monitor->VideoEncodeFrequency;
 			else
 				return; 
 		}

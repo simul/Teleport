@@ -14,11 +14,15 @@ class GeometrySource : public avs::GeometrySourceBackendInterface
 public:
 	GeometrySource();
 	~GeometrySource();
+	void Initialize();
 	void clearData();
 
 	avs::uid AddMesh(class UMeshComponent *MeshComponent);
 	avs::uid AddStreamableMeshComponent(UMeshComponent *MeshComponent);
 	avs::uid CreateNode(const struct FTransform& transform, avs::uid data_uid, avs::NodeDataType data_type);
+	avs::uid GetRootNodeUid();
+	bool GetRootNode(std::shared_ptr<avs::DataNode>& node);
+
 	void AddMaterial(class UStreamableGeometryComponent *StreamableGeometryComponent);
 
 	void Tick();
@@ -46,11 +50,6 @@ public:
 protected:
 	struct Mesh;
 
-	struct GeometryInstance
-	{
-		class UStreamableGeometryComponent* Geometry;
-		//unsigned long long SentFrame;
-	};
 	mutable TMap<avs::uid, TSharedPtr<Mesh>> Meshes;
 	// We store buffers, views and accessors in one big list. But we should
 	// PROBABLY refcount these so that unused ones can be cleared.
@@ -64,6 +63,8 @@ protected:
 
 	std::map<avs::uid, avs::Texture> textures;
 	std::map<avs::uid, avs::Material> materials;
+
+	avs::uid rootNodeUid;
 
 	void PrepareMesh(Mesh &m);
 	void SendMesh(Mesh &m);

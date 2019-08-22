@@ -83,11 +83,12 @@ private:
 
 	FRemotePlayDiscoveryService DiscoveryService;
 	FGeometryStreamingService GeometryStreamingService;
-
+	 
 	struct FRemotePlayContext* RemotePlayContext;
 #if STATS || ENABLE_STATNAMEDEVENTS_UOBJECT
 	/** Stat id of this object, 0 if nobody asked for it yet */
 	mutable TStatId				BandwidthStatID;
 	float						Bandwidth;
 #endif // STATS || ENABLE_STATNAMEDEVENTS
+	class ARemotePlayMonitor	*Monitor;
 };
