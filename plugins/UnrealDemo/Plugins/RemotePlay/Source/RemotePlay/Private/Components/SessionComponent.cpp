@@ -6,6 +6,7 @@
 #include "Components/StreamableGeometryComponent.h"
 #include "RemotePlayModule.h"
 #include "RemotePlaySettings.h"
+#include "RemotePlayMonitor.h"
 
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
@@ -109,7 +110,7 @@ URemotePlaySessionComponent::URemotePlaySessionComponent()
 void URemotePlaySessionComponent::BeginPlay()
 {
 	Super::BeginPlay();
-
+	Monitor=ARemotePlayMonitor::Instantiate(GetWorld());
 	Bandwidth = 0.0f;
 	//INC_DWORD_STAT(STAT_BANDWIDTH); //Increments the counter by one each call.
 #if STATS
@@ -190,7 +191,7 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 			UE_LOG(LogRemotePlay, Log, TEXT("Client disconnected: %s:%d"), *Client_GetIPAddress(), Client_GetPort());
 			ReleasePlayerPawn();
 			// TRY to restart the discovery service...
-			DiscoveryService.Initialize();
+			DiscoveryService.Initialize(Monitor);
 			ClientPeer = nullptr;
 			break;
 		case ENET_EVENT_TYPE_RECEIVE:
@@ -231,7 +232,7 @@ void URemotePlaySessionComponent::StartSession(int32 ListenPort, int32 Discovery
 
 	if (DiscoveryPort > 0)
 	{
-		if (!DiscoveryService.Initialize(DiscoveryPort, ListenPort))
+		if (!DiscoveryService.Initialize(Monitor,DiscoveryPort, ListenPort))
 		{
 			UE_LOG(LogRemotePlay, Warning, TEXT("Session: Failed to initialize discovery service"));
 		}
@@ -403,8 +404,8 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 		const int32 StreamingPort = ServerHost->address.port + 1;
 
 		CaptureComponent->StartStreaming(RemotePlayContext);
-		const URemotePlaySettings *RemotePlaySettings = GetDefault<URemotePlaySettings>();
-		if(RemotePlaySettings&&RemotePlaySettings->StreamGeometry)
+		ARemotePlayMonitor *Monitor=ARemotePlayMonitor::Instantiate(GetWorld());
+		if(Monitor&&Monitor->StreamGeometry)
 		{
 			GeometryStreamingService.StartStreaming(GetWorld(), IRemotePlay::Get().GetGeometrySource(), RemotePlayContext);
 		}

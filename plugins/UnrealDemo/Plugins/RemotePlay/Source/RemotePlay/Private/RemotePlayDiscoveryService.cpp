@@ -7,6 +7,8 @@
 #include "Common/UdpSocketBuilder.h"
 #include "Serialization/BufferArchive.h"
 #include "RemotePlaySettings.h"
+#include "RemotePlayMonitor.h"
+#include "Engine/World.h"
 	
 FRemotePlayDiscoveryService::FRemotePlayDiscoveryService()
 {
@@ -14,8 +16,9 @@ FRemotePlayDiscoveryService::FRemotePlayDiscoveryService()
 	check(SocketSubsystem);
 }
 	
-bool FRemotePlayDiscoveryService::Initialize(uint16 InDiscoveryPort, uint16 InServicePort)
+bool FRemotePlayDiscoveryService::Initialize(ARemotePlayMonitor *m,uint16 InDiscoveryPort, uint16 InServicePort)
 {
+	Monitor = m;
 	if (!InDiscoveryPort)
 		InDiscoveryPort = LastDiscoveryPort;
 	if (!InDiscoveryPort)
@@ -31,7 +34,7 @@ bool FRemotePlayDiscoveryService::Initialize(uint16 InDiscoveryPort, uint16 InSe
 		UE_LOG(LogRemotePlay, Error, TEXT("Discovery: No useable Service Port"));
 		return false;
 	}
-	const URemotePlaySettings *RemotePlaySettings = GetDefault<URemotePlaySettings>();
+	//ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
 	FIPv4Address boundAddr = FIPv4Address::Any;		// i.e. 127.0.0.1, 192.168.3.X (the server's local addr), or the server's global IP address.
 	//FIPv4Address::Parse(FString("192.168.3.6"), boundAddr);
 	Socket = TUniquePtr<FSocket>(FUdpSocketBuilder(TEXT("RemotePlayDiscoveryService"))
@@ -69,12 +72,11 @@ void FRemotePlayDiscoveryService::Tick()
 	TSharedRef<FInternetAddr> ForcedAddr = SocketSubsystem->CreateInternetAddr();
 	//UE_LOG(LogRemotePlay, Warning, TEXT("Socket bound to %s"), *RecvAddr->ToString(false));
 
-	const URemotePlaySettings *RemotePlaySettings = GetDefault<URemotePlaySettings>();
 	bool bIsValid = true;
 	uint32 ip_forced = 0; 
-	if (RemotePlaySettings->ClientIP.Len()) 
+	if (Monitor->ClientIP.Len())
 	{ 
-		ForcedAddr->SetIp(*RemotePlaySettings->ClientIP, bIsValid);
+		ForcedAddr->SetIp(*Monitor->ClientIP, bIsValid);
 		if (!bIsValid)
 		{ 
 			ForcedAddr->SetAnyAddress();

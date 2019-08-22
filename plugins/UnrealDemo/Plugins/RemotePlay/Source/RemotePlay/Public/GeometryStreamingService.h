@@ -50,7 +50,7 @@ private:
 
 	std::unordered_map<avs::uid, bool> sentResources; //Tracks the resources sent to the user; <resource identifier, doesClientHave>.
 
-	avs::uid AddNode(class UMeshComponent* component);
+	void AddNode(avs::uid parent_uid, UMeshComponent* component);
 	
 	bool hasMesh(avs::uid mesh_uid) const override
 	{
