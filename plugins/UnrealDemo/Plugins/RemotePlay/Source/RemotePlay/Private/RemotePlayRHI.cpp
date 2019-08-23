@@ -46,10 +46,10 @@ FTexture2DRHIRef FRemotePlayRHI::CreateSurfaceTexture(uint32 Width, uint32 Heigh
 	GetNativeDevice(DevType);
 
 	uint32 TexFlags = TexCreate_UAV | TexCreate_RenderTargetable;
-	/*if (DevType == EDeviceType::Direct3D12)
+	if (DevType == EDeviceType::Direct3D12)
 	{
 		TexFlags |= TexCreate_Shared;
-	}*/
+	}
 	
 	// HACK: NVENC requires typed D3D11 texture, we're forcing RGBA_UNORM!
 	if(PixelFormat == EPixelFormat::PF_R8G8B8A8)
