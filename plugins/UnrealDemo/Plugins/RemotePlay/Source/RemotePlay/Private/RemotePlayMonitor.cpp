@@ -16,6 +16,12 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 		VideoEncodeFrequency = RemotePlaySettings->VideoEncodeFrequency;
 		StreamGeometry = RemotePlaySettings->StreamGeometry;
 	}
+	else
+	{
+		VideoEncodeFrequency = 2;
+		StreamGeometry = true;
+	}
+	DebugStream = 0;
 }
 
 

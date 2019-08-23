@@ -359,7 +359,6 @@ void GeometrySource::PrepareMesh(Mesh &m)
 
 avs::uid GeometrySource::StoreTexture(UTexture * texture)
 {
-	return 0;
 	//------------------------------------------------------------------------------------------------//
 	avs::uid texture_uid;
 	auto it = processedTextures.find(texture);

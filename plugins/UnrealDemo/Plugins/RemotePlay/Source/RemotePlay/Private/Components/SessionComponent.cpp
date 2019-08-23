@@ -418,7 +418,7 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 			NetworkParams.RemotePort = NetworkParams.LocalPort + 1;
 
 			RemotePlayContext->NetworkPipeline.Reset(new FNetworkPipeline);
-			RemotePlayContext->NetworkPipeline->Initialize(NetworkParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get(), RemotePlayContext->GeometryQueue.Get());
+			RemotePlayContext->NetworkPipeline->Initialize(Monitor,NetworkParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get(), RemotePlayContext->GeometryQueue.Get());
 		}
 
 		UE_LOG(LogRemotePlay, Log, TEXT("RemotePlay: Started streaming to %s:%d"), *Client_GetIPAddress(), StreamingPort);

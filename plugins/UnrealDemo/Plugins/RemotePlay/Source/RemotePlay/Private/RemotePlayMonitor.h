@@ -33,6 +33,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
 	uint32 StreamGeometry : 1;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
+	int32 DebugStream;
+
 	// In order:
 	virtual void PostInitProperties() override;
 	virtual void PostLoad() override;

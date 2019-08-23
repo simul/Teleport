@@ -3,6 +3,7 @@
 
 #include "NetworkPipeline.h"
 #include "RemotePlayModule.h"
+#include "RemotePlayMonitor.h"
 
 
 #if WITH_REMOTEPLAY_STATS
@@ -15,11 +16,15 @@ namespace
 	constexpr int    GNetworkPipelineSocketBufferSize = 16 * 1024 * 1024; // 16MiB
 }
 
-void FNetworkPipeline::Initialize(const FRemotePlayNetworkParameters& InParams
+FNetworkPipeline::FNetworkPipeline() :Monitor(nullptr)
+{
+}
+
+void FNetworkPipeline::Initialize(ARemotePlayMonitor *m,const FRemotePlayNetworkParameters& InParams
 	, avs::Queue* ColorQueue, avs::Queue* DepthQueue, avs::Queue* GeometryQueue)
 {
 	check(ColorQueue);
-
+	Monitor = m;
 	Pipeline.Reset(new avs::Pipeline);
 	NetworkSink.Reset(new avs::NetworkSink);
 	VideoPipes.SetNum(DepthQueue?2:1);
@@ -76,6 +81,7 @@ void FNetworkPipeline::Release()
 	NetworkSink.Reset();
 	VideoPipes.Empty();
 	GeometryPipes.Empty();
+	Monitor = nullptr;
 }
 
 void FNetworkPipeline::Process()
@@ -98,6 +104,7 @@ void FNetworkPipeline::Process()
 			Counters.decoderPacketsQueued, Counters.networkPacketsSent, Counters.bytesSent);
 		LastTimestamp = Timestamp;
 	}
+	NetworkSink->setDebugStream(Monitor->DebugStream);
 #endif // WITH_REMOTEPLAY_STATS
 }
 

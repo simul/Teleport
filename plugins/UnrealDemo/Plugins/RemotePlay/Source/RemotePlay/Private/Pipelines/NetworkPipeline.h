@@ -14,7 +14,8 @@
 class FNetworkPipeline
 {
 public:
-	void Initialize(const FRemotePlayNetworkParameters& InParams, avs::Queue* ColorQueue, avs::Queue* DepthQueue, avs::Queue* GeometryQueue);
+	FNetworkPipeline();
+	void Initialize(class ARemotePlayMonitor *m,const FRemotePlayNetworkParameters& InParams, avs::Queue* ColorQueue, avs::Queue* DepthQueue, avs::Queue* GeometryQueue);
 	void Release();
 	void Process();
 	avs::Pipeline *GetAvsPipeline();
@@ -36,7 +37,7 @@ private:
 	TArray<VideoPipe> VideoPipes;
 	TArray<GeometryPipe> GeometryPipes;
 	TUniquePtr<avs::NetworkSink> NetworkSink;
-
+	class ARemotePlayMonitor *Monitor;
 #if WITH_REMOTEPLAY_STATS
 	double LastTimestamp = 0.0;
 #endif // WITH_REMOTEPLAY_STATS
