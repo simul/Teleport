@@ -338,7 +338,7 @@ avs::Result GeometryEncoder::encodeTexturesBackend(avs::GeometrySourceBackendInt
 			put(outTexture.format);
 
 			//Push size (width * height * channels)
-			size_t textureSize = outTexture.width * outTexture.height * (1 ? outTexture.format == avs::TextureFormat::G8 : 4);
+			size_t textureSize = outTexture.width * outTexture.height * (outTexture.format == avs::TextureFormat::G8 ? 1 : 4);
 			put(textureSize);
 
 			//Push pixel data.
