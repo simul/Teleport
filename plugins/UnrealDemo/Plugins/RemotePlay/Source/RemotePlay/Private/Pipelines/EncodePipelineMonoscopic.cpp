@@ -254,6 +254,8 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 		avs::SurfaceFormat::NV12, // NV12 is needed for depth encoding
 	};
 
+	EPixelFormat PixelFormat = EPixelFormat::PF_R8G8B8A8;
+
 	switch(DeviceType)
 	{
 	case FRemotePlayRHI::EDeviceType::Direct3D11:
@@ -261,6 +263,7 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 		break;
 	case FRemotePlayRHI::EDeviceType::Direct3D12:
 		avsDeviceType = avs::DeviceType::Direct3D12;
+		PixelFormat = EPixelFormat::PF_B8G8R8A8;
 		break;
 	case FRemotePlayRHI::EDeviceType::OpenGL:
 		avsDeviceType = avs::DeviceType::OpenGL;
@@ -271,7 +274,9 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	} 
 	// Roderick: we create a DOUBLE-HEIGHT texture, and encode colour in the top half, depth in the bottom.
 	int32 w = std::max<int32>(Params.FrameWidth, Params.DepthWidth);
-	ColorSurfaceTexture.Texture = RHI.CreateSurfaceTexture(w, Params.FrameHeight+Params.DepthHeight, EPixelFormat::PF_R8G8B8A8);
+	
+	ColorSurfaceTexture.Texture = RHI.CreateSurfaceTexture(w, Params.FrameHeight+Params.DepthHeight, PixelFormat);
+	
 	if(ColorSurfaceTexture.Texture.IsValid())
 	{
 		ColorSurfaceTexture.UAV = RHI.CreateSurfaceUAV(ColorSurfaceTexture.Texture);
@@ -343,6 +348,7 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	Pipeline.Reset(new avs::Pipeline);
 	Encoder.SetNum(NumStreams);
 	InputSurface.SetNum(NumStreams);
+
 	for(uint32_t i=0; i<NumStreams; ++i)
 	{ 
 		if(!InputSurface[i].configure(avsSurfaceBackends[i]))
