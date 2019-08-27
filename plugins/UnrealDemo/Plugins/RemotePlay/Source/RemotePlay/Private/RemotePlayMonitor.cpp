@@ -15,6 +15,7 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 		ClientIP = RemotePlaySettings->ClientIP;
 		VideoEncodeFrequency = RemotePlaySettings->VideoEncodeFrequency;
 		StreamGeometry = RemotePlaySettings->StreamGeometry;
+		StreamGeometryContinuously = RemotePlaySettings->StreamGeometryContinuously;
 	}
 }
 
