@@ -129,3 +129,11 @@ void URemotePlayCaptureComponent::OnViewportDrawn()
 		RemotePlayContext->EncodePipeline->EncodeFrame(GetWorld()->Scene, TextureTarget);
 	}
 }
+
+FTransform  URemotePlayCaptureComponent::GetToWorldTransform()
+{
+	AActor* OwnerActor = GetTypedOuter<AActor>();
+	check(OwnerActor);
+
+	return OwnerActor->GetTransform();
+}

@@ -29,10 +29,10 @@ public:
 	virtual void EncodedResource(avs::uid resource_uid) override;
 	virtual void RequestResource(avs::uid resource_uid) override;
 
+	inline void SetStreamingContinuously(bool val) { this->bStreamingContinuously = val; }
 	void StartStreaming(UWorld* World,GeometrySource *geometrySource,struct FRemotePlayContext* RemotePlayContext);
 	void StopStreaming();
 	void Tick();
-
 
 	// avs::GeometryTransferState
 	size_t getNumRequiredNodes() const;
@@ -48,8 +48,9 @@ private:
 	GeometrySource *geometrySource;
 	GeometryEncoder geometryEncoder;
 
+	bool bStreamingContinuously = false;
 	std::unordered_map<avs::uid, bool> sentResources; //Tracks the resources sent to the user; <resource identifier, doesClientHave>.
-
+	
 	void AddNode(avs::uid parent_uid, UMeshComponent* component);
 	
 	bool hasMesh(avs::uid mesh_uid) const override
