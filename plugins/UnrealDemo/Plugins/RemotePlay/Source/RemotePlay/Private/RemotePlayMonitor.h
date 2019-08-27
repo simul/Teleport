@@ -39,6 +39,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
 	uint32 Checksums : 1;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
+	uint32 StreamGeometryContinuously : 1;
+
 	// In order:
 	virtual void PostInitProperties() override;
 	virtual void PostLoad() override;

@@ -30,6 +30,8 @@ public:
 	void StartStreaming(FRemotePlayContext *Context);
 
 	void StopStreaming();
+	
+	FTransform GetToWorldTransform();
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = RemotePlay)
 	FRemotePlayEncodeParameters EncodeParams;
