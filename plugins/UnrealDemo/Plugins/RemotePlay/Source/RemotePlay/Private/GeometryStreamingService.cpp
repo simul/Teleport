@@ -10,7 +10,9 @@
 #include <libavstream/geometry/mesh_interface.hpp>
 #include <libavstream/mesh.hpp>
 #include <libavstream/geometryencoder.hpp>
- 
+
+#include "RemotePlayMonitor.h"
+
 #pragma optimize("",off)
 
 FGeometryStreamingService::FGeometryStreamingService()
@@ -33,7 +35,7 @@ void FGeometryStreamingService::StartStreaming(UWorld* World, GeometrySource *ge
 	}
 	geometrySource = geomSource;
 
-	geometrySource->Initialize();
+	geometrySource->Initialize(ARemotePlayMonitor::Instantiate(World));
 
 	RemotePlayContext = Context;
 	 
@@ -127,8 +129,6 @@ void FGeometryStreamingService::Tick()
 
 bool FGeometryStreamingService::HasResource(avs::uid resource_uid) const
 {
-	///We need clientside to handshake when it is ready to receive payloads of resources.
-	//return false;
 	return sentResources.find(resource_uid) != sentResources.end() && sentResources.at(resource_uid) == true;
 }
 

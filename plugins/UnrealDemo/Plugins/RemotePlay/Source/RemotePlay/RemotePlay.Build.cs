@@ -49,6 +49,7 @@ public class RemotePlay : ModuleRules
 
         Link_libavstream(Target);
         Link_libenet(Target);
+        Link_basisu(Target);
 	}
 
     private void Link_libavstream(ReadOnlyTargetRules Target)
@@ -80,18 +81,31 @@ public class RemotePlay : ModuleRules
 
     private void Link_libenet(ReadOnlyTargetRules Target)
     {
-		    PrivateIncludePaths.Add(Path.Combine(RemotePlayRootDirectory, "thirdparty/enet/Include"));
+	    PrivateIncludePaths.Add(Path.Combine(RemotePlayRootDirectory, "thirdparty/enet/Include"));
         
         // Only remove a path below if you're sure its not needed for anyone
         PublicLibraryPaths.Add(Path.Combine(RemotePlayRootDirectory, "build/x64/thirdparty/enet/Release"));
         PublicLibraryPaths.Add(Path.Combine(RemotePlayRootDirectory, "thirdparty/enet/Release"));
         PublicLibraryPaths.Add(Path.Combine(RemotePlayRootDirectory, "thirdparty/enet/x64/Release"));
-		    PublicLibraryPaths.Add(Path.Combine(LibrariesDirectory, "enet/Release"));
+        PublicLibraryPaths.Add(Path.Combine(LibrariesDirectory, "enet/Release"));
 
         PublicAdditionalLibraries.Add("enet.lib");
-	  }
+    }
 
-	private string GetPlatformName(ReadOnlyTargetRules Target)
+    private void Link_basisu(ReadOnlyTargetRules Target)
+    {
+        string LibraryPath = Path.Combine(RemotePlayRootDirectory, "thirdparty/basis_universal/bin");
+
+        PrivateIncludePaths.Add(Path.Combine(RemotePlayRootDirectory, "thirdparty/basis_universal"));
+
+        PublicLibraryPaths.Add(LibraryPath);
+        PublicAdditionalLibraries.Add("basisu_MD.lib");
+
+        PublicDelayLoadDLLs.Add("basisu_MD.dll");
+        RuntimeDependencies.Add(Path.Combine(LibraryPath, "basisu_MD.dll"));
+    }
+
+    private string GetPlatformName(ReadOnlyTargetRules Target)
     {
         switch(Target.Platform)
         {
