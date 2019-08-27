@@ -128,8 +128,8 @@ void FGeometryStreamingService::Tick()
 bool FGeometryStreamingService::HasResource(avs::uid resource_uid) const
 {
 	///We need clientside to handshake when it is ready to receive payloads of resources.
-	//return false;
-	return sentResources.find(resource_uid) != sentResources.end() && sentResources.at(resource_uid) == true;
+	return false;
+	//return sentResources.find(resource_uid) != sentResources.end() && sentResources.at(resource_uid) == true;
 }
 
 void FGeometryStreamingService::EncodedResource(avs::uid resource_uid)
