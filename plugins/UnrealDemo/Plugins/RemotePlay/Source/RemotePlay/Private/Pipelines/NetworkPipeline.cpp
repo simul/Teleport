@@ -105,6 +105,7 @@ void FNetworkPipeline::Process()
 		LastTimestamp = Timestamp;
 	}
 	NetworkSink->setDebugStream(Monitor->DebugStream);
+	NetworkSink->setDoChecksums(Monitor->Checksums);
 #endif // WITH_REMOTEPLAY_STATS
 }
 

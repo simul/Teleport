@@ -22,6 +22,7 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 		StreamGeometry = true;
 	}
 	DebugStream = 0;
+	Checksums = false;
 }
 
 
