@@ -428,14 +428,23 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 
 		TArray<uint8> mipData;
 		textureSource.GetMipData(mipData, 0);		
+		
+		uint32_t dataSize;
+		unsigned char* data = nullptr;
 
 		unsigned char* rawPixelData = new unsigned char[texSize];
 		memcpy(rawPixelData, mipData.GetData(), texSize);		
 
+
+		{
+			dataSize = texSize;
+			data = rawPixelData;
+		}
+
 		//We're using a single sampler for now.
 		avs::uid sampler_uid = 0;
 
-		textures[texture_uid] = {textureName, width, height, depth, bytesPerPixel, arrayCount, mipCount, format, rawPixelData, sampler_uid};
+		textures[texture_uid] = {textureName, width, height, depth, bytesPerPixel, arrayCount, mipCount, format, dataSize, data, sampler_uid};
 		processedTextures[texture] = texture_uid;
 	}
 

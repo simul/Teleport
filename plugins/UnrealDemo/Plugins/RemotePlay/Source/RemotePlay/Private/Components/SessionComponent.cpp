@@ -165,7 +165,6 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 		{
 			RemotePlayContext->NetworkPipeline->Process();
 		}
-
 		GeometryStreamingService.Tick();
 	}
 	else
