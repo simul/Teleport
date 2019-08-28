@@ -153,10 +153,20 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 		avs::BufferView bufferView;
 		src->getBufferView(bufferViews[i], bufferView);
 		put(bufferView.buffer);
-		buffers.push_back(bufferView.buffer);
 		put(bufferView.byteOffset);
 		put(bufferView.byteLength);
 		put(bufferView.byteStride);
+		bool found = false;
+		for (auto& buffer : buffers)
+		{
+			if (buffer == bufferView.buffer)
+			{
+				found = true;
+				break;
+			}
+		}
+		if (!found)
+			buffers.push_back(bufferView.buffer);
 	}
 	put(buffers.size());
 	for(size_t i = 0; i < buffers.size(); i++)
