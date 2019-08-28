@@ -4,6 +4,8 @@
 #include <unordered_map>
 #include <CoreMinimal.h>
 
+#include "basisu_comp.h"
+
 /*! The Geometry Source keeps all the geometry ready for streaming, and returns geometry
 	data in glTF-style when asked for.
 
@@ -14,7 +16,7 @@ class GeometrySource : public avs::GeometrySourceBackendInterface
 public:
 	GeometrySource();
 	~GeometrySource();
-	void Initialize();
+	void Initialize(class ARemotePlayMonitor *m);
 	void clearData();
 
 	avs::uid AddMesh(class UMeshComponent *MeshComponent);
@@ -50,6 +52,8 @@ public:
 protected:
 	struct Mesh;
 
+	basisu::basis_compressor_params basisCompressorParams; //Parameters for basis compressor.
+
 	mutable TMap<avs::uid, TSharedPtr<Mesh>> Meshes;
 	// We store buffers, views and accessors in one big list. But we should
 	// PROBABLY refcount these so that unused ones can be cleared.
@@ -63,7 +67,8 @@ protected:
 
 	std::map<avs::uid, avs::Texture> textures;
 	std::map<avs::uid, avs::Material> materials;
-
+	
+	mutable std::map<avs::uid, std::vector<avs::vec3>> scaledPositionBuffers;
 	avs::uid rootNodeUid;
 
 	void PrepareMesh(Mesh &m);
@@ -74,4 +79,6 @@ protected:
 	//	texture : UTexture to pull the texture data from.
 	//Returns the uid for this texture.
 	avs::uid StoreTexture(UTexture *texture);
+
+	class ARemotePlayMonitor* Monitor;
 };

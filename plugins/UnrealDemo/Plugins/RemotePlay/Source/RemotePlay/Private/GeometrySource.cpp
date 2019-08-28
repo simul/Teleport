@@ -7,6 +7,13 @@
 #include "Rendering/PositionVertexBuffer.h"
 #include "StaticMeshResources.h"
 
+#include "basisu_comp.h"
+#include "transcoder/basisu_transcoder.h"
+
+#include "Engine/Classes/EditorFramework/AssetImportData.h" //AssetImportData
+
+#include "RemotePlayMonitor.h"
+
 #if 0
 #include <random>
 std::default_random_engine generator;
@@ -27,18 +34,27 @@ struct GeometrySource::Mesh
 };
 
 GeometrySource::GeometrySource()
+	:Monitor(nullptr)
 {
+	basisCompressorParams.m_quality_level = 1;
+	basisCompressorParams.m_tex_type = basist::basis_texture_type::cBASISTexType2D;
 
+	const uint32_t THREAD_AMOUNT = 16;
+	basisCompressorParams.m_pJob_pool = new basisu::job_pool(THREAD_AMOUNT);
 }
 
 GeometrySource::~GeometrySource()
 {
 	clearData();
+
+	delete basisCompressorParams.m_pJob_pool;
 }
 
-void GeometrySource::Initialize()
+void GeometrySource::Initialize(class ARemotePlayMonitor *monitor)
 {
 	rootNodeUid = CreateNode(FTransform::Identity, -1, avs::NodeDataType::Scene);
+
+	Monitor = monitor;
 }
 
 avs::AttributeSemantic IndexToSemantic(int index)
@@ -88,16 +104,18 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 		auto &pa = m->primitiveArrays[i];
 		pa.attributeCount = 2 + (vb.GetTangentData() ? 1 : 0) + (vb.GetTexCoordData() ? vb.GetNumTexCoords() : 0);
 		pa.attributes = new avs::Attribute[pa.attributeCount];
-		auto AddBufferAndView = [this](GeometrySource::Mesh *m, avs::uid &b_uid, size_t num, size_t stride, const void *data)
+		auto AddBufferAndView = [this](GeometrySource::Mesh *m, avs::uid v_uid, avs::uid b_uid, size_t num, size_t stride, const void *data)
 		{
-			avs::BufferView &bv = bufferViews[b_uid];
+			avs::BufferView &bv = bufferViews[v_uid];
 			bv.byteOffset = 0;
 			bv.byteLength = num * stride;
 			bv.byteStride = stride;
-			bv.buffer = avs::GenerateUid();
+			bv.buffer = b_uid;
 			avs::GeometryBuffer& b = geometryBuffers[bv.buffer];
 			b.byteLength = bv.byteLength;
+			
 			b.data = (const uint8_t *)data;			// Remember, just a pointer: we don't own this data.
+			
 		};
 		auto AddBufferView = [this](GeometrySource::Mesh* m, avs::uid& bufferView_uid, size_t offset, size_t num, size_t stride, avs::uid& buffer_uid)
 		{
@@ -119,7 +137,18 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 			a.componentType = avs::Accessor::ComponentType::FLOAT;
 			a.count = pb.GetNumVertices();
 			a.bufferView = avs::GenerateUid();
-			AddBufferAndView(m, a.bufferView, pb.GetNumVertices(), pb.GetStride(), pb.GetVertexData());
+			avs::uid bufferUid = avs::GenerateUid();
+		
+			std::vector<avs::vec3> &p = scaledPositionBuffers[bufferUid];
+			p.resize(a.count);
+			const avs::vec3 *orig =(const avs::vec3 *) pb.GetVertexData();
+			for (size_t j = 0; j < a.count; j++)
+			{
+				p[j].x	 =orig[j].x *0.01f;
+				p[j].y	 =orig[j].y *0.01f;
+				p[j].z	 =orig[j].z *0.01f;
+			}
+			AddBufferAndView(m, a.bufferView, bufferUid, pb.GetNumVertices(), pb.GetStride(), (const void*)p.data());
 		}
 		// Normal:
 		{
@@ -132,7 +161,7 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 			a.componentType = avs::Accessor::ComponentType::FLOAT;
 			a.count = vb.GetNumVertices();// same as pb???
 			a.bufferView = avs::GenerateUid();
-			AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), vb.GetTangentSize() / vb.GetNumVertices(), vb.GetTangentData());
+			AddBufferAndView(m, a.bufferView, avs::GenerateUid(), vb.GetNumVertices(), vb.GetTangentSize() / vb.GetNumVertices(), vb.GetTangentData());
 		}
 		// Tangent:
 		if (vb.GetTangentData())
@@ -146,7 +175,7 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 			a.componentType = avs::Accessor::ComponentType::FLOAT;
 			a.count = vb.GetTangentSize();// same as pb???
 			a.bufferView = avs::GenerateUid();
-			AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), vb.GetTangentSize() / vb.GetNumVertices(), vb.GetTangentData());
+			AddBufferAndView(m, a.bufferView, avs::GenerateUid(),vb.GetNumVertices(), vb.GetTangentSize() / vb.GetNumVertices(), vb.GetTangentData());
 		}
 		// TexCoords:
 		avs::uid singleUVBufferUID = 0;
@@ -168,8 +197,8 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 
 			if (j == 0)
 			{
-				AddBufferAndView(m, a.bufferView, vb.GetNumVertices(), interleavedStride, vb.GetTexCoordData());
-				singleUVBufferUID = a.bufferView + 1;
+				singleUVBufferUID = avs::GenerateUid()
+				AddBufferAndView(m, a.bufferView, singleUVBufferUID, vb.GetNumVertices(), interleavedStride, vb.GetTexCoordData());
 			}
 			else
 				AddBufferView(m, a.bufferView, j * stride, vb.GetNumVertices(), interleavedStride, singleUVBufferUID);
@@ -185,7 +214,7 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 		i_a.count = ib.GetNumIndices();// same as pb???
 		i_a.bufferView = avs::GenerateUid();
 		FIndexArrayView arr = ib.GetArrayView();
-		AddBufferAndView(m, i_a.bufferView, ib.GetNumIndices(), avs::GetComponentSize(i_a.componentType), (const void*)((uint64*)&arr)[0]);
+		AddBufferAndView(m, i_a.bufferView, avs::GenerateUid(), ib.GetNumIndices(), avs::GetComponentSize(i_a.componentType), (const void*)((uint64*)&arr)[0]);
 
 		pa.material = avs::GenerateUid();
 		pa.primitiveMode = avs::PrimitiveMode::TRIANGLES;
@@ -410,8 +439,7 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 		uint32_t mipCount = textureSource.GetNumMips();
 		avs::TextureFormat format;
 
-		//Width * Height * Channels
-		std::size_t texSize = baseMip.SizeX * baseMip.SizeY * 4;
+		std::size_t texSize = width * height * bytesPerPixel;
 
 		switch(unrealFormat)
 		{
@@ -420,8 +448,6 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 				break;
 			case ETextureSourceFormat::TSF_G8:
 				format = avs::TextureFormat::G8;
-				//Unique amount of channels.
-				texSize = baseMip.SizeX * baseMip.SizeY * 1;
 				break;
 			case ETextureSourceFormat::TSF_BGRA8:
 				format = avs::TextureFormat::BGRA8;
@@ -442,9 +468,8 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 				format = avs::TextureFormat::INVALID;
 				break;
 			case ETextureSourceFormat::TSF_MAX:
-				format = avs::TextureFormat::INVALID;
-				break;
 			default:
+				format = avs::TextureFormat::INVALID;
 				UE_LOG(LogRemotePlay, Warning, TEXT("Invalid texture format"));
 				break;
 		}
@@ -452,16 +477,41 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 		TArray<uint8> mipData;
 		textureSource.GetMipData(mipData, 0);		
 		
-		uint32_t dataSize;
+		uint32_t dataSize=0;
 		unsigned char* data = nullptr;
 
-		unsigned char* rawPixelData = new unsigned char[texSize];
-		memcpy(rawPixelData, mipData.GetData(), texSize);		
+		//Compress the texture with Basis Universal if the flag is set.
+		if(Monitor->ShouldBasisEncode)
+		{
+			basisu::image image(width, height);
+			basisu::color_rgba_vec& imageData = image.get_pixels();
+			memcpy(imageData.data(), mipData.GetData(), texSize);
 
+			basisCompressorParams.m_source_images.clear();
+			basisCompressorParams.m_source_images.push_back(image);
 
+			basisu::basis_compressor basisCompressor;
+
+			if(basisCompressor.init(basisCompressorParams))
+			{
+				basisu::basis_compressor::error_code result = basisCompressor.process();
+
+				if(result == basisu::basis_compressor::error_code::cECSuccess)
+				{
+					basisu::uint8_vec basisTex = basisCompressor.get_output_basis_file();
+
+					dataSize = basisCompressor.get_basis_file_size();
+					data = new unsigned char[dataSize];
+					memcpy(data, basisTex.data(), dataSize);
+				}
+			}
+		}
+		//Otherwise, we send over the uncompressed texture files.
+		else
 		{
 			dataSize = texSize;
-			data = rawPixelData;
+			data = new unsigned char[dataSize];
+			memcpy(data, mipData.GetData(), dataSize);
 		}
 
 		//We're using a single sampler for now.

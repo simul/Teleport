@@ -407,7 +407,7 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 		const int32 StreamingPort = ServerHost->address.port + 1;
 
 		CaptureComponent->StartStreaming(RemotePlayContext);
-		ARemotePlayMonitor *Monitor=ARemotePlayMonitor::Instantiate(GetWorld());
+		Monitor=ARemotePlayMonitor::Instantiate(GetWorld());
 		if(Monitor&&Monitor->StreamGeometry)
 		{
 			GeometryStreamingService.SetStreamingContinuously(Monitor->StreamGeometryContinuously);

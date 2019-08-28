@@ -11,6 +11,8 @@
 #include <libavstream/mesh.hpp>
 #include <libavstream/geometryencoder.hpp>
  
+#include "RemotePlayMonitor.h"
+
 #pragma optimize("",off)
 
 FGeometryStreamingService::FGeometryStreamingService()
@@ -33,7 +35,7 @@ void FGeometryStreamingService::StartStreaming(UWorld* World, GeometrySource *ge
 	}
 	geometrySource = geomSource;
 
-	geometrySource->Initialize();
+	geometrySource->Initialize(ARemotePlayMonitor::Instantiate(World));
 
 	RemotePlayContext = Context;
 	 
