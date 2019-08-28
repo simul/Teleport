@@ -197,7 +197,7 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 
 			if (j == 0)
 			{
-				singleUVBufferUID = avs::GenerateUid()
+				singleUVBufferUID = avs::GenerateUid();
 				AddBufferAndView(m, a.bufferView, singleUVBufferUID, vb.GetNumVertices(), interleavedStride, vb.GetTexCoordData());
 			}
 			else
