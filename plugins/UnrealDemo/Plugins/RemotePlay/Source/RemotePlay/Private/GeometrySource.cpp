@@ -7,6 +7,13 @@
 #include "Rendering/PositionVertexBuffer.h"
 #include "StaticMeshResources.h"
 
+#include "basisu_comp.h"
+#include "transcoder/basisu_transcoder.h"
+
+#include "Engine/Classes/EditorFramework/AssetImportData.h" //AssetImportData
+
+#include "RemotePlayMonitor.h"
+
 #if 0
 #include <random>
 std::default_random_engine generator;
@@ -27,18 +34,27 @@ struct GeometrySource::Mesh
 };
 
 GeometrySource::GeometrySource()
+	:Monitor(nullptr)
 {
+	basisCompressorParams.m_quality_level = 1;
+	basisCompressorParams.m_tex_type = basist::basis_texture_type::cBASISTexType2D;
 
+	const uint32_t THREAD_AMOUNT = 16;
+	basisCompressorParams.m_pJob_pool = new basisu::job_pool(THREAD_AMOUNT);
 }
 
 GeometrySource::~GeometrySource()
 {
 	clearData();
+
+	delete basisCompressorParams.m_pJob_pool;
 }
 
-void GeometrySource::Initialize()
+void GeometrySource::Initialize(class ARemotePlayMonitor *monitor)
 {
 	rootNodeUid = CreateNode(FTransform::Identity, -1, avs::NodeDataType::Scene);
+
+	Monitor = monitor;
 }
 
 avs::AttributeSemantic IndexToSemantic(int index)
@@ -387,8 +403,7 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 		uint32_t mipCount = textureSource.GetNumMips();
 		avs::TextureFormat format;
 
-		//Width * Height * Channels
-		std::size_t texSize = baseMip.SizeX * baseMip.SizeY * 4;
+		std::size_t texSize = width * height * bytesPerPixel;
 
 		switch(unrealFormat)
 		{
@@ -397,8 +412,6 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 				break;
 			case ETextureSourceFormat::TSF_G8:
 				format = avs::TextureFormat::G8;
-				//Unique amount of channels.
-				texSize = baseMip.SizeX * baseMip.SizeY * 1;
 				break;
 			case ETextureSourceFormat::TSF_BGRA8:
 				format = avs::TextureFormat::BGRA8;
@@ -432,13 +445,38 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 		uint32_t dataSize;
 		unsigned char* data = nullptr;
 
-		unsigned char* rawPixelData = new unsigned char[texSize];
-		memcpy(rawPixelData, mipData.GetData(), texSize);		
+		//Compress the texture with Basis Universal if the flag is set.
+		if(Monitor->ShouldBasisEncode)
+		{
+			basisu::image image(width, height);
+			basisu::color_rgba_vec& imageData = image.get_pixels();
+			memcpy(imageData.data(), mipData.GetData(), texSize);
 
+			basisCompressorParams.m_source_images.clear();
+			basisCompressorParams.m_source_images.push_back(image);
 
+			basisu::basis_compressor basisCompressor;
+
+			if(basisCompressor.init(basisCompressorParams))
+			{
+				basisu::basis_compressor::error_code result = basisCompressor.process();
+
+				if(result == basisu::basis_compressor::error_code::cECSuccess)
+				{
+					basisu::uint8_vec basisTex = basisCompressor.get_output_basis_file();
+
+					dataSize = basisCompressor.get_basis_file_size();
+					data = new unsigned char[dataSize];
+					memcpy(data, basisTex.data(), dataSize);
+				}
+			}
+		}
+		//Otherwise, we send over the uncompressed texture files.
+		else
 		{
 			dataSize = texSize;
-			data = rawPixelData;
+			data = new unsigned char[dataSize];
+			memcpy(data, mipData.GetData(), dataSize);
 		}
 
 		//We're using a single sampler for now.
