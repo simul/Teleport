@@ -29,7 +29,7 @@ public:
 	virtual void EncodedResource(avs::uid resource_uid) override;
 	virtual void RequestResource(avs::uid resource_uid) override;
 
-	inline void SetStreamingContinuously(bool val) { this->bStreamingContinuously = val; }
+	inline void SetStreamingContinuously(bool val) { bStreamingContinuously = val; }
 	void StartStreaming(UWorld* World,GeometrySource *geometrySource,struct FRemotePlayContext* RemotePlayContext);
 	void StopStreaming();
 	void Tick();
