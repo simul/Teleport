@@ -52,6 +52,21 @@ public class RemotePlay : ModuleRules
         Link_basisu(Target);
 	}
 
+	private string GetConfigName(ReadOnlyTargetRules Target)
+	{
+		string LibDirName;
+		bool bDebug = (Target.Configuration == UnrealTargetConfiguration.Debug);
+		if (bDebug)
+		{
+			LibDirName = "Debug";
+		}
+		else
+		{
+			LibDirName = "Release";
+		}
+		return LibDirName;
+
+	}
     private void Link_libavstream(ReadOnlyTargetRules Target)
     {
 		string LibraryPath = Path.Combine(LibrariesDirectory,"libavstream/lib/Release");
@@ -94,15 +109,15 @@ public class RemotePlay : ModuleRules
 
     private void Link_basisu(ReadOnlyTargetRules Target)
     {
-        string LibraryPath = Path.Combine(RemotePlayRootDirectory, "thirdparty/basis_universal/bin");
+		string LibraryPath = Path.Combine(LibrariesDirectory, "basis_universal", GetConfigName(Target));
 
         PrivateIncludePaths.Add(Path.Combine(RemotePlayRootDirectory, "thirdparty/basis_universal"));
 
         PublicLibraryPaths.Add(LibraryPath);
-        PublicAdditionalLibraries.Add("basisu_MD.lib");
+        PublicAdditionalLibraries.Add("basisu.lib");
 
-        PublicDelayLoadDLLs.Add("basisu_MD.dll");
-        RuntimeDependencies.Add(Path.Combine(LibraryPath, "basisu_MD.dll"));
+        //PublicDelayLoadDLLs.Add("basisu_MD.dll");
+        //RuntimeDependencies.Add(Path.Combine(LibraryPath, "basisu_MD.dll"));
     }
 
     private string GetPlatformName(ReadOnlyTargetRules Target)
