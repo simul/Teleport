@@ -139,6 +139,7 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 	{
 		avs::Accessor accessor;
 		src->getAccessor(accessors[i], accessor);
+		put(accessors[i]);
 		put(accessor.type);
 		put(accessor.componentType);
 		put(accessor.count);
@@ -152,6 +153,7 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 	{
 		avs::BufferView bufferView;
 		src->getBufferView(bufferViews[i], bufferView);
+		put(bufferViews[i]);
 		put(bufferView.buffer);
 		buffers.push_back(bufferView.buffer);
 		put(bufferView.byteOffset);
@@ -163,6 +165,7 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 	{
 		avs::GeometryBuffer b;
 		src->getBuffer(buffers[i], b);
+		put(buffers[i]);
 		put(b.byteLength);
 		put(b.data, b.byteLength);
 	}
@@ -188,7 +191,12 @@ avs::Result GeometryEncoder::encodeNodes(avs::GeometrySourceBackendInterface * s
 		put(uid);
 		put(node->transform);
 		put(node->data_uid);
-		put(node->data_type);
+		put(node->data_type); 
+		put(node->materials.size());
+		for (const auto& id : node->materials)
+		{
+			put(id);
+		}
 		put(node->childrenUids.size());
 		for (const auto& id : node->childrenUids)
 		{

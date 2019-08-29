@@ -61,22 +61,29 @@ void FGeometryStreamingService::StartStreaming(UWorld* World, GeometrySource *ge
 			continue;
 
 		UStreamableGeometryComponent *geometryComponent = static_cast<UStreamableGeometryComponent*>(c);
-		
 		AddNode(root_node_uid, geometryComponent->GetMesh());
-		
-		//Add material, and textures, for streaming to clients.
-		geometrySource->AddMaterial(geometryComponent);
 	}
 }
 
-void FGeometryStreamingService::AddNode(avs::uid parent_uid, UMeshComponent* component)
+avs::uid FGeometryStreamingService::AddNode(avs::uid parent_uid, UMeshComponent* component)
 {
 	std::shared_ptr<avs::DataNode> parent;
 	geometrySource->getNode(parent_uid, parent);
 
 	avs::uid mesh_uid = geometrySource->AddStreamableMeshComponent(component);
+	// the material/s that this particular instance of the mesh has applied to its slots...
+	TArray<UMaterialInterface*> materials=component->GetMaterials();
 
-	avs::uid node_uid = geometrySource->CreateNode(component->GetRelativeTransform(), mesh_uid, avs::NodeDataType::Mesh);
+	std::vector<avs::uid> mat_uids;
+	//Add material, and textures, for streaming to clients.
+	int32 num_mats = materials.Num();
+	for (int32 i = 0; i < num_mats; i++)
+	{
+		UMaterialInterface *materialInterface = materials[i];
+		mat_uids.push_back(geometrySource->AddMaterial(materialInterface));
+	}
+
+	avs::uid node_uid = geometrySource->CreateNode(component->GetRelativeTransform(), mesh_uid, avs::NodeDataType::Mesh, mat_uids);
 	
 	parent->childrenUids.push_back(node_uid);
 
@@ -90,6 +97,7 @@ void FGeometryStreamingService::AddNode(avs::uid parent_uid, UMeshComponent* com
 			AddNode(node_uid, Cast<UMeshComponent>(child));
 		}
 	}
+	return node_uid;
 }
 
 void FGeometryStreamingService::StopStreaming()

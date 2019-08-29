@@ -21,11 +21,11 @@ public:
 
 	avs::uid AddMesh(class UMeshComponent *MeshComponent);
 	avs::uid AddStreamableMeshComponent(UMeshComponent *MeshComponent);
-	avs::uid CreateNode(const struct FTransform& transform, avs::uid data_uid, avs::NodeDataType data_type);
+	avs::uid CreateNode(const struct FTransform& transform, avs::uid data_uid, avs::NodeDataType data_type,const std::vector<avs::uid> &mat_uids);
 	avs::uid GetRootNodeUid();
 	bool GetRootNode(std::shared_ptr<avs::DataNode>& node);
 
-	void AddMaterial(class UStreamableGeometryComponent *StreamableGeometryComponent);
+	avs::uid AddMaterial(class UMaterialInterface *materialInterface);
 
 	void Tick();
 

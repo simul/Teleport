@@ -51,7 +51,7 @@ private:
 	bool bStreamingContinuously = false;
 	std::unordered_map<avs::uid, bool> sentResources; //Tracks the resources sent to the user; <resource identifier, doesClientHave>.
 	
-	void AddNode(avs::uid parent_uid, UMeshComponent* component);
+	avs::uid AddNode(avs::uid parent_uid, UMeshComponent* component);
 	
 	bool hasMesh(avs::uid mesh_uid) const override
 	{
