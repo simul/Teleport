@@ -109,11 +109,11 @@ public class RemotePlay : ModuleRules
 
     private void Link_basisu(ReadOnlyTargetRules Target)
     {
-		string LibraryPath = Path.Combine(LibrariesDirectory, "basis_universal", GetConfigName(Target));
 
         PrivateIncludePaths.Add(Path.Combine(RemotePlayRootDirectory, "thirdparty/basis_universal"));
 
-        PublicLibraryPaths.Add(LibraryPath);
+        PublicLibraryPaths.Add(Path.Combine(LibrariesDirectory, "basis_universal", GetConfigName(Target)));
+        PublicLibraryPaths.Add(Path.Combine(LibrariesDirectory, "basis_universal/thirdparty/basis_universal", GetConfigName(Target)));
         PublicAdditionalLibraries.Add("basisu.lib");
 
         //PublicDelayLoadDLLs.Add("basisu_MD.dll");
