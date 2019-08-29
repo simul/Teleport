@@ -290,8 +290,10 @@ avs::uid GeometrySource::CreateNode(const FTransform& transform, avs::uid data_u
 	avs::uid uid = avs::GenerateUid();
 	auto node = std::make_shared<avs::DataNode>();
 	// convert offset from cm to metres.
-	const FVector t = transform.GetTranslation()*0.01f;
-	const FQuat r = transform.GetRotation();
+	FVector t = transform.GetTranslation()*0.01f;
+	t.Set(t.Y, t.Z, -t.X);
+	FQuat r = transform.GetRotation();
+	r = FQuat(r.Y, r.Z, -r.X, r.W);
 	const FVector s = transform.GetScale3D();
 	node->transform = { t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z };
 	node->data_uid = data_uid;
