@@ -117,6 +117,14 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 			b.data = (const uint8_t *)data;			// Remember, just a pointer: we don't own this data.
 			
 		};
+		auto AddBufferView = [this](GeometrySource::Mesh* m, avs::uid& bufferView_uid, size_t offset, size_t num, size_t stride, avs::uid& buffer_uid)
+		{
+			avs::BufferView& bv = bufferViews[bufferView_uid];
+			bv.byteOffset = offset;
+			bv.byteLength = (num * stride) - offset; //byteLength can't exceed the length of the original buffer, hence "- offset".
+			bv.byteStride = stride;
+			bv.buffer = buffer_uid;
+		};
 		size_t idx = 0;
 		// Position:
 		{
@@ -155,6 +163,7 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 			a.bufferView = avs::GenerateUid();
 			AddBufferAndView(m, a.bufferView, avs::GenerateUid(), vb.GetNumVertices(), vb.GetTangentSize() / vb.GetNumVertices(), vb.GetTangentData());
 		}
+		// Tangent:
 		if (vb.GetTangentData())
 		{
 			avs::Attribute &attr = pa.attributes[idx++];
@@ -168,19 +177,33 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 			a.bufferView = avs::GenerateUid();
 			AddBufferAndView(m, a.bufferView, avs::GenerateUid(),vb.GetNumVertices(), vb.GetTangentSize() / vb.GetNumVertices(), vb.GetTangentData());
 		}
+		// TexCoords:
+		avs::uid singleUVBufferUID = 0;
 		for (size_t j = 0; j < vb.GetNumTexCoords(); j++)
 		{
+			//UVs are interleaved e.g. UV0.x|UV0.y|UV1.x|UV1.y|...
+			size_t stride =  vb.GetTexCoordSize() / vb.GetNumTexCoords() / vb.GetNumVertices(); //Bytes from UV0.x to UV1.x
+			size_t interleavedStride = stride * vb.GetNumTexCoords(); ////Bytes from UV0.x to the next UV0.x
+
 			avs::Attribute &attr = pa.attributes[idx++];
 			attr.accessor = avs::GenerateUid();
 			attr.semantic = j == 0 ? avs::AttributeSemantic::TEXCOORD_0 : avs::AttributeSemantic::TEXCOORD_1;
 			avs::Accessor &a = accessors[attr.accessor];
 			a.byteOffset = 0;
-			a.type = avs::Accessor::DataType::VEC4;
-			a.componentType = avs::Accessor::ComponentType::FLOAT;
-			a.count = vb.GetTangentSize();// same as pb???
+			a.type = avs::Accessor::DataType::VEC2;
+			a.componentType = vb.GetUseFullPrecisionUVs() ? avs::Accessor::ComponentType::FLOAT : avs::Accessor::ComponentType::HALF;
+			a.count = vb.GetNumVertices();// same as pb???
 			a.bufferView = avs::GenerateUid();
-			AddBufferAndView(m, a.bufferView, avs::GenerateUid(),vb.GetNumVertices(), vb.GetTexCoordSize() / vb.GetNumTexCoords() / vb.GetNumVertices(), vb.GetTangentData());
+
+			if (j == 0)
+			{
+				singleUVBufferUID = avs::GenerateUid();
+				AddBufferAndView(m, a.bufferView, singleUVBufferUID, vb.GetNumVertices(), interleavedStride, vb.GetTexCoordData());
+			}
+			else
+				AddBufferView(m, a.bufferView, j * stride, vb.GetNumVertices(), interleavedStride, singleUVBufferUID);
 		}
+		// Indices:
 		pa.indices_accessor = avs::GenerateUid();
 
 		FRawStaticIndexBuffer &ib = lod.IndexBuffer;
