@@ -24,7 +24,9 @@ public:
 	avs::uid CreateNode(const struct FTransform& transform, avs::uid data_uid, avs::NodeDataType data_type,const std::vector<avs::uid> &mat_uids);
 	avs::uid GetRootNodeUid();
 	bool GetRootNode(std::shared_ptr<avs::DataNode>& node);
-
+	
+	//Adds the material to the geometry source, where it is processed into a streamable material.
+	//Returns the UID of the processed material information, or 0 if a nullptr is passed.
 	avs::uid AddMaterial(class UMaterialInterface *materialInterface);
 
 	void Tick();
@@ -63,7 +65,7 @@ protected:
 	mutable std::map<avs::uid, std::shared_ptr<avs::DataNode>> nodes;
 
 	std::unordered_map<UTexture*, avs::uid> processedTextures; //Textures we have already stored in the GeometrySource; the pointer points to the uid of the stored texture information.
-	std::vector<UMaterialInterface*> processedMaterials; //Materials we have already stored in the GeometrySource.
+	std::unordered_map<UMaterialInterface*, avs::uid> processedMaterials; //Materials we have already stored in the GeometrySource; the pointer points to the uid of the stored material information.
 
 	std::map<avs::uid, avs::Texture> textures;
 	std::map<avs::uid, avs::Material> materials;

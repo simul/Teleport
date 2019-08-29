@@ -277,8 +277,10 @@ avs::uid GeometrySource::CreateNode(const FTransform& transform, avs::uid data_u
 	avs::uid uid = avs::GenerateUid();
 	auto node = std::make_shared<avs::DataNode>();
 	// convert offset from cm to metres.
-	const FVector t = transform.GetTranslation()*0.01f;
-	const FQuat r = transform.GetRotation();
+	FVector t = transform.GetTranslation()*0.01f;
+	t.Set(t.Y, t.Z, -t.X);
+	FQuat r = transform.GetRotation();
+	r = FQuat(r.Y, r.Z, -r.X, r.W);
 	const FVector s = transform.GetScale3D();
 	node->transform = { t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z };
 	node->data_uid = data_uid;
@@ -300,15 +302,28 @@ bool GeometrySource::GetRootNode(std::shared_ptr<avs::DataNode>& node)
 
 avs::uid GeometrySource::AddMaterial(UMaterialInterface *materialInterface)
 {
-	///ASSUMPTION: Assuming that if a material has been processed, then its sub-resources have been processed.	
+	//Return 0 if we were passed a nullptr.
+	if(!materialInterface) return 0;
 
-	//Assuming there is only one material.	
 	avs::uid mat_uid;
-	//Store the material if it exists, and we have not already processed it.	
-	if(materialInterface && std::find(processedMaterials.begin(), processedMaterials.end(), materialInterface) == processedMaterials.end())
+
+	//Try and locate the pointer in the list of processed materials.
+	std::unordered_map<UMaterialInterface*, avs::uid>::iterator materialIt = processedMaterials.find(materialInterface);
+
+	//Return the UID of the already processed material, if we have already processed the material.
+	if(materialIt != processedMaterials.end())
+	{
+		mat_uid = materialIt->second;
+	}
+	//Store the material if we have yet to process it.
+	else
 	{
 		const unsigned long long DUMMY_TEX_COORD = 0;
 
+		avs::Material newMaterial;
+
+		newMaterial.name = TCHAR_TO_ANSI(*materialInterface->GetName());
+		
 		TArray<UTexture*> outTextures;
 		materialInterface->GetTexturesInPropertyChain(EMaterialProperty::MP_BaseColor, outTextures, nullptr, nullptr);
 		UTexture* diffuseTex = outTextures.Num()?outTextures.Last():nullptr;
@@ -319,10 +334,6 @@ avs::uid GeometrySource::AddMaterial(UMaterialInterface *materialInterface)
 		materialInterface->GetTexturesInPropertyChain(EMaterialProperty::MP_EmissiveColor, outTextures, nullptr, nullptr);
 		UTexture* emissiveTex = outTextures.Num() ? outTextures.Last() : nullptr;
 
-		avs::Material newMaterial;
-
-		newMaterial.name = TCHAR_TO_ANSI(*materialInterface->GetName());
-
 		//Store the texture if it exists.	
 		if(diffuseTex)
 		{
@@ -331,11 +342,10 @@ avs::uid GeometrySource::AddMaterial(UMaterialInterface *materialInterface)
 
 		if(metalRoughOcclusTex)
 		{
-			avs::TextureAccessor metNorOccAccessor = {StoreTexture(metalRoughOcclusTex), DUMMY_TEX_COORD};
+			avs::TextureAccessor metalRoughOcclusAccessor = {StoreTexture(metalRoughOcclusTex), DUMMY_TEX_COORD};
 
-			newMaterial.pbrMetallicRoughness.metallicRoughnessTexture = metNorOccAccessor;
-			newMaterial.normalTexture = metNorOccAccessor;
-			newMaterial.occlusionTexture = metNorOccAccessor;
+			newMaterial.pbrMetallicRoughness.metallicRoughnessTexture = metalRoughOcclusAccessor;
+			newMaterial.occlusionTexture = metalRoughOcclusAccessor;
 		}
 
 		if(normalTex)
@@ -360,10 +370,11 @@ avs::uid GeometrySource::AddMaterial(UMaterialInterface *materialInterface)
 		///!!!
 
 		mat_uid = avs::GenerateUid();
-		materials[mat_uid] = newMaterial;
 
-		processedMaterials.push_back(materialInterface);
+		materials[mat_uid] = newMaterial;
+		processedMaterials[materialInterface] = mat_uid;
 	}
+
 	return mat_uid;
 }
 
