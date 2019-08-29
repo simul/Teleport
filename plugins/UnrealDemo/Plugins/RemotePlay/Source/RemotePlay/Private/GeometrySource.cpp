@@ -52,7 +52,7 @@ GeometrySource::~GeometrySource()
 
 void GeometrySource::Initialize(class ARemotePlayMonitor *monitor)
 {
-	rootNodeUid = CreateNode(FTransform::Identity, -1, avs::NodeDataType::Scene);
+	rootNodeUid = CreateNode(FTransform::Identity, -1, avs::NodeDataType::Scene,std::vector<avs::uid>());
 
 	Monitor = monitor;
 }
@@ -216,7 +216,8 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 		FIndexArrayView arr = ib.GetArrayView();
 		AddBufferAndView(m, i_a.bufferView, avs::GenerateUid(), ib.GetNumIndices(), avs::GetComponentSize(i_a.componentType), (const void*)((uint64*)&arr)[0]);
 
-		pa.material = avs::GenerateUid();
+		// probably no default material in UE4?
+		pa.material = 0;
 		pa.primitiveMode = avs::PrimitiveMode::TRIANGLES;
 	}
 	return true;
@@ -284,16 +285,18 @@ avs::uid GeometrySource::AddStreamableMeshComponent(UMeshComponent *MeshComponen
 	return mesh_uid;
 }
 
-avs::uid GeometrySource::CreateNode(const FTransform& transform, avs::uid data_uid, avs::NodeDataType data_type)
+avs::uid GeometrySource::CreateNode(const FTransform& transform, avs::uid data_uid, avs::NodeDataType data_type, const std::vector<avs::uid> &mat_uids)
 {
 	avs::uid uid = avs::GenerateUid();
 	auto node = std::make_shared<avs::DataNode>();
-	const FVector t = transform.GetTranslation();
+	// convert offset from cm to metres.
+	const FVector t = transform.GetTranslation()*0.01f;
 	const FQuat r = transform.GetRotation();
 	const FVector s = transform.GetScale3D();
 	node->transform = { t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z };
 	node->data_uid = data_uid;
 	node->data_type = data_type;
+	node->materials = mat_uids;
 	nodes[uid] = node;
 	return uid;
 }
@@ -308,23 +311,26 @@ bool GeometrySource::GetRootNode(std::shared_ptr<avs::DataNode>& node)
 	return getNode(rootNodeUid, node);
 }
 
-void GeometrySource::AddMaterial(UStreamableGeometryComponent * StreamableGeometryComponent)
+avs::uid GeometrySource::AddMaterial(UMaterialInterface *materialInterface)
 {
 	///ASSUMPTION: Assuming that if a material has been processed, then its sub-resources have been processed.	
 
 	//Assuming there is only one material.	
-	UMaterialInterface *materialInterface = StreamableGeometryComponent->GetMaterial(0);
-
+	avs::uid mat_uid;
 	//Store the material if it exists, and we have not already processed it.	
 	if(materialInterface && std::find(processedMaterials.begin(), processedMaterials.end(), materialInterface) == processedMaterials.end())
 	{
 		const unsigned long long DUMMY_TEX_COORD = 0;
 
-		UTexture* diffuseTex = StreamableGeometryComponent->GetTexture(EMaterialProperty::MP_BaseColor);
-		//Assuming if it is used on one it is used on them all.	
-		UTexture* metalRoughOcclusTex = StreamableGeometryComponent->GetTexture(EMaterialProperty::MP_Metallic);
-		UTexture* normalTex = StreamableGeometryComponent->GetTexture(EMaterialProperty::MP_Normal);
-		UTexture* emissiveTex = StreamableGeometryComponent->GetTexture(EMaterialProperty::MP_EmissiveColor);
+		TArray<UTexture*> outTextures;
+		materialInterface->GetTexturesInPropertyChain(EMaterialProperty::MP_BaseColor, outTextures, nullptr, nullptr);
+		UTexture* diffuseTex = outTextures.Num()?outTextures.Last():nullptr;
+		materialInterface->GetTexturesInPropertyChain(EMaterialProperty::MP_Metallic, outTextures, nullptr, nullptr);
+		UTexture* metalRoughOcclusTex = outTextures.Num() ? outTextures.Last() : nullptr;
+		materialInterface->GetTexturesInPropertyChain(EMaterialProperty::MP_Normal, outTextures, nullptr, nullptr);
+		UTexture* normalTex = outTextures.Num() ? outTextures.Last() : nullptr;
+		materialInterface->GetTexturesInPropertyChain(EMaterialProperty::MP_EmissiveColor, outTextures, nullptr, nullptr);
+		UTexture* emissiveTex = outTextures.Num() ? outTextures.Last() : nullptr;
 
 		avs::Material newMaterial;
 
@@ -366,12 +372,12 @@ void GeometrySource::AddMaterial(UStreamableGeometryComponent * StreamableGeomet
 
 		///!!!
 
-		avs::uid mat_uid = avs::GenerateUid();
+		mat_uid = avs::GenerateUid();
 		materials[mat_uid] = newMaterial;
-
 
 		processedMaterials.push_back(materialInterface);
 	}
+	return mat_uid;
 }
 
 void GeometrySource::Tick()
