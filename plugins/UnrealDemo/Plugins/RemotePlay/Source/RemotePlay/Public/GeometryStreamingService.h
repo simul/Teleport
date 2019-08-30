@@ -30,9 +30,16 @@ public:
 	virtual void RequestResource(avs::uid resource_uid) override;
 
 	inline void SetStreamingContinuously(bool val) { bStreamingContinuously = val; }
-	void StartStreaming(UWorld* World,GeometrySource *geometrySource,struct FRemotePlayContext* RemotePlayContext);
+
+	void Initialise(UWorld *World, GeometrySource *geomSource);
+	void StartStreaming(struct FRemotePlayContext *RemotePlayContext);
+	//Stop streaming to a client.
 	void StopStreaming();
 	void Tick();
+
+
+	//Reset GeometryStreamingService to default state.
+	void Reset();
 
 	// avs::GeometryTransferState
 	size_t getNumRequiredNodes() const;
