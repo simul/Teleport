@@ -27,6 +27,8 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	/* End UActorComponent interface */
 
+	void UpdateSceneCaptureContents(FSceneInterface* Scene) override;
+
 	void StartStreaming(FRemotePlayContext *Context);
 
 	void StopStreaming();
@@ -39,7 +41,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = RemotePlay)
 	uint32 bRenderOwner : 1;
 
-private:
+private: 
 	void OnViewportDrawn();
 	FDelegateHandle ViewportDrawnDelegateHandle;
 

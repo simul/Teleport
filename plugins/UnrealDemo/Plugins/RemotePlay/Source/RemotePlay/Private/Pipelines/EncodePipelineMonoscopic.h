@@ -16,6 +16,7 @@ public:
 	virtual void Initialize(const FRemotePlayEncodeParameters& InParams, avs::Queue* InColorQueue, avs::Queue* InDepthQueue) override;
 	virtual void Release() override;
 	virtual void EncodeFrame(FSceneInterface* InScene, UTexture* InSourceTexture) override;
+	virtual void AddCameraTransform(FTransform& Transform) override;
 	/* End IEncodePipeline interface */
 
 private:
@@ -38,10 +39,12 @@ private:
 	FSurfaceTexture DepthSurfaceTexture;
 
 	TUniquePtr<avs::Pipeline> Pipeline;
-	TArray<avs::Encoder> Encoder;
-	TArray<avs::Surface> InputSurface;
+	TArray<avs::Encoder> Encoders;
+	TArray<avs::Surface> InputSurfaces;
 	avs::Queue* ColorQueue = nullptr;
 	avs::Queue* DepthQueue = nullptr;
 
 	FVector2D WorldZToDeviceZTransform;
+
+	TQueue<FTransform> CameraTransformQueue;
 };
