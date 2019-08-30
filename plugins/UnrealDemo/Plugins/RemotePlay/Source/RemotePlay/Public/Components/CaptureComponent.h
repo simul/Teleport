@@ -44,6 +44,6 @@ private:
 	FDelegateHandle ViewportDrawnDelegateHandle;
 
 	struct FRemotePlayContext* RemotePlayContext;
-
+	class URemotePlayReflectionCaptureComponent *RemotePlayReflectionCaptureComponent;
 	bool bIsStreaming;
 };

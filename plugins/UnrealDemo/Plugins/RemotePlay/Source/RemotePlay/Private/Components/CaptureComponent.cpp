@@ -12,10 +12,12 @@
 #include "GameFramework/Actor.h"
 #include "RemotePlaySettings.h"
 #include "RemotePlayMonitor.h"
+#include "RemotePlayReflectionCaptureComponent.h"
 
 URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 	: bRenderOwner(false)
 	, RemotePlayContext(nullptr)
+	, RemotePlayReflectionCaptureComponent(nullptr)
 	, bIsStreaming(false)
 {
 	PrimaryComponentTick.bCanEverTick = true;
@@ -53,8 +55,9 @@ void URemotePlayCaptureComponent::BeginPlay()
 		OwnerActor->GetAttachedActors(OwnerAttachedActors);
 		HiddenActors.Add(OwnerActor);
 		HiddenActors.Append(OwnerAttachedActors);
-	}
+		RemotePlayReflectionCaptureComponent = Cast<URemotePlayReflectionCaptureComponent>(OwnerActor->GetComponentByClass(URemotePlayReflectionCaptureComponent::StaticClass()));
 
+	}
 }
 
 void URemotePlayCaptureComponent::EndPlay(const EEndPlayReason::Type Reason)
@@ -127,6 +130,8 @@ void URemotePlayCaptureComponent::OnViewportDrawn()
 				return; 
 		}
 		RemotePlayContext->EncodePipeline->EncodeFrame(GetWorld()->Scene, TextureTarget);
+		if (RemotePlayReflectionCaptureComponent)
+			RemotePlayReflectionCaptureComponent->UpdateContents(TextureTarget, GetWorld()->Scene->GetFeatureLevel());
 	}
 }
 
