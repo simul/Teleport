@@ -16,4 +16,5 @@ public:
 	virtual void Initialize(const FRemotePlayEncodeParameters& InParams, avs::Queue* InColorQueue, avs::Queue* InDepthQueue) = 0;
 	virtual void Release() = 0;
 	virtual void EncodeFrame(FSceneInterface* InScene, UTexture* InSourceTexture) = 0;
+	virtual void AddCameraTransform(FTransform& Transform) = 0;
 };
