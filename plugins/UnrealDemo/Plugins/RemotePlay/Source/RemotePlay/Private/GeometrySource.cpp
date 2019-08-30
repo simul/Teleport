@@ -181,14 +181,15 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 			a.componentType = avs::Accessor::ComponentType::FLOAT;
 			a.count = vb.GetNumVertices();// same as pb???
 			a.bufferView = avs::GenerateUid();
+			avs::uid bufferUid = avs::GenerateUid();
 			
 			//bool IsFP32 = vb.GetUseFullPrecisionUVs(); //Not need vb.GetVertexUV() returns FP32 regardless. 
-			std::vector<FVector2D> uvData;
+			std::vector<FVector2D>& uvData = processedUVs[bufferUid];
 			uvData.reserve(a.count);
 			for (uint32_t k = 0; k < vb.GetNumVertices(); k++)
 				uvData.push_back(vb.GetVertexUV(k, j));
 
-			AddBufferAndView(m, a.bufferView, avs::GenerateUid(), vb.GetNumVertices(), sizeof(FVector2D), uvData.data());
+			AddBufferAndView(m, a.bufferView, bufferUid, vb.GetNumVertices(), sizeof(FVector2D), uvData.data());
 		}
 		// Indices:
 		pa.indices_accessor = avs::GenerateUid();
