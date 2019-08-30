@@ -434,10 +434,10 @@ void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediat
 		{
 			Encoder.setCameraTransform(CamTransform);
 		}
-		if (!Pipeline->process())
-		{
-			UE_LOG(LogRemotePlay, Warning, TEXT("Encode pipeline processing encountered an error"));
-		}
+	}
+	if (!Pipeline->process())
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Encode pipeline processing encountered an error"));
 	}
 }
 
