@@ -325,12 +325,19 @@ avs::uid GeometrySource::AddMaterial(UMaterialInterface *materialInterface)
 		newMaterial.name = TCHAR_TO_ANSI(*materialInterface->GetName());
 		
 		TArray<UTexture*> outTextures;
+
 		materialInterface->GetTexturesInPropertyChain(EMaterialProperty::MP_BaseColor, outTextures, nullptr, nullptr);
-		UTexture* diffuseTex = outTextures.Num()?outTextures.Last():nullptr;
+		UTexture* diffuseTex = outTextures.Num() ? outTextures.Last() : nullptr;
+		outTextures.Empty();
+
 		materialInterface->GetTexturesInPropertyChain(EMaterialProperty::MP_Metallic, outTextures, nullptr, nullptr);
 		UTexture* metalRoughOcclusTex = outTextures.Num() ? outTextures.Last() : nullptr;
+		outTextures.Empty();
+
 		materialInterface->GetTexturesInPropertyChain(EMaterialProperty::MP_Normal, outTextures, nullptr, nullptr);
 		UTexture* normalTex = outTextures.Num() ? outTextures.Last() : nullptr;
+		outTextures.Empty();
+
 		materialInterface->GetTexturesInPropertyChain(EMaterialProperty::MP_EmissiveColor, outTextures, nullptr, nullptr);
 		UTexture* emissiveTex = outTextures.Num() ? outTextures.Last() : nullptr;
 
