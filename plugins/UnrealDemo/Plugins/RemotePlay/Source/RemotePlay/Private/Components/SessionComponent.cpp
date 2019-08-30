@@ -119,16 +119,18 @@ void URemotePlaySessionComponent::BeginPlay()
 #endif // ENABLE_STATNAMEDEVENTS
 
 	PlayerController = Cast<APlayerController>(GetOuter());
-	if (!PlayerController.IsValid())
+	if(!PlayerController.IsValid())
 	{
 		UE_LOG(LogRemotePlay, Error, TEXT("Session: Session component must be attached to a player controller!"));
 		return;
 	}
 
-	if (bAutoStartSession)
+	if(bAutoStartSession)
 	{
 		StartSession(AutoListenPort, AutoDiscoveryPort);
 	}
+
+	GeometryStreamingService.Initialise(GetWorld(), IRemotePlay::Get().GetGeometrySource());
 }
 
 void URemotePlaySessionComponent::EndPlay(const EEndPlayReason::Type Reason)
@@ -246,6 +248,7 @@ void URemotePlaySessionComponent::StopSession()
 {
 	ReleasePlayerPawn();
 	DiscoveryService.Shutdown();
+	GeometryStreamingService.Reset();
 
 	if (ClientPeer)
 	{
@@ -411,7 +414,7 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 		if(Monitor&&Monitor->StreamGeometry)
 		{
 			GeometryStreamingService.SetStreamingContinuously(Monitor->StreamGeometryContinuously);
-			GeometryStreamingService.StartStreaming(GetWorld(), IRemotePlay::Get().GetGeometrySource(), RemotePlayContext);
+			GeometryStreamingService.StartStreaming(RemotePlayContext);
 		}
 
 		if(!RemotePlayContext->NetworkPipeline.IsValid())

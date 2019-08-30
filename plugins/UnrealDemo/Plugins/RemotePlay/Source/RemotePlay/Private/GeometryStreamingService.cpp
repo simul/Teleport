@@ -25,17 +25,37 @@ FGeometryStreamingService::~FGeometryStreamingService()
 		avsPipeline->deconfigure();
 }
 
-void FGeometryStreamingService::StartStreaming(UWorld* World, GeometrySource *geomSource,FRemotePlayContext* Context)
+void FGeometryStreamingService::Initialise(UWorld *World, GeometrySource *geomSource)
 {
-	if (RemotePlayContext == Context)
-		return;
-	if (!geomSource)
+	if(!geomSource)
 	{
 		return;
 	}
 	geometrySource = geomSource;
 
 	geometrySource->Initialize(ARemotePlayMonitor::Instantiate(World));
+
+	// It is intended that each session component should track the streamed actors that enter its bubble.
+	// These should be disposed of when they move out of range.
+	TArray<AActor*> GSActors;
+	UGameplayStatics::GetAllActorsOfClass(World, AStaticMeshActor::StaticClass(), GSActors);
+
+	avs::uid root_node_uid = geometrySource->GetRootNodeUid();
+
+	for(auto actor : GSActors)
+	{
+		auto c = actor->GetComponentByClass(UStreamableGeometryComponent::StaticClass());
+		if(!c)
+			continue;
+
+		UStreamableGeometryComponent* geometryComponent = static_cast<UStreamableGeometryComponent*>(c);
+		AddNode(root_node_uid, geometryComponent->GetMesh());
+	}
+}
+
+void FGeometryStreamingService::StartStreaming(FRemotePlayContext *Context)
+{
+	if (RemotePlayContext == Context) return;
 
 	RemotePlayContext = Context;
 	 
@@ -46,23 +66,6 @@ void FGeometryStreamingService::StartStreaming(UWorld* World, GeometrySource *ge
 	avsGeometryEncoder->configure(&geometryEncoder);
 
 	avsPipeline->link({ avsGeometrySource.Get(), avsGeometryEncoder.Get(), RemotePlayContext->GeometryQueue.Get() });
-
-	// It is intended that each session component should track the streamed actors that enter its bubble.
-	// These should be disposed of when they move out of range.
-	TArray<AActor*> GSActors;
-	UGameplayStatics::GetAllActorsOfClass(World, AStaticMeshActor::StaticClass(), GSActors);
-
-	avs::uid root_node_uid = geometrySource->GetRootNodeUid();
-
-	for (auto actor : GSActors)
-	{
-		auto c = actor->GetComponentByClass(UStreamableGeometryComponent::StaticClass());
-		if (!c)
-			continue;
-
-		UStreamableGeometryComponent *geometryComponent = static_cast<UStreamableGeometryComponent*>(c);
-		AddNode(root_node_uid, geometryComponent->GetMesh());
-	}
 }
 
 avs::uid FGeometryStreamingService::AddNode(avs::uid parent_uid, UMeshComponent* component)
@@ -102,10 +105,6 @@ avs::uid FGeometryStreamingService::AddNode(avs::uid parent_uid, UMeshComponent*
 
 void FGeometryStreamingService::StopStreaming()
 { 
-	if (geometrySource != nullptr)
-	{
-		geometrySource->clearData();
-	}
 	if(avsPipeline)
 		avsPipeline->deconfigure();
 	if (avsGeometrySource)
@@ -133,6 +132,11 @@ void FGeometryStreamingService::Tick()
 	//geometrySource->
 	if(avsPipeline)
 		avsPipeline->process();
+}
+
+void FGeometryStreamingService::Reset()
+{
+	geometrySource->clearData();
 }
 
 bool FGeometryStreamingService::HasResource(avs::uid resource_uid) const
