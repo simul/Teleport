@@ -10,6 +10,8 @@
 #include "basisu_comp.h"
 #include "transcoder/basisu_transcoder.h"
 
+#include "Core/Public/HAL/FileManagerGeneric.h"
+
 #include "Engine/Classes/EditorFramework/AssetImportData.h" //AssetImportData
 
 #include "RemotePlayMonitor.h"
@@ -495,31 +497,66 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 		//Compress the texture with Basis Universal if the flag is set.
 		if(Monitor->ShouldBasisEncode)
 		{
-			basisu::image image(width, height);
-			basisu::color_rgba_vec& imageData = image.get_pixels();
-			memcpy(imageData.data(), mipData.GetData(), texSize);
+			bool validBasisFileExists = false;
 
-			basisCompressorParams.m_source_images.clear();
-			basisCompressorParams.m_source_images.push_back(image);
+			FString GameSavedDir = FPaths::ConvertRelativePathToFull(FPaths::GameSavedDir());
+			FString basisFilePath = FPaths::Combine(GameSavedDir, texture->GetName() + FString(".basis"));
 
-			basisu::basis_compressor basisCompressor;
-
-			if(basisCompressor.init(basisCompressorParams))
+			FFileManagerGeneric fileManager;
+			if(fileManager.FileExists(*basisFilePath))
 			{
-				basisu::basis_compressor::error_code result = basisCompressor.process();
+				FDateTime basisLastModified = fileManager.GetTimeStamp(*basisFilePath);
+				FDateTime textureLastModified = texture->AssetImportData->SourceData.SourceFiles[0].Timestamp;
 
-				if(result == basisu::basis_compressor::error_code::cECSuccess)
+				//The file is valid if the basis file is younger than the texture file.
+				validBasisFileExists = basisLastModified > textureLastModified;
+			}
+
+			//Read from disk if the file exists.
+			if(validBasisFileExists)
+			{
+				FArchive *reader = fileManager.CreateFileReader(*basisFilePath);
+				
+				dataSize = reader->TotalSize();
+				data = new unsigned char[dataSize];
+				reader->Serialize(data, dataSize);
+
+				reader->Close();
+				delete reader;
+			}
+			//Otherwise, compress the file.
+			else
+			{
+				basisu::image image(width, height);
+				basisu::color_rgba_vec& imageData = image.get_pixels();
+				memcpy(imageData.data(), mipData.GetData(), texSize);
+
+				basisCompressorParams.m_source_images.clear();
+				basisCompressorParams.m_source_images.push_back(image);
+
+				basisCompressorParams.m_write_output_basis_files = true;
+				basisCompressorParams.m_out_filename = TCHAR_TO_ANSI(*GameSavedDir) + textureName;
+
+				basisu::basis_compressor basisCompressor;
+
+				if(basisCompressor.init(basisCompressorParams))
 				{
-					basisu::uint8_vec basisTex = basisCompressor.get_output_basis_file();
+					basisu::basis_compressor::error_code result = basisCompressor.process();
 
-					dataSize = basisCompressor.get_basis_file_size();
-					data = new unsigned char[dataSize];
-					memcpy(data, basisTex.data(), dataSize);
+					if(result == basisu::basis_compressor::error_code::cECSuccess)
+					{
+						basisu::uint8_vec basisTex = basisCompressor.get_output_basis_file();
+
+						dataSize = basisCompressor.get_basis_file_size();
+						data = new unsigned char[dataSize];
+						memcpy(data, basisTex.data(), dataSize);
+					}
 				}
 			}
 		}
-		//Otherwise, we send over the uncompressed texture files.
-		else
+
+		//We send over the uncompressed texture data, if we can't get the compressed data.
+		if(!data)
 		{
 			dataSize = texSize;
 			data = new unsigned char[dataSize];
