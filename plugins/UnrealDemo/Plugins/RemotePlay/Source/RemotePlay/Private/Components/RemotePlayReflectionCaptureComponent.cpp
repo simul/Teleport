@@ -6,7 +6,10 @@
 
 #include "RemotePlayReflectionCaptureComponent.h"
 #include "Engine/TextureRenderTargetCube.h"
+#include "Renderer/Private/ScenePrivate.h"
+#include "SceneManagement.h"
 #include "RemotePlayRHI.h"
+#include "PixelShaderUtils.h"
 
 enum class EUpdateReflectionsVariant
 {
@@ -36,42 +39,26 @@ public:
 	{
 		InputCubeMap.Bind(Initializer.ParameterMap, TEXT("InputCubeMap"));
 		DefaultSampler.Bind(Initializer.ParameterMap, TEXT("DefaultSampler"));
-		OutputColorTexture.Bind(Initializer.ParameterMap, TEXT("OutputColorTexture"));
+		RWOutputTexture.Bind(Initializer.ParameterMap, TEXT("RWOutputTexture"));
 	}
 
 	void SetParameters(
 		FRHICommandList& RHICmdList,
-		FTextureRHIRef InputCubeMapTextureRef,
-		FTexture2DRHIRef OutputColorTextureRef,
+		FTextureCubeRHIRef InputCubeMapTextureRef,
+		FTextureCubeRHIRef OutputColorTextureRef,
 		FUnorderedAccessViewRHIRef OutputColorTextureUAVRef)
 	{
 		FComputeShaderRHIParamRef ShaderRHI = GetComputeShader();
 
 		SetTextureParameter(RHICmdList, ShaderRHI, InputCubeMap, DefaultSampler, TStaticSamplerState<SF_Bilinear>::GetRHI(), InputCubeMapTextureRef);
-		OutputColorTexture.SetTexture(RHICmdList, ShaderRHI, OutputColorTextureRef, OutputColorTextureUAVRef);
+		RWOutputTexture.SetTexture(RHICmdList, ShaderRHI, OutputColorTextureRef, OutputColorTextureUAVRef);
 
-		if (bWriteDepthTexture)
-		{
-			OutputDepthTexture.SetTexture(RHICmdList, ShaderRHI, OutputDepthTextureRef, OutputDepthTextureUAVRef);
-		}
-		if (bWriteLinearDepth)
-		{
-			SetShaderValue(RHICmdList, ShaderRHI, WorldZToDeviceZTransform, InWorldZToDeviceZTransform);
-		}
-		if (bWriteStacked)
-		{
-			SetShaderValue(RHICmdList, ShaderRHI, DepthPos, InDepthPos);
-		}
 	}
 
 	void UnsetParameters(FRHICommandList& RHICmdList)
 	{
 		FComputeShaderRHIParamRef ShaderRHI = GetComputeShader();
-		OutputColorTexture.UnsetUAV(RHICmdList, ShaderRHI);
-		if (bWriteDepth)
-		{
-			OutputDepthTexture.UnsetUAV(RHICmdList, ShaderRHI);
-		}
+		RWOutputTexture.UnsetUAV(RHICmdList, ShaderRHI);
 	}
 
 	virtual bool Serialize(FArchive& Ar) override
@@ -79,7 +66,7 @@ public:
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 		Ar << InputCubeMap;
 		Ar << DefaultSampler;
-		Ar << OutputColorTexture;
+		Ar << RWOutputTexture;
 		return bShaderHasOutdatedParameters;
 	}
 
@@ -88,19 +75,89 @@ public:
 private:
 	FShaderResourceParameter InputCubeMap;
 	FShaderResourceParameter DefaultSampler;
-	FRWShaderParameter OutputColorTexture;
-	FRWShaderParameter OutputDepthTexture;
-	FShaderParameter WorldZToDeviceZTransform;
-	FShaderParameter DepthPos;
+	FRWShaderParameter RWOutputTexture;
+};
+/** Pixel shader used for filtering a mip. */
+class FUpdateReflectionsPS : public FGlobalShader
+{
+	DECLARE_SHADER_TYPE(FUpdateReflectionsPS, Global);
+public:
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return true;
+	}
+
+	FUpdateReflectionsPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
+		FGlobalShader(Initializer)
+	{
+		CubeFace.Bind(Initializer.ParameterMap, TEXT("CubeFace"));
+		MipIndex.Bind(Initializer.ParameterMap, TEXT("MipIndex"));
+		NumMips.Bind(Initializer.ParameterMap, TEXT("NumMips"));
+		SourceTexture.Bind(Initializer.ParameterMap, TEXT("SourceTexture"));
+		SourceTextureSampler.Bind(Initializer.ParameterMap, TEXT("SourceTextureSampler"));
+	}
+	FUpdateReflectionsPS() {}
+
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << CubeFace;
+		Ar << MipIndex;
+		Ar << NumMips;
+		Ar << SourceTexture;
+		Ar << SourceTextureSampler;
+		return bShaderHasOutdatedParameters;
+	}
+
+	FShaderParameter CubeFace;
+	FShaderParameter MipIndex;
+	FShaderParameter NumMips;
+	FShaderResourceParameter SourceTexture;
+	FShaderResourceParameter SourceTextureSampler;
 };
 
 IMPLEMENT_SHADER_TYPE(, FUpdateReflectionsCS<EUpdateReflectionsVariant::FromOriginal>, TEXT("/Plugin/RemotePlay/Private/UpdateReflections.usf"), TEXT("MainCS"), SF_Compute)
+IMPLEMENT_SHADER_TYPE(, FUpdateReflectionsPS, TEXT("/Plugin/RemotePlay/Private/UpdateReflections.usf"), TEXT("UpdateReflectionsPS"), SF_Pixel);
 
+// Duplicated from ReflectionEnvironment.cpp.
+int32 FindOrAllocateCubemapIndex(FScene* Scene, const UReflectionCaptureComponent* Component)
+{
+	int32 CubemapIndex = -1;
+
+	// Try to find an existing capture index for this component
+	const FCaptureComponentSceneState* CaptureSceneStatePtr = Scene->ReflectionSceneData.AllocatedReflectionCaptureState.Find(Component);
+
+	if (CaptureSceneStatePtr)
+	{
+		CubemapIndex = CaptureSceneStatePtr->CubemapIndex;
+	}
+	else
+	{
+		// Reuse a freed index if possible
+		CubemapIndex = Scene->ReflectionSceneData.CubemapArraySlotsUsed.FindAndSetFirstZeroBit();
+		if (CubemapIndex == INDEX_NONE)
+		{
+			// If we didn't find a free index, allocate a new one from the CubemapArraySlotsUsed bitfield
+			CubemapIndex = Scene->ReflectionSceneData.CubemapArraySlotsUsed.Num();
+			Scene->ReflectionSceneData.CubemapArraySlotsUsed.Add(true);
+		}
+
+		Scene->ReflectionSceneData.AllocatedReflectionCaptureState.Add(Component, FCaptureComponentSceneState(CubemapIndex));
+		Scene->ReflectionSceneData.AllocatedReflectionCaptureStateHasChanged = true;
+
+		check(CubemapIndex < GMaxNumReflectionCaptures);
+	}
+
+	check(CubemapIndex >= 0);
+	return CubemapIndex;
+}
 
 URemotePlayReflectionCaptureComponent::URemotePlayReflectionCaptureComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
 	BoxTransitionDistance = 100;
+	Mobility = EComponentMobility::Movable;
 }
 
 void URemotePlayReflectionCaptureComponent::UpdatePreviewShape()
@@ -120,76 +177,180 @@ float URemotePlayReflectionCaptureComponent::GetInfluenceBoundingRadius() const
 
 void URemotePlayReflectionCaptureComponent::Initialize_RenderThread(FRHICommandListImmediate& RHICmdList)
 {
-	FRemotePlayRHI RHI(RHICmdList);
-	FRemotePlayRHI::EDeviceType DeviceType;
-	void* DeviceHandle = RHI.GetNativeDevice(DeviceType);
-
-	EPixelFormat PixelFormat = EPixelFormat::PF_R8G8B8A8;
-
-
-	ColorSurfaceTexture.Texture = RHI.CreateSurfaceTexture(w, Params.FrameHeight + Params.DepthHeight, PixelFormat);
-
-	if (ColorSurfaceTexture.Texture.IsValid())
+	FRHIResourceCreateInfo CreateInfo;
+	const int32 NumMips = FMath::CeilLogTwo(128) + 1;
+	ReflectionCubeTexture.TextureCubeRHIRef = RHICmdList.CreateTextureCube(128, PF_FloatRGBA,NumMips, TexCreate_UAV,CreateInfo);
+	for (int i = 0; i < NumMips; i++)
 	{
-		ColorSurfaceTexture.UAV = RHI.CreateSurfaceUAV(ColorSurfaceTexture.Texture);
-#if PLATFORM_WINDOWS
-		if (avsDeviceType == avs::DeviceType::Direct3D11)
-		{
-			avsSurfaceBackends[0] = new avs::SurfaceDX11(reinterpret_cast<ID3D11Texture2D*>(ColorSurfaceTexture.Texture->GetNativeResource()));
-		}
-		if (avsDeviceType == avs::DeviceType::Direct3D12)
-		{
-			avsSurfaceBackends[0] = new avs::SurfaceDX12(reinterpret_cast<ID3D12Resource*>(ColorSurfaceTexture.Texture->GetNativeResource()));
-		}
-#endif
-		if (avsDeviceType == avs::DeviceType::OpenGL)
-		{
-			// TODO: Implement
-		}
+		ReflectionCubeTexture.UnorderedAccessViewRHIRefs[i]
+			= RHICmdList.CreateUnorderedAccessView(ReflectionCubeTexture.TextureCubeRHIRef, i);
+	}
+	
+}
+void URemotePlayReflectionCaptureComponent::Release_RenderThread(FRHICommandListImmediate& RHICmdList)
+{
+	if(ReflectionCubeTexture.TextureCubeRHIRef)
+		ReflectionCubeTexture.TextureCubeRHIRef->Release();
+	const int32 NumMips = FMath::CeilLogTwo(128) + 1;
+	for (int i = 0; i < NumMips; i++)
+	{
+		if (ReflectionCubeTexture.UnorderedAccessViewRHIRefs[i])
+			ReflectionCubeTexture.UnorderedAccessViewRHIRefs[i]->Release();
+	}
+}
+
+
+void URemotePlayReflectionCaptureComponent::UpdateReflections_RenderThread(
+	FRHICommandListImmediate& RHICmdList, FScene *Scene,
+	UTextureRenderTargetCube *InSourceTexture,
+	ERHIFeatureLevel::Type FeatureLevel)
+{
+	if (!ReflectionCubeTexture.TextureCubeRHIRef)
+		Initialize_RenderThread(RHICmdList);
+	FTextureRenderTargetCubeResource* SourceCubeResource = static_cast<FTextureRenderTargetCubeResource*>(InSourceTexture->GetRenderTargetResource());
+	const int32 EffectiveTopMipSize = InSourceTexture->SizeX;
+
+	const int32 NumMips =  FMath::CeilLogTwo(EffectiveTopMipSize) + 1;
+
+	const int32 CaptureIndex = FindOrAllocateCubemapIndex(Scene, this);
+	FTextureRHIParamRef CubemapArray;
+	auto &rt=Scene->ReflectionSceneData.CubemapArray.GetRenderTarget();
+	if (Scene->ReflectionSceneData.CubemapArray.IsValid() &&
+		Scene->ReflectionSceneData.CubemapArray.GetRenderTarget().IsValid())
+	{
+		CubemapArray = Scene->ReflectionSceneData.CubemapArray.GetRenderTarget().ShaderResourceTexture;
 	}
 	else
 	{
-		UE_LOG(LogRemotePlay, Error, TEXT("Failed to create encoder color input surface texture"));
 		return;
 	}
-}
+	//DispatchUpdateReflectionsShader<FUpdateReflectionsCS<EUpdateReflectionsVariant::FromOriginal>>(
+	//	RHICmdList, InSourceTexture->TextureReference.TextureReferenceRHI.GetReference()->GetTextureReference(), Target_UAV,FeatureLevel);
 
-void URemotePlayReflectionCaptureComponent::UpdateReflections_RenderThread(
-	FRHICommandListImmediate& RHICmdList,
-	FTextureRenderTargetResource* TargetResource,
-	ERHIFeatureLevel::Type FeatureLevel)
-{
-	DispatchUpdateReflectionsShader<FUpdateReflectionsCS<EUpdateReflectionsVariant::FromOriginal>>(RHICmdList, TargetResource->TextureRHI,FeatureLevel);
+	FSceneRenderTargetItem& DestCube = Scene->ReflectionSceneData.CubemapArray.GetRenderTarget();
+
+
+	SCOPED_DRAW_EVENT(RHICmdList, UpdateReflections);
+
+	auto* ShaderMap = GetGlobalShaderMap(FeatureLevel);
+
+	FGraphicsPipelineStateInitializer GraphicsPSOInit;
+	GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
+	GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
+	GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
+
+	// Downsample all the mips, each one reads from the mip above it
+	for (int32 MipIndex = 0; MipIndex < NumMips; MipIndex++)
+	{
+		const int32 MipSize = 1 << (NumMips - MipIndex - 1);
+		SCOPED_DRAW_EVENT(RHICmdList, RemotePlay);
+		for (int32 CubeFace = 0; CubeFace < CubeFace_MAX; CubeFace++)
+		{
+#if 1
+			TShaderMapRef<FUpdateReflectionsCS<EUpdateReflectionsVariant::FromOriginal>> ComputeShader(ShaderMap);
+			//RHICmdList.CopyToResolveTarget(InSourceTexture->Resource->TextureRHI, DestCube.ShaderResourceTexture, FResolveParams(FResolveRect(), (ECubeFace)CubeFace, MipIndex, 0, CaptureIndex));
+
+			ComputeShader->SetParameters(RHICmdList, SourceCubeResource->GetTextureRHI(),
+				ReflectionCubeTexture.TextureCubeRHIRef,
+				ReflectionCubeTexture.UnorderedAccessViewRHIRefs[MipIndex]);
+			SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*ComputeShader));
+			const uint32 NumThreadGroupsX = 128 / 16;
+			const uint32 NumThreadGroupsY = 128 / 16;
+			DispatchComputeShader(RHICmdList, *ComputeShader, NumThreadGroupsX, NumThreadGroupsY, 1);
+			ComputeShader->UnsetParameters(RHICmdList);
+
+
+			// Now copy this face of this cube into the cubemap array.
+
+			FResolveParams ResolveParams;
+			ResolveParams.Rect = FResolveRect();
+			ResolveParams.SourceArrayIndex = 0;
+			ResolveParams.DestArrayIndex = CaptureIndex;
+			ResolveParams.CubeFace = (ECubeFace)CubeFace;
+			ResolveParams.MipIndex = MipIndex;
+			RHICmdList.CopyToResolveTarget(ReflectionCubeTexture.TextureCubeRHIRef
+				, rt.ShaderResourceTexture, ResolveParams);
+#else
+			FRHIRenderPassInfo RPInfo(ReflectionCubeTexture.TextureCubeRHIRef, ERenderTargetActions::DontLoad_Store, nullptr, MipIndex, CubeFace);
+			RPInfo.bGeneratingMips = true;
+			RHICmdList.BeginRenderPass(RPInfo, TEXT("CreateCubeMips"));
+			RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+
+			const FIntRect ViewRect(0, 0, MipSize, MipSize);
+			RHICmdList.SetViewport(0, 0, 0.0f, MipSize, MipSize, 1.0f);
+
+
+			TShaderMapRef<FScreenVS> VertexShader(ShaderMap);
+			TShaderMapRef<FUpdateReflectionsPS> PixelShader(ShaderMap);
+
+			GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
+			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+			GraphicsPSOInit.PrimitiveType = PT_TriangleList;
+
+			SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+
+			{
+				const FPixelShaderRHIParamRef ShaderRHI = PixelShader->GetPixelShader();
+
+				SetShaderValue(RHICmdList, ShaderRHI, PixelShader->CubeFace, CubeFace);
+				SetShaderValue(RHICmdList, ShaderRHI, PixelShader->MipIndex, MipIndex);
+
+				SetShaderValue(RHICmdList, ShaderRHI, PixelShader->NumMips, NumMips);
+				FShaderResourceViewRHIRef TextureParameterSRV = RHICreateShaderResourceView(SourceCubeResource->GetTextureRHI()->GetTextureCube(), 0);
+
+				SetSRVParameter(RHICmdList, ShaderRHI, PixelShader->SourceTexture
+					, TextureParameterSRV);
+				SetSamplerParameter(RHICmdList, ShaderRHI, PixelShader->SourceTextureSampler, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
+			}
+			
+			float ClipSpaceQuadZ = 0.0f;
+			FPixelShaderUtils::DrawFullscreenQuad(RHICmdList, 1);
+			
+			RHICmdList.EndRenderPass();
+#endif
+		}
+	}
+
+	RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, &CubemapArray, 1);
 	
 }
 
-void URemotePlayReflectionCaptureComponent::UpdateContents(UTextureRenderTargetCube *InSourceTexture, ERHIFeatureLevel::Type FeatureLevel)
+void URemotePlayReflectionCaptureComponent::Initialize()
 {
-	auto SourceTarget = CastChecked<UTextureRenderTargetCube>(InSourceTexture);
-	FTextureRenderTargetResource* TargetResource = SourceTarget->GameThread_GetRenderTargetResource();
+	ENQUEUE_RENDER_COMMAND(URemotePlayReflectionCaptureComponentInitialize)(
+		[this](FRHICommandListImmediate& RHICmdList)
+		{
+			Initialize_RenderThread(RHICmdList);
+		}
+	);
+}
+
+void URemotePlayReflectionCaptureComponent::UpdateContents(FScene *Scene,UTextureRenderTargetCube *InSourceTexture, ERHIFeatureLevel::Type FeatureLevel)
+{
 
 	ENQUEUE_RENDER_COMMAND(RemotePlayCopyReflections)(
-		[this, TargetResource, FeatureLevel](FRHICommandListImmediate& RHICmdList)
+		[this, Scene, InSourceTexture, FeatureLevel](FRHICommandListImmediate& RHICmdList)
 		{
 			//SCOPED_DRAW_EVENT(RHICmdList, RemotePlayReflectionCaptureComponent);
-			UpdateReflections_RenderThread(RHICmdList, TargetResource, FeatureLevel);
+			UpdateReflections_RenderThread(RHICmdList, Scene, InSourceTexture, FeatureLevel);
 		}
 	);
 }
 
 template<typename ShaderType>
-void URemotePlayReflectionCaptureComponent::DispatchUpdateReflectionsShader(FRHICommandListImmediate& RHICmdList, FTextureRHIRef SourceTextureRHI, ERHIFeatureLevel::Type FeatureLevel)
+void URemotePlayReflectionCaptureComponent::DispatchUpdateReflectionsShader(FRHICommandListImmediate& RHICmdList, FTextureRHIRef SourceTextureRHI, FUnorderedAccessViewRHIRef Target_UAV, ERHIFeatureLevel::Type FeatureLevel)
 {
-	int32 OriginalSize = TextureRHI->GetSizeXYZ().X;
+	if (!SceneProxy->EncodedHDRCubemap)
+		return;
+	int32 OriginalSize = SceneProxy->EncodedHDRCubemap->TextureRHI->GetSizeXYZ().X;
 	const uint32 NumThreadGroupsX = OriginalSize / ShaderType::kThreadGroupSize;
 	const uint32 NumThreadGroupsY = OriginalSize / ShaderType::kThreadGroupSize;
 
 	TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 
 	TShaderMapRef<ShaderType> ComputeShader(GlobalShaderMap);
-	ComputeShader->SetParameters(RHICmdList, SourceTextureRHI,
-		TargetTexture.Texture, TargetTexture.UAV,
-);
+	ComputeShader->SetParameters(RHICmdList, SourceTextureRHI,SceneProxy->EncodedHDRCubemap->TextureRHI, Target_UAV);
 	SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*ComputeShader));
 	DispatchComputeShader(RHICmdList, *ComputeShader, NumThreadGroupsX, NumThreadGroupsY, 1);
 	ComputeShader->UnsetParameters(RHICmdList);

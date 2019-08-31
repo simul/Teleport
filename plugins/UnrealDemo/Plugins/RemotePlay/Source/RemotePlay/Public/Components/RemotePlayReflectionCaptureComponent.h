@@ -27,12 +27,20 @@ class URemotePlayReflectionCaptureComponent : public UReflectionCaptureComponent
 public:
 	virtual void UpdatePreviewShape() override;
 	virtual float GetInfluenceBoundingRadius() const override;
-	void UpdateContents(class UTextureRenderTargetCube *src, ERHIFeatureLevel::Type FeatureLevel) ;
+	void Initialize();
+	void UpdateContents(FScene *Scene, class UTextureRenderTargetCube *src, ERHIFeatureLevel::Type FeatureLevel) ;
 
 private:
 	void Initialize_RenderThread(FRHICommandListImmediate& RHICmdList);
 	void Release_RenderThread(FRHICommandListImmediate& RHICmdList);
-	void UpdateReflections_RenderThread(FRHICommandListImmediate& RHICmdList, FTextureRenderTargetResource* TargetResource, ERHIFeatureLevel::Type FeatureLevel);
-	template<typename ShaderType> void DispatchUpdateReflectionsShader(FRHICommandListImmediate& RHICmdList, FTextureRHIRef TextureRHI, ERHIFeatureLevel::Type FeatureLevel);
+	void UpdateReflections_RenderThread(FRHICommandListImmediate& RHICmdList, FScene *Scene, UTextureRenderTargetCube *InSourceTexture, ERHIFeatureLevel::Type FeatureLevel);
+	template<typename ShaderType> void DispatchUpdateReflectionsShader(FRHICommandListImmediate& RHICmdList, FTextureRHIRef TextureRHI,FUnorderedAccessViewRHIRef Target_UAV, ERHIFeatureLevel::Type FeatureLevel);
+
+	struct FCubeTexture
+	{
+		FTextureCubeRHIRef TextureCubeRHIRef;
+		FUnorderedAccessViewRHIRef UnorderedAccessViewRHIRefs[12];
+	};
+	FCubeTexture ReflectionCubeTexture;
 };
 

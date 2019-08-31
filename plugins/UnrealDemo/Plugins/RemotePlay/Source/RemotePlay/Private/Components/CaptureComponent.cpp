@@ -46,16 +46,19 @@ URemotePlayCaptureComponent::~URemotePlayCaptureComponent()
 void URemotePlayCaptureComponent::BeginPlay()
 {
 	Super::BeginPlay();
-	if (!bRenderOwner)
+	AActor* OwnerActor = GetTypedOuter<AActor>();
+	if (bRenderOwner)
 	{
-		AActor* OwnerActor = GetTypedOuter<AActor>();
+		RemotePlayReflectionCaptureComponent = Cast<URemotePlayReflectionCaptureComponent>(OwnerActor->GetComponentByClass(URemotePlayReflectionCaptureComponent::StaticClass()));
+	}
+	else
+	{
 		check(OwnerActor);
 
 		TArray<AActor*> OwnerAttachedActors;
 		OwnerActor->GetAttachedActors(OwnerAttachedActors);
 		HiddenActors.Add(OwnerActor);
 		HiddenActors.Append(OwnerAttachedActors);
-		RemotePlayReflectionCaptureComponent = Cast<URemotePlayReflectionCaptureComponent>(OwnerActor->GetComponentByClass(URemotePlayReflectionCaptureComponent::StaticClass()));
 
 	}
 }
@@ -116,6 +119,9 @@ void URemotePlayCaptureComponent::OnViewportDrawn()
 		{
 			RemotePlayContext->EncodePipeline.Reset(new FEncodePipelineMonoscopic);
 			RemotePlayContext->EncodePipeline->Initialize(EncodeParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get());
+			
+			if (RemotePlayReflectionCaptureComponent)
+				RemotePlayReflectionCaptureComponent->Initialize();
 		}
 
 		ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
@@ -131,7 +137,7 @@ void URemotePlayCaptureComponent::OnViewportDrawn()
 		}
 		RemotePlayContext->EncodePipeline->EncodeFrame(GetWorld()->Scene, TextureTarget);
 		if (RemotePlayReflectionCaptureComponent)
-			RemotePlayReflectionCaptureComponent->UpdateContents(TextureTarget, GetWorld()->Scene->GetFeatureLevel());
+			RemotePlayReflectionCaptureComponent->UpdateContents(GetWorld()->Scene->GetRenderScene(),TextureTarget, GetWorld()->Scene->GetFeatureLevel());
 	}
 }
 

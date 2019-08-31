@@ -1,6 +1,12 @@
 // (c) 2018 Simul.co
 
 #include "/Engine/Public/Platform.ush"
+struct FScreenVertexOutput
+{
+	float2 UV : TEXCOORD0;
+	float4 Position : SV_POSITION;
+};
+
 
 // TODO: Expose those parameters to the capture component.
 static const float TonemapGamma     = 2.2;

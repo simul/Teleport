@@ -1,4 +1,4 @@
-// (c) 2018 Simul.co
+// (c) 2018-2019 Simul.co
 
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/RemotePlay/Private/Common.ush"
