@@ -23,4 +23,5 @@ public:
 	virtual void PrepareFrame(FSceneInterface* InScene, UTexture* InSourceTexture) =0;
 	virtual void EncodeFrame(FSceneInterface* InScene, UTexture* InSourceTexture) = 0;
 	virtual FSurfaceTexture *GetSurfaceTexture() = 0;
+	virtual void AddCameraTransform(FTransform& Transform) = 0;
 };

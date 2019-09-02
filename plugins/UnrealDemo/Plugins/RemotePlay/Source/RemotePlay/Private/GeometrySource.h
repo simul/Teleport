@@ -71,6 +71,7 @@ protected:
 	std::map<avs::uid, avs::Material> materials;
 	
 	mutable std::map<avs::uid, std::vector<avs::vec3>> scaledPositionBuffers;
+	mutable std::map<avs::uid, std::vector<FVector2D>> processedUVs;
 	avs::uid rootNodeUid;
 
 	void PrepareMesh(Mesh &m);

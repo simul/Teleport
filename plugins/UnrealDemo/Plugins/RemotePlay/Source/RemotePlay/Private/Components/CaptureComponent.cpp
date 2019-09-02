@@ -73,6 +73,19 @@ void URemotePlayCaptureComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 }
 
+void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Scene)
+{
+	AActor* OwnerActor = GetTypedOuter<AActor>();
+	check(OwnerActor);
+	if (bIsStreaming && RemotePlayContext != nullptr && RemotePlayContext->EncodePipeline.IsValid())
+	{
+		FTransform Transform = OwnerActor->GetTransform();
+		RemotePlayContext->EncodePipeline->AddCameraTransform(Transform);
+	}
+	Super::UpdateSceneCaptureContents(Scene);
+}
+
+
 void URemotePlayCaptureComponent::StartStreaming(FRemotePlayContext *Context)
 {
 	RemotePlayContext = Context;
@@ -154,7 +167,7 @@ void URemotePlayCaptureComponent::OnViewportDrawn()
 	}
 }
 
-FTransform  URemotePlayCaptureComponent::GetToWorldTransform()
+FTransform URemotePlayCaptureComponent::GetToWorldTransform()
 {
 	AActor* OwnerActor = GetTypedOuter<AActor>();
 	check(OwnerActor);

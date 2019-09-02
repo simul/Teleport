@@ -84,8 +84,8 @@ public:
 		FUnorderedAccessViewRHIRef OutputColorTextureUAVRef,
 		FTexture2DRHIRef OutputDepthTextureRef,
 		FUnorderedAccessViewRHIRef OutputDepthTextureUAVRef,
-		const FVector2D& InWorldZToDeviceZTransform
-		,uint32_t InDepthPos)
+		const FVector2D& InWorldZToDeviceZTransform,
+		uint32_t InDepthPos)
 	{
 		FComputeShaderRHIParamRef ShaderRHI = GetComputeShader();
 
@@ -367,24 +367,24 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	}
 
 	Pipeline.Reset(new avs::Pipeline);
-	Encoder.SetNum(NumStreams);
-	InputSurface.SetNum(NumStreams);
+	Encoders.SetNum(NumStreams);
+	InputSurfaces.SetNum(NumStreams);
 
 	for(uint32_t i=0; i<NumStreams; ++i)
 	{ 
-		if(!InputSurface[i].configure(avsSurfaceBackends[i]))
+		if(!InputSurfaces[i].configure(avsSurfaceBackends[i]))
 		{
 			UE_LOG(LogRemotePlay, Error, TEXT("Failed to configure input surface node #%d"), i);
 			return;
 		}
 		EncoderParams.inputFormat = avsInputFormats[i];
-		if(!Encoder[i].configure(avs::DeviceHandle{avsDeviceType, DeviceHandle}, Params.FrameWidth, Params.FrameHeight+Params.DepthHeight, EncoderParams))
+		if(!Encoders[i].configure(avs::DeviceHandle{avsDeviceType, DeviceHandle}, Params.FrameWidth, Params.FrameHeight+Params.DepthHeight, EncoderParams))
 		{
 			UE_LOG(LogRemotePlay, Error, TEXT("Failed to configure encoder #%d"), i);
 			return;
 		}
 
-		if(!Pipeline->link({&InputSurface[i], &Encoder[i], Outputs[i]}))
+		if(!Pipeline->link({&InputSurfaces[i], &Encoders[i], Outputs[i]}))
 		{
 			UE_LOG(LogRemotePlay, Error, TEXT("Error configuring the encoding pipeline"));
 			return;
@@ -395,8 +395,8 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 void FEncodePipelineMonoscopic::Release_RenderThread(FRHICommandListImmediate& RHICmdList)
 {
 	Pipeline.Reset();
-	Encoder.Empty();
-	InputSurface.Empty();
+	Encoders.Empty();
+	InputSurfaces.Empty();
 
 	ColorSurfaceTexture.Texture.SafeRelease();
 	ColorSurfaceTexture.UAV.SafeRelease();
@@ -442,7 +442,21 @@ void FEncodePipelineMonoscopic::PrepareFrame_RenderThread(
 void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediate& RHICmdList)
 {
 	check(Pipeline.IsValid());
-	if(!Pipeline->process())
+	// The transform of the capture component needs to be sent with the image
+	FTransform Transform;
+	if (CameraTransformQueue.Dequeue(Transform))
+	{
+		avs::Transform CamTransform;
+		const FVector t = Transform.GetTranslation();
+		const FQuat r = Transform.GetRotation();
+		const FVector s = Transform.GetScale3D();
+		CamTransform = { t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z };
+		for (auto& Encoder : Encoders)
+		{
+			Encoder.setCameraTransform(CamTransform);
+		}
+	}
+	if (!Pipeline->process())
 	{
 		UE_LOG(LogRemotePlay, Warning, TEXT("Encode pipeline processing encountered an error"));
 	}
@@ -464,5 +478,10 @@ void FEncodePipelineMonoscopic::DispatchProjectCubemapShader(FRHICommandListImme
 	SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*ComputeShader));
 	DispatchComputeShader(RHICmdList, *ComputeShader, NumThreadGroupsX, NumThreadGroupsY, 1);
 	ComputeShader->UnsetParameters(RHICmdList);
+}
+
+void FEncodePipelineMonoscopic::AddCameraTransform(FTransform& Transform)
+{
+	CameraTransformQueue.Enqueue(Transform);
 }
   
