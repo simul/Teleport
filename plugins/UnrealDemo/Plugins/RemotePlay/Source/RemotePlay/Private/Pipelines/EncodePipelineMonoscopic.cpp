@@ -215,6 +215,28 @@ void FEncodePipelineMonoscopic::Release()
 	DepthQueue = nullptr;
 }
 
+void FEncodePipelineMonoscopic::PrepareFrame(FSceneInterface* InScene, UTexture* InSourceTexture)
+{
+	if (!InScene || !InSourceTexture)
+	{
+		return;
+}
+
+	const ERHIFeatureLevel::Type FeatureLevel = InScene->GetFeatureLevel();
+
+	auto SourceTarget = CastChecked<UTextureRenderTargetCube>(InSourceTexture);
+	FTextureRenderTargetResource* TargetResource = SourceTarget->GameThread_GetRenderTargetResource();
+
+	ENQUEUE_RENDER_COMMAND(RemotePlayPrepareFrame)(
+		[this, TargetResource, FeatureLevel](FRHICommandListImmediate& RHICmdList)
+		{
+			SCOPED_DRAW_EVENT(RHICmdList, RemotePlayEncodePipelineMonoscopicPrepare);
+			PrepareFrame_RenderThread(RHICmdList, TargetResource, FeatureLevel);
+		}
+	);
+}
+
+
 void FEncodePipelineMonoscopic::EncodeFrame(FSceneInterface* InScene, UTexture* InSourceTexture)
 {
 	if(!InScene || !InSourceTexture)
@@ -231,7 +253,6 @@ void FEncodePipelineMonoscopic::EncodeFrame(FSceneInterface* InScene, UTexture* 
 		[this, TargetResource, FeatureLevel](FRHICommandListImmediate& RHICmdList)
 		{
 			SCOPED_DRAW_EVENT(RHICmdList, RemotePlayEncodePipelineMonoscopic);
-			PrepareFrame_RenderThread(RHICmdList, TargetResource, FeatureLevel);
 			EncodeFrame_RenderThread(RHICmdList);
 		}
 	);

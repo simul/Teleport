@@ -7,6 +7,11 @@
 
 class FSceneInterface;
 class UTexture;
+struct FSurfaceTexture
+{
+	FTexture2DRHIRef Texture;
+	FUnorderedAccessViewRHIRef UAV;
+};
 
 class IEncodePipeline
 {
@@ -15,6 +20,8 @@ public:
 
 	virtual void Initialize(const FRemotePlayEncodeParameters& InParams, avs::Queue* InColorQueue, avs::Queue* InDepthQueue) = 0;
 	virtual void Release() = 0;
+	virtual void PrepareFrame(FSceneInterface* InScene, UTexture* InSourceTexture) =0;
 	virtual void EncodeFrame(FSceneInterface* InScene, UTexture* InSourceTexture) = 0;
+	virtual FSurfaceTexture *GetSurfaceTexture() = 0;
 	virtual void AddCameraTransform(FTransform& Transform) = 0;
 };

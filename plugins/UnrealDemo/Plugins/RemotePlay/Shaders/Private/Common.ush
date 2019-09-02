@@ -1,6 +1,12 @@
 // (c) 2018 Simul.co
 
 #include "/Engine/Public/Platform.ush"
+struct FScreenVertexOutput
+{
+	float2 UV : TEXCOORD0;
+	float4 Position : SV_POSITION;
+};
+
 
 // TODO: Expose those parameters to the capture component.
 static const float TonemapGamma     = 2.2;
@@ -23,4 +29,22 @@ float4 Prepare(float4 SceneColour)
 {
 	float4 Colour = 0.5*SceneColour;
 	return Colour;
+}
+
+float3 CubeFaceIndexToView(uint3 idx, uint2 dims)
+{
+	float4x4 cubeInvViewProj[6] = {
+		{ {0,0,-1,0}	,{0,-1,0,0}	,{1,0,0,0}	,{0,0,0,1}	}
+		, { {0,0,1,0}	,{0,-1,0,0}	,{-1,0,0,0}	,{0,0,0,1} }
+		,{ {-1,0,0,0}	,{0,0,-1,0}	,{0,1,0,0}	,{0,0,0,1}	}
+		,{ {-1,0,0,0}	,{0,0,1,0}	,{0,-1,0,0},{0,0,0,1}	}
+		,{ {-1,0,0,0}	,{0,-1,0,0}	,{0,0,-1,0}	,{0,0,0,1}	}
+		,{ {1,0,0,0}	,{0,-1,0,0}	,{0,0,1,0}	,{0,0,0,1}	}
+	};
+	float2 texCoords = (float2(idx.xy) + float2(0.5, 0.5)) / float2(dims);
+	float4 clip_pos = float4(-1.0, 1.0, 1.0, 1.0);
+	clip_pos.x += 2.0*texCoords.x;
+	clip_pos.y -= 2.0*texCoords.y;
+	float3 view = -normalize(mul(cubeInvViewProj[idx.z], clip_pos).xyz);
+	return view;
 }
