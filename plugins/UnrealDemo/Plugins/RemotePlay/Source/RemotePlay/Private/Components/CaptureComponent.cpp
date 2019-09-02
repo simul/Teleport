@@ -75,9 +75,10 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 	{
 		FTransform Transform = OwnerActor->GetTransform();
 		RemotePlayContext->EncodePipeline->AddCameraTransform(Transform);
-		Super::UpdateSceneCaptureContents(Scene);
 	}
+	Super::UpdateSceneCaptureContents(Scene);
 }
+
 
 void URemotePlayCaptureComponent::StartStreaming(FRemotePlayContext *Context)
 {
