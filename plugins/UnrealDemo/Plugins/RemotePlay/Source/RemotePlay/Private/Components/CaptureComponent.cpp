@@ -121,7 +121,10 @@ void URemotePlayCaptureComponent::OnViewportDrawn()
 			RemotePlayContext->EncodePipeline->Initialize(EncodeParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get());
 			
 			if (RemotePlayReflectionCaptureComponent)
+			{
 				RemotePlayReflectionCaptureComponent->Initialize();
+				RemotePlayReflectionCaptureComponent->bAttached = true;
+			}
 		}
 
 		ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
@@ -135,9 +138,19 @@ void URemotePlayCaptureComponent::OnViewportDrawn()
 			else
 				return; 
 		}
-		RemotePlayContext->EncodePipeline->EncodeFrame(GetWorld()->Scene, TextureTarget);
+		RemotePlayContext->EncodePipeline->PrepareFrame(GetWorld()->Scene, TextureTarget);
 		if (RemotePlayReflectionCaptureComponent)
-			RemotePlayReflectionCaptureComponent->UpdateContents(GetWorld()->Scene->GetRenderScene(),TextureTarget, GetWorld()->Scene->GetFeatureLevel());
+		{
+			RemotePlayReflectionCaptureComponent->UpdateContents(
+				GetWorld()->Scene->GetRenderScene()
+				, TextureTarget
+				, GetWorld()->Scene->GetFeatureLevel());
+			RemotePlayReflectionCaptureComponent->PrepareFrame(
+				GetWorld()->Scene->GetRenderScene()
+				, RemotePlayContext->EncodePipeline->GetSurfaceTexture()
+				, GetWorld()->Scene->GetFeatureLevel());
+		}
+		RemotePlayContext->EncodePipeline->EncodeFrame(GetWorld()->Scene, TextureTarget);
 	}
 }
 

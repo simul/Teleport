@@ -3,12 +3,52 @@
 #include "/Engine/Public/Platform.ush"
 #include "/Plugin/RemotePlay/Private/Common.ush"
 
-RWTexture2D<float4> RWOutputTexture;
+RWTexture2DArray<float4> RWOutputTexture;
+TextureCube InputCubeMap;
+SamplerState DefaultSampler;
+uint CubeFace;
 
-[numthreads(16, 16, 1)]
-void MainCS(uint2 ThreadID : SV_DispatchThreadID)
+RWTexture2D<float4> RWStreamOutputTexture;
+
+[numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
+void NoSourceCS(uint2 ThreadID : SV_DispatchThreadID)
 {
-	RWOutputTexture[int2(ThreadID.x, ThreadID.y)] = float4(0.5,0.0,1.0,1.0);
+	uint OutputW, OutputH, OutputD;
+	RWOutputTexture.GetDimensions(OutputW, OutputH, OutputD);
+	float3 view = CubeFaceIndexToView(uint3(ThreadID.xy,CubeFace), uint2(OutputW,OutputH));
+	float4 SceneColour = InputCubeMap.SampleLevel(DefaultSampler, view, 0);
+	SceneColour = float4(saturate(view), 1.0) + 0.0001*SceneColour;
+	RWOutputTexture[int3(ThreadID.x, ThreadID.y,CubeFace)] = SceneColour;
+}
+
+[numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
+void FromCubemapCS(uint2 ThreadID : SV_DispatchThreadID)
+{
+	uint OutputW, OutputH, OutputD;
+	RWOutputTexture.GetDimensions(OutputW, OutputH, OutputD);
+	float3 view = CubeFaceIndexToView(uint3(ThreadID.xy, CubeFace), uint2(OutputW, OutputH));
+	float4 SceneColour = InputCubeMap.SampleLevel(DefaultSampler, view, 0);
+	RWOutputTexture[int3(ThreadID.x, ThreadID.y, CubeFace)] = SceneColour;
+}
+
+[numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
+void FromMipCS(uint2 ThreadID : SV_DispatchThreadID)
+{
+	uint OutputW, OutputH, OutputD;
+	RWOutputTexture.GetDimensions(OutputW, OutputH, OutputD);
+	float3 view = CubeFaceIndexToView(uint3(ThreadID.xy, CubeFace), uint2(OutputW, OutputH));
+	float4 SceneColour = InputCubeMap.SampleLevel(DefaultSampler, view, 0);
+	SceneColour = float4(saturate(view), 1.0) + 0.0001*SceneColour;
+	RWOutputTexture[int3(ThreadID.x, ThreadID.y, CubeFace)] = SceneColour;
+}
+
+[numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
+void WriteToStreamCS(uint3 ThreadID : SV_DispatchThreadID)
+{
+	uint OutputW, OutputH;
+	RWStreamOutputTexture.GetDimensions(OutputW, OutputH);
+	float4 SceneColour = RWOutputTexture[int3(ThreadID.x, ThreadID.y,ThreadID.z)];
+	RWStreamOutputTexture[int2(ThreadID.x, ThreadID.y)] = SceneColour;
 }
 
 uint MipIndex;

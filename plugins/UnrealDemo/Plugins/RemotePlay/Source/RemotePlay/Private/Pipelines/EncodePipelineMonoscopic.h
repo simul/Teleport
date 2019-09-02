@@ -12,10 +12,17 @@ class FTextureRenderTargetResource;
 class FEncodePipelineMonoscopic : public IEncodePipeline
 {
 public:
+
+
 	/* Begin IEncodePipeline interface */
-	virtual void Initialize(const FRemotePlayEncodeParameters& InParams, avs::Queue* InColorQueue, avs::Queue* InDepthQueue) override;
-	virtual void Release() override;
-	virtual void EncodeFrame(FSceneInterface* InScene, UTexture* InSourceTexture) override;
+	 void Initialize(const FRemotePlayEncodeParameters& InParams, avs::Queue* InColorQueue, avs::Queue* InDepthQueue) override;
+	 void Release() override;
+	void PrepareFrame(FSceneInterface* InScene, UTexture* InSourceTexture) override;
+	 void EncodeFrame(FSceneInterface* InScene, UTexture* InSourceTexture) override;
+	 FSurfaceTexture *GetSurfaceTexture() override
+	 {
+		 return &ColorSurfaceTexture;
+	 }
 	/* End IEncodePipeline interface */
 
 private:
@@ -27,11 +34,6 @@ private:
 	template<typename ShaderType>
 	void DispatchProjectCubemapShader(FRHICommandListImmediate& RHICmdList, FTextureRHIRef TextureRHI, ERHIFeatureLevel::Type FeatureLevel);
 
-	struct FSurfaceTexture
-	{
-		FTexture2DRHIRef Texture;
-		FUnorderedAccessViewRHIRef UAV;
-	};
 
 	FRemotePlayEncodeParameters Params;
 	FSurfaceTexture ColorSurfaceTexture;
