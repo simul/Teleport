@@ -55,6 +55,7 @@ private:
 	void ApplyPlayerInput(float DeltaTime);
 
 	void DispatchEvent(const ENetEvent& Event);
+	void RecvHandshake(const ENetPacket* Packet);
 	void RecvHeadPose(const ENetPacket* Packet);
 	void RecvInput(const ENetPacket* Packet);
 

@@ -189,7 +189,10 @@ avs::Result GeometryEncoder::encodeNodes(avs::GeometrySourceBackendInterface * s
 		src->getNode(uid, node);
 
 		put(uid);
-		put(node->transform);
+		auto transform = node->transform;
+		avs::ConvertTransform(avs::AxesStandard::UnrealStyle, req->GetAxesStandard(), transform);
+
+		put(transform);
 		put(node->data_uid);
 		put(node->data_type); 
 		put(node->materials.size());

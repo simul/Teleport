@@ -9,6 +9,7 @@
 #include "RHIStaticStates.h"
 #include "SceneInterface.h"
 #include "SceneUtils.h"
+#include "RemotePlayContext.h"
 
 #include "Engine/TextureRenderTargetCube.h"
 
@@ -185,10 +186,10 @@ static inline FVector2D CreateWorldZToDeviceZTransform(float FOV)
 	return FVector2D{1.0f / DepthAdd, SubtractValue};
 }
 
-void FEncodePipelineMonoscopic::Initialize(const FRemotePlayEncodeParameters& InParams, avs::Queue* InColorQueue, avs::Queue* InDepthQueue)
+void FEncodePipelineMonoscopic::Initialize(const FRemotePlayEncodeParameters& InParams, struct FRemotePlayContext *context,avs::Queue* InColorQueue, avs::Queue* InDepthQueue)
 {
 	check(InColorQueue);
-
+	RemotePlayContext = context;
 	Params = InParams;
 	ColorQueue = InColorQueue;
 	DepthQueue = InDepthQueue;
@@ -447,13 +448,15 @@ void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediat
 	if (CameraTransformQueue.Dequeue(Transform))
 	{
 		avs::Transform CamTransform;
-		const FVector t = Transform.GetTranslation();
-		const FQuat r = Transform.GetRotation();
+		FVector t = Transform.GetTranslation()*0.01f;
+		FQuat r = Transform.GetRotation();
 		const FVector s = Transform.GetScale3D();
 		CamTransform = { t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z };
 		for (auto& Encoder : Encoders)
 		{
-			Encoder.setCameraTransform(CamTransform);
+			avs::Transform transform =CamTransform;
+			avs::ConvertTransform(avs::AxesStandard::UnrealStyle, RemotePlayContext->axesStandard, transform);
+			Encoder.setCameraTransform(transform);
 		}
 	}
 	if (!Pipeline->process())

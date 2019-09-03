@@ -398,6 +398,45 @@ void URemotePlaySessionComponent::ApplyPlayerInput(float DeltaTime)
 		PlayerController->InputKey(InputQueue.ButtonsReleased.Pop(), EInputEvent::IE_Released, 1.0f, true);
 	}
 }
+void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
+{
+	if (Packet->dataLength != sizeof(avs::Handshake))
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Received malformed handshake packet of length: %d"), Packet->dataLength);
+		return;
+	}
+	avs::Handshake handshake;
+	FPlatformMemory::Memcpy(&handshake, Packet->data, Packet->dataLength);
+	if (handshake.isReadyToReceivePayloads != true)
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Handshake not ready to receive."));
+		return;
+	}
+	RemotePlayContext->axesStandard = handshake.axesStandard;
+	URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
+	const int32 StreamingPort = ServerHost->address.port + 1;
+
+	CaptureComponent->StartStreaming(RemotePlayContext);
+	Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
+	if (Monitor&&Monitor->StreamGeometry)
+	{
+		GeometryStreamingService.SetStreamingContinuously(Monitor->StreamGeometryContinuously);
+		GeometryStreamingService.StartStreaming(RemotePlayContext);
+	}
+
+	if (!RemotePlayContext->NetworkPipeline.IsValid())
+	{
+		FRemotePlayNetworkParameters NetworkParams;
+		NetworkParams.RemoteIP = Client_GetIPAddress();
+		NetworkParams.LocalPort = StreamingPort;
+		NetworkParams.RemotePort = NetworkParams.LocalPort + 1;
+
+		RemotePlayContext->NetworkPipeline.Reset(new FNetworkPipeline);
+		RemotePlayContext->NetworkPipeline->Initialize(Monitor, NetworkParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get(), RemotePlayContext->GeometryQueue.Get());
+	}
+
+	UE_LOG(LogRemotePlay, Log, TEXT("RemotePlay: Started streaming to %s:%d"), *Client_GetIPAddress(), StreamingPort);
+}
 
 void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 {
@@ -406,29 +445,7 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 	case RPCH_HANDSHAKE:
 		//Delay the actual start of streaming until we receive a confirmation from the client that they are ready.
 	{
-		URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
-		const int32 StreamingPort = ServerHost->address.port + 1;
-
-		CaptureComponent->StartStreaming(RemotePlayContext);
-		Monitor=ARemotePlayMonitor::Instantiate(GetWorld());
-		if(Monitor&&Monitor->StreamGeometry)
-		{
-			GeometryStreamingService.SetStreamingContinuously(Monitor->StreamGeometryContinuously);
-			GeometryStreamingService.StartStreaming(RemotePlayContext);
-		}
-
-		if(!RemotePlayContext->NetworkPipeline.IsValid())
-		{
-			FRemotePlayNetworkParameters NetworkParams;
-			NetworkParams.RemoteIP = Client_GetIPAddress();
-			NetworkParams.LocalPort = StreamingPort;
-			NetworkParams.RemotePort = NetworkParams.LocalPort + 1;
-
-			RemotePlayContext->NetworkPipeline.Reset(new FNetworkPipeline);
-			RemotePlayContext->NetworkPipeline->Initialize(Monitor,NetworkParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get(), RemotePlayContext->GeometryQueue.Get());
-		}
-
-		UE_LOG(LogRemotePlay, Log, TEXT("RemotePlay: Started streaming to %s:%d"), *Client_GetIPAddress(), StreamingPort);
+		RecvHandshake(Event.packet);
 		break;
 	}
 	case RPCH_Control:
@@ -448,17 +465,20 @@ void URemotePlaySessionComponent::RecvHeadPose(const ENetPacket* Packet)
 		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Received malformed head pose packet of length: %d"), Packet->dataLength);
 		return;
 	}
-
-	FQuat HeadPose;
+	if (!RemotePlayContext)
+		return;
+	avs::vec4 HeadPose;
 	FPlatformMemory::Memcpy(&HeadPose, Packet->data, Packet->dataLength);
 
 	// Here we set the angle of the player pawn.
 	// Convert quaternion from Simulcaster coordinate system (X right, Y forward, Z up) to UE4 coordinate system (left-handed, X left, Y forward, Z up).
-	const FQuat HeadPoseUE{ -HeadPose.X, HeadPose.Y, -HeadPose.Z, HeadPose.W };
+	avs::ConvertRotation(RemotePlayContext->axesStandard,avs::AxesStandard::UnrealStyle,HeadPose);
+	const FQuat HeadPoseUE{ HeadPose.x, HeadPose.y, HeadPose.z, HeadPose.w };
+	//const FQuat HeadPoseUE{ -HeadPose.x, HeadPose.y, -HeadPose.z, HeadPose.w };
 	FVector Euler = HeadPoseUE.Euler();
 	Euler.X = Euler.Y = 0.0f;
 	// Unreal thinks the Euler angle starts from facing X, but actually it's Y.
-	Euler.Z -= 90.0f;
+	//Euler.Z += 180.0f;
 	FQuat FlatPose = FQuat::MakeFromEuler(Euler);
 	check(PlayerController.IsValid());
 	PlayerController->SetControlRotation(FlatPose.Rotator());

@@ -15,14 +15,14 @@ public:
 
 
 	/* Begin IEncodePipeline interface */
-	 void Initialize(const FRemotePlayEncodeParameters& InParams, avs::Queue* InColorQueue, avs::Queue* InDepthQueue) override;
-	 void Release() override;
+	void Initialize(const FRemotePlayEncodeParameters& InParams, struct FRemotePlayContext *context, avs::Queue* InColorQueue, avs::Queue* InDepthQueue) override;
+	void Release() override;
 	void PrepareFrame(FSceneInterface* InScene, UTexture* InSourceTexture) override;
-	 void EncodeFrame(FSceneInterface* InScene, UTexture* InSourceTexture) override;
-	 FSurfaceTexture *GetSurfaceTexture() override
-	 {
-		 return &ColorSurfaceTexture;
-	 }
+	void EncodeFrame(FSceneInterface* InScene, UTexture* InSourceTexture) override;
+	FSurfaceTexture *GetSurfaceTexture() override
+	{
+		return &ColorSurfaceTexture;
+	}
 	virtual void AddCameraTransform(FTransform& Transform) override;
 	/* End IEncodePipeline interface */
 
@@ -35,6 +35,7 @@ private:
 	template<typename ShaderType>
 	void DispatchProjectCubemapShader(FRHICommandListImmediate& RHICmdList, FTextureRHIRef TextureRHI, ERHIFeatureLevel::Type FeatureLevel);
 
+	struct FRemotePlayContext* RemotePlayContext;
 
 	FRemotePlayEncodeParameters Params;
 	FSurfaceTexture ColorSurfaceTexture;
