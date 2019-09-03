@@ -131,7 +131,7 @@ void URemotePlayCaptureComponent::OnViewportDrawn()
 		if (!RemotePlayContext->EncodePipeline.IsValid())
 		{
 			RemotePlayContext->EncodePipeline.Reset(new FEncodePipelineMonoscopic);
-			RemotePlayContext->EncodePipeline->Initialize(EncodeParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get());
+			RemotePlayContext->EncodePipeline->Initialize(EncodeParams, RemotePlayContext,RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get());
 			
 			if (RemotePlayReflectionCaptureComponent)
 			{

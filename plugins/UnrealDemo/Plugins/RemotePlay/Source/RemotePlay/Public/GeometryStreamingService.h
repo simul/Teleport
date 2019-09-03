@@ -28,6 +28,10 @@ public:
 
 	virtual void EncodedResource(avs::uid resource_uid) override;
 	virtual void RequestResource(avs::uid resource_uid) override;
+	virtual avs::AxesStandard GetAxesStandard() const override
+	{
+		return RemotePlayContext->axesStandard;
+	}
 
 	inline void SetStreamingContinuously(bool val) { bStreamingContinuously = val; }
 

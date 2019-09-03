@@ -281,9 +281,8 @@ avs::uid GeometrySource::CreateNode(const FTransform& transform, avs::uid data_u
 	auto node = std::make_shared<avs::DataNode>();
 	// convert offset from cm to metres.
 	FVector t = transform.GetTranslation()*0.01f;
-	t.Set(t.Y, t.Z, -t.X);
+	// We retain Unreal axes until sending to individual clients, which might have varying standards.
 	FQuat r = transform.GetRotation();
-	r = FQuat(r.Y, r.Z, -r.X, r.W);
 	const FVector s = transform.GetScale3D();
 	node->transform = { t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z };
 	node->data_uid = data_uid;
