@@ -7,14 +7,27 @@
 #include "Rendering/PositionVertexBuffer.h"
 #include "StaticMeshResources.h"
 
+//Basis Universal
 #include "basisu_comp.h"
 #include "transcoder/basisu_transcoder.h"
 
+//Unreal File Manager
 #include "Core/Public/HAL/FileManagerGeneric.h"
 
-#include "Engine/Classes/EditorFramework/AssetImportData.h" //AssetImportData
+//Textures
+#include "Engine/Classes/EditorFramework/AssetImportData.h"
+
+//Materials & Material Expressions
+#include "Engine/Classes/Materials/Material.h"
+#include "Engine/Classes/Materials/MaterialExpressionConstant.h"
+#include "Engine/Classes/Materials/MaterialExpressionConstant3Vector.h"
+#include "Engine/Classes/Materials/MaterialExpressionConstant4Vector.h"
+#include "Engine/Classes/Materials/MaterialExpressionScalarParameter.h"
+#include "Engine/Classes/Materials/MaterialExpressionVectorParameter.h"
 
 #include "RemotePlayMonitor.h"
+
+#include <functional> //std::function
 
 #if 0
 #include <random>
@@ -22,6 +35,9 @@ std::default_random_engine generator;
 std::uniform_int_distribution<int> distribution(1, 6);
 int dice_roll = distribution(generator);
 #endif
+
+#define LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name) UE_LOG(LogRemotePlay, Warning, TEXT("%s"), *("Decomposing <" + materialInterface->GetName() + ">: Unsupported expression with type name <" + name + ">"));
+#define LOG_UNSUPPORTED_MATERIAL_CHAIN_LENGTH(materialInterface, length) UE_LOG(LogRemotePlay, Warning, TEXT("%s"), *("Decomposing <" + materialInterface->GetName() + ">: Unsupported property chain length of <" + length + ">"));
 
 struct GeometrySource::Mesh
 {
@@ -34,6 +50,11 @@ struct GeometrySource::Mesh
 	std::vector<avs::PrimitiveArray> primitiveArrays;
 	std::vector<avs::Attribute> attributes;
 };
+
+namespace
+{
+	const unsigned long long DUMMY_TEX_COORD = 0;
+}
 
 GeometrySource::GeometrySource()
 	:Monitor(nullptr)
@@ -320,63 +341,16 @@ avs::uid GeometrySource::AddMaterial(UMaterialInterface *materialInterface)
 	//Store the material if we have yet to process it.
 	else
 	{
-		const unsigned long long DUMMY_TEX_COORD = 0;
-
 		avs::Material newMaterial;
 
 		newMaterial.name = TCHAR_TO_ANSI(*materialInterface->GetName());
-		
-		TArray<UTexture*> outTextures;
 
-		materialInterface->GetTexturesInPropertyChain(EMaterialProperty::MP_BaseColor, outTextures, nullptr, nullptr);
-		UTexture* diffuseTex = outTextures.Num() ? outTextures.Last() : nullptr;
-		outTextures.Empty();
-
-		materialInterface->GetTexturesInPropertyChain(EMaterialProperty::MP_Metallic, outTextures, nullptr, nullptr);
-		UTexture* metalRoughOcclusTex = outTextures.Num() ? outTextures.Last() : nullptr;
-		outTextures.Empty();
-
-		materialInterface->GetTexturesInPropertyChain(EMaterialProperty::MP_Normal, outTextures, nullptr, nullptr);
-		UTexture* normalTex = outTextures.Num() ? outTextures.Last() : nullptr;
-		outTextures.Empty();
-
-		materialInterface->GetTexturesInPropertyChain(EMaterialProperty::MP_EmissiveColor, outTextures, nullptr, nullptr);
-		UTexture* emissiveTex = outTextures.Num() ? outTextures.Last() : nullptr;
-
-		//Store the texture if it exists.	
-		if(diffuseTex)
-		{
-			newMaterial.pbrMetallicRoughness.baseColorTexture = avs::TextureAccessor{StoreTexture(diffuseTex), DUMMY_TEX_COORD};
-		}
-
-		if(metalRoughOcclusTex)
-		{
-			avs::TextureAccessor metalRoughOcclusAccessor = {StoreTexture(metalRoughOcclusTex), DUMMY_TEX_COORD};
-
-			newMaterial.pbrMetallicRoughness.metallicRoughnessTexture = metalRoughOcclusAccessor;
-			newMaterial.occlusionTexture = metalRoughOcclusAccessor;
-		}
-
-		if(normalTex)
-		{
-			newMaterial.normalTexture = avs::TextureAccessor{StoreTexture(normalTex), DUMMY_TEX_COORD};
-		}
-
-		if(emissiveTex)
-		{
-			newMaterial.emissiveTexture = avs::TextureAccessor{StoreTexture(emissiveTex), DUMMY_TEX_COORD};
-		}
-
-		///!!! Initalising material values that need to be set, but aren't due to currently lacking a way to cross-reference them to an Unreal Material Parameter/Expression.
-
-		newMaterial.pbrMetallicRoughness.baseColorFactor = {1, 1, 1, 1};
-		newMaterial.pbrMetallicRoughness.metallicFactor = 1;
-		newMaterial.pbrMetallicRoughness.roughnessFactor = 1;
-		newMaterial.normalTexture.scale = 1;
-		newMaterial.occlusionTexture.strength = 1;
-		newMaterial.emissiveFactor = {1, 1, 1};
-
-		///!!!
+		DecomposeMaterialProperty(materialInterface, EMaterialProperty::MP_BaseColor, newMaterial.pbrMetallicRoughness.baseColorTexture, newMaterial.pbrMetallicRoughness.baseColorFactor);
+		DecomposeMaterialProperty(materialInterface, EMaterialProperty::MP_Metallic, newMaterial.pbrMetallicRoughness.metallicRoughnessTexture, newMaterial.pbrMetallicRoughness.metallicFactor);
+		DecomposeMaterialProperty(materialInterface, EMaterialProperty::MP_Roughness, newMaterial.pbrMetallicRoughness.metallicRoughnessTexture, newMaterial.pbrMetallicRoughness.roughnessFactor);
+		DecomposeMaterialProperty(materialInterface, EMaterialProperty::MP_AmbientOcclusion, newMaterial.occlusionTexture, newMaterial.occlusionTexture.strength);
+		DecomposeMaterialProperty(materialInterface, EMaterialProperty::MP_Normal, newMaterial.normalTexture, newMaterial.normalTexture.scale);
+		DecomposeMaterialProperty(materialInterface, EMaterialProperty::MP_EmissiveColor, newMaterial.emissiveTexture, newMaterial.emissiveFactor);
 
 		mat_uid = avs::GenerateUid();
 
@@ -498,7 +472,7 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 		{
 			bool validBasisFileExists = false;
 
-			FString GameSavedDir = FPaths::ConvertRelativePathToFull(FPaths::GameSavedDir());
+			FString GameSavedDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir());
 			FString basisFilePath = FPaths::Combine(GameSavedDir, texture->GetName() + FString(".basis"));
 
 			FFileManagerGeneric fileManager;
@@ -570,6 +544,233 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 	}
 
 	return texture_uid;
+}
+
+void GeometrySource::GetDefaultTexture(UMaterialInterface *materialInterface, EMaterialProperty propertyChain, avs::TextureAccessor &outTexture)
+{
+	TArray<UTexture*> outTextures;
+	materialInterface->GetTexturesInPropertyChain(propertyChain, outTextures, nullptr, nullptr);
+
+	UTexture *texture = outTextures.Num() ? outTextures[0] : nullptr;
+	
+	if(texture)
+	{
+		outTexture = {StoreTexture(texture), DUMMY_TEX_COORD};
+	}
+}
+
+void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInterface, EMaterialProperty propertyChain, avs::TextureAccessor &outTexture, float &outFactor)
+{
+	TArray<UMaterialExpression*> outExpressions;
+	materialInterface->GetMaterial()->GetExpressionsInPropertyChain(propertyChain, outExpressions, nullptr);
+
+	std::function<void(size_t)> handleExpression = [&](size_t expressionIndex)
+	{
+		FString name = outExpressions[expressionIndex]->GetName();
+
+		if(name.Contains("TextureSample"))
+		{
+			outTexture = {StoreTexture(Cast<UMaterialExpressionTextureBase>(outExpressions[expressionIndex])->Texture), DUMMY_TEX_COORD};
+		}
+		else if(name.Contains("Constant"))
+		{
+			outFactor = Cast<UMaterialExpressionConstant>(outExpressions[expressionIndex])->R;
+		}
+		else if(name.Contains("ScalarParameter"))
+		{
+			///INFO: Just using the parameter's name won't work for layered materials.
+			materialInterface->GetScalarParameterValue(outExpressions[expressionIndex]->GetParameterName(), outFactor);
+		}
+		else
+		{
+			LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
+
+			if(outTexture.index == 0)
+			{
+				GetDefaultTexture(materialInterface, propertyChain, outTexture);
+			}
+		}
+	};
+
+	switch(outExpressions.Num())
+	{
+		case 0:
+			//There is no property chain, so everything should be left as default.
+			break;
+		case 1:
+			handleExpression(0);
+
+			break;
+		case 3:
+		{
+			FString name = outExpressions[0]->GetName();
+
+			if(name.Contains("Multiply"))
+			{
+				handleExpression(1);
+				handleExpression(2);
+			}
+			else
+			{
+				LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
+				GetDefaultTexture(materialInterface, propertyChain, outTexture);
+			}
+		}
+
+			break;
+		default:
+			LOG_UNSUPPORTED_MATERIAL_CHAIN_LENGTH(materialInterface, FString::FromInt(outExpressions.Num()));
+			GetDefaultTexture(materialInterface, propertyChain, outTexture);
+
+			break;
+	}
+}
+
+void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInterface, EMaterialProperty propertyChain, avs::TextureAccessor &outTexture, avs::vec3 &outFactor)
+{
+	TArray<UMaterialExpression *> outExpressions;
+	materialInterface->GetMaterial()->GetExpressionsInPropertyChain(propertyChain, outExpressions, nullptr);
+
+	std::function<void(size_t)> handleExpression = [&](size_t expressionIndex)
+	{
+		FString name = outExpressions[expressionIndex]->GetName();
+
+		if(name.Contains("TextureSample"))
+		{
+			outTexture = {StoreTexture(Cast<UMaterialExpressionTextureBase>(outExpressions[expressionIndex])->Texture), DUMMY_TEX_COORD};
+		}
+		else if(name.Contains("Constant3Vector"))
+		{
+			FLinearColor colour = Cast<UMaterialExpressionConstant3Vector>(outExpressions[expressionIndex])->Constant;
+			outFactor = {colour.R, colour.G, colour.B};
+		}
+		else if(name.Contains("VectorParameter"))
+		{
+			FLinearColor colour;
+			materialInterface->GetVectorParameterValue(outExpressions[expressionIndex]->GetParameterName(), colour);
+
+			outFactor = {colour.R, colour.G, colour.B};
+		}
+		else
+		{
+			LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
+
+			if(outTexture.index == 0)
+			{
+				GetDefaultTexture(materialInterface, propertyChain, outTexture);
+			}
+		}
+	};
+
+	switch(outExpressions.Num())
+	{
+		case 0:
+			//There is no property chain, so everything should be left as default.
+			break;
+		case 1:
+		{
+			handleExpression(0);
+		}
+
+		break;
+		case 3:
+		{
+			FString name = outExpressions[0]->GetName();
+
+			if(name.Contains("Multiply"))
+			{
+				handleExpression(1);
+				handleExpression(2);
+			}
+			else
+			{
+				LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
+				GetDefaultTexture(materialInterface, propertyChain, outTexture);
+			}
+		}
+
+		break;
+		default:
+			LOG_UNSUPPORTED_MATERIAL_CHAIN_LENGTH(materialInterface, FString::FromInt(outExpressions.Num()));
+			GetDefaultTexture(materialInterface, propertyChain, outTexture);
+
+		break;
+	}
+}
+
+void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInterface, EMaterialProperty propertyChain, avs::TextureAccessor &outTexture, avs::vec4 &outFactor)
+{
+	TArray<UMaterialExpression*> outExpressions;
+	materialInterface->GetMaterial()->GetExpressionsInPropertyChain(propertyChain, outExpressions, nullptr);
+
+	std::function<void(size_t)> handleExpression = [&](size_t expressionIndex)
+	{
+		FString name = outExpressions[expressionIndex]->GetName();
+
+		if(name.Contains("TextureSample"))
+		{
+			outTexture = {StoreTexture(Cast<UMaterialExpressionTextureBase>(outExpressions[expressionIndex])->Texture), DUMMY_TEX_COORD};
+		}
+		else if(name.Contains("Constant3Vector"))
+		{
+			FLinearColor colour = Cast<UMaterialExpressionConstant3Vector>(outExpressions[expressionIndex])->Constant;
+			outFactor = {colour.R, colour.G, colour.B, colour.A};
+		}
+		else if(name.Contains("Constant4Vector"))
+		{
+			FLinearColor colour = Cast<UMaterialExpressionConstant4Vector>(outExpressions[expressionIndex])->Constant;
+			outFactor = {colour.R, colour.G, colour.B, colour.A};
+		}
+		else if(name.Contains("VectorParameter"))
+		{
+			FLinearColor colour;
+			materialInterface->GetVectorParameterValue(outExpressions[expressionIndex]->GetParameterName(), colour);
+
+			outFactor = {colour.R, colour.G, colour.B, colour.A};
+		}
+		else
+		{
+			LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
+
+			if(outTexture.index == 0)
+			{
+				GetDefaultTexture(materialInterface, propertyChain, outTexture);
+			}
+		}
+	};
+
+	switch(outExpressions.Num())
+	{
+		case 0:
+			//There is no property chain, so everything should be left as default.
+			break;
+		case 1:
+			handleExpression(0);
+
+			break;
+		case 3:
+		{
+			FString name = outExpressions[0]->GetName();
+
+			if(name.Contains("Multiply"))
+			{
+				handleExpression(1);
+				handleExpression(2);
+			}
+			else
+			{
+				LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
+				GetDefaultTexture(materialInterface, propertyChain, outTexture);
+			}
+		}
+
+			break;
+		default:
+			LOG_UNSUPPORTED_MATERIAL_CHAIN_LENGTH(materialInterface, FString::FromInt(outExpressions.Num()));
+			GetDefaultTexture(materialInterface, propertyChain, outTexture);
+
+			break;
+	}
 }
 
 std::vector<avs::uid> GeometrySource::getNodeUIDs() const

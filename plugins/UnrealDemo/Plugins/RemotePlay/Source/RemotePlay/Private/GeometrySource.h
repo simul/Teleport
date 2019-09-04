@@ -83,5 +83,20 @@ protected:
 	//Returns the uid for this texture.
 	avs::uid StoreTexture(UTexture *texture);
 
+	//Returns the first texture in the material chain.
+	//	materialInterface : The interface of the material we are decomposing.
+	//	propertyChain : The material property we are decomposing.
+	//	outTexture : Texture related to the chain to output into.
+	void GetDefaultTexture(UMaterialInterface *materialInterface, EMaterialProperty propertyChain, avs::TextureAccessor &outTexture);
+
+	//Decomposes the material into the texture, and outFactor supplied.
+	//	materialInterface : The interface of the material we are decomposing.
+	//	propertyChain : The material property we are decomposing.
+	//	outTexture : Texture related to the chain to output into.
+	//	outFactor : Factor related to the chain to output into.
+	void DecomposeMaterialProperty(UMaterialInterface *materialInterface, EMaterialProperty propertyChain, avs::TextureAccessor &outTexture, float &outFactor);
+	void DecomposeMaterialProperty(UMaterialInterface *materialInterface, EMaterialProperty propertyChain, avs::TextureAccessor &outTexture, avs::vec3 &outFactor);
+	void DecomposeMaterialProperty(UMaterialInterface *materialInterface, EMaterialProperty propertyChain, avs::TextureAccessor &outTexture, avs::vec4 &outFactor);
+
 	class ARemotePlayMonitor* Monitor;
 };
