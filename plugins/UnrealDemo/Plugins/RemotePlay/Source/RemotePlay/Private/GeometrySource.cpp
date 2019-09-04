@@ -59,7 +59,6 @@ namespace
 GeometrySource::GeometrySource()
 	:Monitor(nullptr)
 {
-	basisCompressorParams.m_quality_level = 1;
 	basisCompressorParams.m_tex_type = basist::basis_texture_type::cBASISTexType2D;
 
 	const uint32_t THREAD_AMOUNT = 16;
@@ -468,7 +467,7 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 		unsigned char* data = nullptr;
 
 		//Compress the texture with Basis Universal if the flag is set.
-		if(Monitor->ShouldBasisEncode)
+		if(Monitor->UseCompressedTextures)
 		{
 			bool validBasisFileExists = false;
 
@@ -516,6 +515,9 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 
 				basisCompressorParams.m_write_output_basis_files = true;
 				basisCompressorParams.m_out_filename = TCHAR_TO_ANSI(*basisFilePath);
+
+				basisCompressorParams.m_quality_level = Monitor->QualityLevel;
+				basisCompressorParams.m_compression_level = Monitor->CompressionLevel;
 
 				basisu::basis_compressor basisCompressor;
 
