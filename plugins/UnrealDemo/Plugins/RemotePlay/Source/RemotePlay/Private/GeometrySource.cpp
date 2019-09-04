@@ -148,11 +148,14 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 		{
 			avs::Attribute &attr = pa.attributes[idx++];
 			attr.accessor = avs::GenerateUid();
-			attr.semantic = avs::AttributeSemantic::NORMAL;
+			attr.semantic = avs::AttributeSemantic::TANGENTNORMALXZ;
 			avs::Accessor &a = accessors[attr.accessor];
 			a.byteOffset = 0;
-			a.type = avs::Accessor::DataType::VEC3;
-			a.componentType = avs::Accessor::ComponentType::FLOAT;
+			if(vb.GetUseHighPrecisionTangentBasis())
+				a.type = avs::Accessor::DataType::VEC4;
+			else
+				a.type = avs::Accessor::DataType::VEC2;
+			a.componentType = avs::Accessor::ComponentType::UBYTE;
 			a.count = vb.GetNumVertices();// same as pb???
 			a.bufferView = avs::GenerateUid();
 			AddBufferAndView(m, a.bufferView, avs::GenerateUid(), vb.GetNumVertices(), vb.GetTangentSize() / vb.GetNumVertices(), vb.GetTangentData());
