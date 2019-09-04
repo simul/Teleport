@@ -59,7 +59,6 @@ namespace
 GeometrySource::GeometrySource()
 	:Monitor(nullptr)
 {
-	basisCompressorParams.m_quality_level = 1;
 	basisCompressorParams.m_tex_type = basist::basis_texture_type::cBASISTexType2D;
 
 	const uint32_t THREAD_AMOUNT = 16;
@@ -468,13 +467,20 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 		unsigned char* data = nullptr;
 
 		//Compress the texture with Basis Universal if the flag is set.
-		if(Monitor->ShouldBasisEncode)
+		if(Monitor->UseCompressedTextures)
 		{
 			bool validBasisFileExists = false;
 
 			FString GameSavedDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir());
-			FString basisFilePath = FPaths::Combine(GameSavedDir, texture->GetName() + FString(".basis"));
 
+			//Create a unique name based on the filepath.
+			FString uniqueName = FPaths::ConvertRelativePathToFull(texture->AssetImportData->SourceData.SourceFiles[0].RelativeFilename);
+			uniqueName = uniqueName.Replace(TEXT("/"), TEXT("#")); //Replaces slashes with hashes.
+			uniqueName = uniqueName.RightChop(2); //Remove drive.
+			uniqueName = uniqueName.Right(255); //Restrict name length.
+
+			FString basisFilePath = FPaths::Combine(GameSavedDir, uniqueName + FString(".basis"));
+			
 			FFileManagerGeneric fileManager;
 			if(fileManager.FileExists(*basisFilePath))
 			{
@@ -508,7 +514,10 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 				basisCompressorParams.m_source_images.push_back(image);
 
 				basisCompressorParams.m_write_output_basis_files = true;
-				basisCompressorParams.m_out_filename = TCHAR_TO_ANSI(*GameSavedDir) + textureName;
+				basisCompressorParams.m_out_filename = TCHAR_TO_ANSI(*basisFilePath);
+
+				basisCompressorParams.m_quality_level = Monitor->QualityLevel;
+				basisCompressorParams.m_compression_level = Monitor->CompressionLevel;
 
 				basisu::basis_compressor basisCompressor;
 
@@ -647,6 +656,7 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 		else if(name.Contains("VectorParameter"))
 		{
 			FLinearColor colour;
+			///INFO: Just using the parameter's name won't work for layered materials.
 			materialInterface->GetVectorParameterValue(outExpressions[expressionIndex]->GetParameterName(), colour);
 
 			outFactor = {colour.R, colour.G, colour.B};
@@ -724,6 +734,7 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 		else if(name.Contains("VectorParameter"))
 		{
 			FLinearColor colour;
+			///INFO: Just using the parameter's name won't work for layered materials.
 			materialInterface->GetVectorParameterValue(outExpressions[expressionIndex]->GetParameterName(), colour);
 
 			outFactor = {colour.R, colour.G, colour.B, colour.A};
