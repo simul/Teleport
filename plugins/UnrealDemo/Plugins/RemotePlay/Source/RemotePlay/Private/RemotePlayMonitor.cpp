@@ -21,10 +21,13 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 	{
 		VideoEncodeFrequency = 2;
 		StreamGeometry = true;
-		ShouldBasisEncode = false;
 	}
 	DebugStream = 0;
 	Checksums = false;
+
+	UseCompressedTextures = true;
+	QualityLevel = 1;
+	CompressionLevel = 1;
 }
 
 

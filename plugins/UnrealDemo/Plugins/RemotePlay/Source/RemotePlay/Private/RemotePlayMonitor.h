@@ -42,8 +42,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
 	uint32 Checksums : 1;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
-	bool ShouldBasisEncode = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Compression)
+	bool UseCompressedTextures;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Compression)
+	uint8 QualityLevel;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Compression)
+	uint8 CompressionLevel;
 
 	// In order:
 	virtual void PostInitProperties() override;
