@@ -328,8 +328,6 @@ void URemotePlayReflectionCaptureComponent::UpdateReflections_RenderThread(
 		CreateInfo
 	);
 
-	//FUnorderedAccessViewRHIRef DLightSBUAV = RHICreateUnorderedAccessView(DLightSB, false, false);
-
 	FShaderResourceViewRHIRef DirLightSRV = RHICreateShaderResourceView(DirLightSB);
 
 	// Downsample all the mips, each one reads from the mip above it

@@ -36,16 +36,14 @@ void FromCubemapCS(uint2 ThreadID : SV_DispatchThreadID)
 	uint OutputW, OutputH, OutputD;
 	RWOutputTexture.GetDimensions(OutputW, OutputH, OutputD);
 	float3 view = CubeFaceIndexToView(uint3(ThreadID.xy, CubeFace), uint2(OutputW, OutputH));
-	//float4 SceneColour = InputCubeMap.SampleLevel(DefaultSampler, view, 0);
 	float4 Radiance = float4(0, 0, 0, 0);
 	for (uint i = 0; i < DirLightCount; ++i)
 	{
 		float factor = dot(DirLights[i].Direction, view); 
 		Radiance += (DirLights[i].Color * factor * DirLights[i].Intensity);
 	}
-	saturate(Radiance);
 
-	RWOutputTexture[int3(ThreadID.x, ThreadID.y, CubeFace)] = Radiance;
+	RWOutputTexture[int3(ThreadID.x, ThreadID.y, CubeFace)] = saturate(Radiance);
 }
 
 [numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]

@@ -62,7 +62,6 @@ private:
 	};
 
 	TQueue<TResourceArray<FShaderDirectionalLight>> ShaderDirLightsQueue;
-
 	FCubeTexture ReflectionCubeTexture;
 };
 
