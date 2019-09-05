@@ -7,7 +7,7 @@
 namespace scr
 {
 	//Interface for Texture
-	class Texture: public APIObject
+	class Texture : public APIObject
 	{
 	public:
 		enum class Slot : uint32_t
@@ -44,11 +44,14 @@ namespace scr
 			RGBA8UI,									
 			RGBA8I,										
 			RGBA8_SNORM,								
-			RGBA8,										
+			RGBA8,
+			BGRA8,
+
+			RGB10_A2UI,
+			RGB10_A2,
 			
-			R11F_G11F_B10F,								
-			RGB10_A2UI,									
-			RGB10_A2,									
+			RGB32F,
+			R11F_G11F_B10F,										
 			
 			RG32F,										
 			RG32UI,										
@@ -97,27 +100,47 @@ namespace scr
 			SAMPLE_COUNT_32_BIT = 0x00000020,
 			SAMPLE_COUNT_64_BIT = 0x00000040,
 		};
+		
+		//All compression formats a texture can be compressed in.
+		enum class CompressionFormat: uint32_t
+		{
+			UNCOMPRESSED,
+			BC1,
+			BC3,
+			BC4,
+			BC5,
+			ETC1,
+			ETC2,
+			PVRTC1_4_OPAQUE_ONLY,
+			BC7_M6_OPAQUE_ONLY
+		};
+		
 		struct TextureCreateInfo
 		{
 			uint32_t width;
 			uint32_t height;
 			uint32_t depth;
 			uint32_t bytesPerPixel;
+			uint32_t arrayCount;
+			uint32_t mipCount;
+
 			Slot slot;
 			Type type;
 			Format format;
 			SampleCountBit sampleCount;
 			size_t size;
 			const uint8_t* data;
+
+			CompressionFormat compression; //The format the texture is compressed in.
 		};
 
 	protected:
 		TextureCreateInfo m_CI;
 
-		const Sampler* m_Sampler;
+		std::shared_ptr<const Sampler> m_Sampler = nullptr;
 
 	public:
-		Texture(RenderPlatform *r) :APIObject(r) {}
+		Texture(RenderPlatform *r) : APIObject(r) {}
 		virtual ~Texture()
 		{
 			m_CI.width = 0;
@@ -130,18 +153,16 @@ namespace scr
 			m_CI.sampleCount = SampleCountBit::SAMPLE_COUNT_1_BIT;
 			m_CI.size = 0;
 			m_CI.data = nullptr;
-
-			m_Sampler = nullptr;
 		}
 
 		//For cubemaps pass in a uint8_t* to continuous array of data for all 6 sides. Width, height, depth and bytesPerPixel will be the same for all faces.
 		virtual void Create(TextureCreateInfo* pTextureCreateInfo) = 0;
 		virtual void Destroy() = 0;
 
-		virtual void UseSampler(const Sampler* sampler) = 0;
+		virtual void UseSampler(std::shared_ptr<const Sampler> ) = 0;
 		virtual void GenerateMips() = 0;
 
-		inline const Sampler* GetSampler() const { return m_Sampler; }
+		inline std::shared_ptr<const Sampler> GetSampler() const { return m_Sampler; }
 
 		virtual bool ResourceInUse(int timeout) = 0;
 		std::function<bool(Texture*, int)> ResourceInUseCallback = &Texture::ResourceInUse;

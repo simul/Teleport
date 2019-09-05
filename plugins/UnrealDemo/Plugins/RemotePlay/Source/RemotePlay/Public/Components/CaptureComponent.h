@@ -27,9 +27,13 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	/* End UActorComponent interface */
 
+	void UpdateSceneCaptureContents(FSceneInterface* Scene) override;
+
 	void StartStreaming(FRemotePlayContext *Context);
 
 	void StopStreaming();
+	
+	FTransform GetToWorldTransform();
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = RemotePlay)
 	FRemotePlayEncodeParameters EncodeParams;
@@ -37,11 +41,11 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = RemotePlay)
 	uint32 bRenderOwner : 1;
 
-private:
+private: 
 	void OnViewportDrawn();
 	FDelegateHandle ViewportDrawnDelegateHandle;
 
 	struct FRemotePlayContext* RemotePlayContext;
-
+	class URemotePlayReflectionCaptureComponent *RemotePlayReflectionCaptureComponent;
 	bool bIsStreaming;
 };

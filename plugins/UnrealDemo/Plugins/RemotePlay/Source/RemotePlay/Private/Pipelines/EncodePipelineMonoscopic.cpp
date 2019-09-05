@@ -9,6 +9,7 @@
 #include "RHIStaticStates.h"
 #include "SceneInterface.h"
 #include "SceneUtils.h"
+#include "RemotePlayContext.h"
 
 #include "Engine/TextureRenderTargetCube.h"
 
@@ -23,6 +24,7 @@
 #include "libavstream/surfaces/surface_dx12.hpp"
 #include "HideWindowsPlatformTypes.h"
 #endif
+#include <algorithm>
 
 DECLARE_FLOAT_COUNTER_STAT(TEXT("RemotePlayEncodePipelineMonoscopic"), Stat_GPU_RemotePlayEncodePipelineMonoscopic, STATGROUP_GPU);
 
@@ -31,11 +33,13 @@ enum class EProjectCubemapVariant
 	Color,
 	ColorAndDepth,
 	ColorAndLinearDepth,
+	ColorAndLinearDepthToTexture,
+	ColorAndLinearDepthStacked
 };
 
 template<EProjectCubemapVariant Variant>
 class FProjectCubemapCS : public FGlobalShader
-{
+{ 
 	DECLARE_SHADER_TYPE(FProjectCubemapCS, Global);
 public:
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
@@ -49,6 +53,7 @@ public:
 		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZEY"), kThreadGroupSize);
 		OutEnvironment.SetDefine(TEXT("WRITE_DEPTH"), bWriteDepth ? 1 : 0);
 		OutEnvironment.SetDefine(TEXT("WRITE_DEPTH_LINEAR"), bWriteLinearDepth ? 1 : 0);
+		OutEnvironment.SetDefine(TEXT("DEPTH_STACKED"), bWriteStacked ? 1 : 0);
 	}
 
 	FProjectCubemapCS() = default;
@@ -67,8 +72,12 @@ public:
 		{
 			WorldZToDeviceZTransform.Bind(Initializer.ParameterMap, TEXT("WorldZToDeviceZTransform"));
 		}
+		if (bWriteStacked)
+		{
+			DepthPos.Bind(Initializer.ParameterMap, TEXT("DepthPos"));
+		}
 	}
-
+	 
 	void SetParameters(
 		FRHICommandList& RHICmdList,
 		FTextureRHIRef InputCubeMapTextureRef,
@@ -76,20 +85,25 @@ public:
 		FUnorderedAccessViewRHIRef OutputColorTextureUAVRef,
 		FTexture2DRHIRef OutputDepthTextureRef,
 		FUnorderedAccessViewRHIRef OutputDepthTextureUAVRef,
-		const FVector2D& InWorldZToDeviceZTransform)
+		const FVector2D& InWorldZToDeviceZTransform,
+		uint32_t InDepthPos)
 	{
 		FComputeShaderRHIParamRef ShaderRHI = GetComputeShader();
 
 		SetTextureParameter(RHICmdList, ShaderRHI, InputCubeMap, DefaultSampler, TStaticSamplerState<SF_Bilinear>::GetRHI(), InputCubeMapTextureRef);
 		OutputColorTexture.SetTexture(RHICmdList, ShaderRHI, OutputColorTextureRef, OutputColorTextureUAVRef);
 
-		if(bWriteDepth)
+		if(bWriteDepthTexture)
 		{
 			OutputDepthTexture.SetTexture(RHICmdList, ShaderRHI, OutputDepthTextureRef, OutputDepthTextureUAVRef);
 		}
 		if(bWriteLinearDepth)
 		{
 			SetShaderValue(RHICmdList, ShaderRHI, WorldZToDeviceZTransform, InWorldZToDeviceZTransform);
+		}
+		if (bWriteStacked)
+		{
+			SetShaderValue(RHICmdList, ShaderRHI, DepthPos, InDepthPos);
 		}
 	}
 
@@ -109,7 +123,7 @@ public:
 		Ar << InputCubeMap;
 		Ar << DefaultSampler;
 		Ar << OutputColorTexture;
-		if(bWriteDepth)
+		if(bWriteDepthTexture)
 		{
 			Ar << OutputDepthTexture;
 		}
@@ -117,12 +131,18 @@ public:
 		{
 			Ar << WorldZToDeviceZTransform;
 		}
+		if (bWriteStacked)
+		{
+			Ar << DepthPos;
+		}
 		return bShaderHasOutdatedParameters;
 	}
 
 	static const uint32 kThreadGroupSize = 16;
 	static const bool bWriteDepth = (Variant != EProjectCubemapVariant::Color);
-	static const bool bWriteLinearDepth = (Variant == EProjectCubemapVariant::ColorAndLinearDepth);
+	static const bool bWriteLinearDepth = (Variant == EProjectCubemapVariant::ColorAndLinearDepth || Variant == EProjectCubemapVariant::ColorAndLinearDepthToTexture || Variant == EProjectCubemapVariant::ColorAndLinearDepthStacked);
+	static const bool bWriteDepthTexture = (Variant == EProjectCubemapVariant::ColorAndLinearDepthToTexture);
+	static const bool bWriteStacked = (Variant == EProjectCubemapVariant::ColorAndLinearDepthStacked);
 
 private:
 	FShaderResourceParameter InputCubeMap;
@@ -130,11 +150,14 @@ private:
 	FRWShaderParameter OutputColorTexture;
 	FRWShaderParameter OutputDepthTexture;
 	FShaderParameter WorldZToDeviceZTransform;
+	FShaderParameter DepthPos;
 };
 
 IMPLEMENT_SHADER_TYPE(, FProjectCubemapCS<EProjectCubemapVariant::Color>, TEXT("/Plugin/RemotePlay/Private/ProjectCubemap.usf"), TEXT("MainCS"), SF_Compute)
 IMPLEMENT_SHADER_TYPE(, FProjectCubemapCS<EProjectCubemapVariant::ColorAndDepth>,  TEXT("/Plugin/RemotePlay/Private/ProjectCubemap.usf"), TEXT("MainCS"), SF_Compute)
 IMPLEMENT_SHADER_TYPE(, FProjectCubemapCS<EProjectCubemapVariant::ColorAndLinearDepth>,  TEXT("/Plugin/RemotePlay/Private/ProjectCubemap.usf"), TEXT("MainCS"), SF_Compute)
+IMPLEMENT_SHADER_TYPE(, FProjectCubemapCS<EProjectCubemapVariant::ColorAndLinearDepthStacked>, TEXT("/Plugin/RemotePlay/Private/ProjectCubemap.usf"), TEXT("MainCS"), SF_Compute)
+IMPLEMENT_SHADER_TYPE(, FProjectCubemapCS<EProjectCubemapVariant::ColorAndLinearDepthToTexture>, TEXT("/Plugin/RemotePlay/Private/ProjectCubemap.usf"), TEXT("MainCS"), SF_Compute)
 
 static inline FVector2D CreateWorldZToDeviceZTransform(float FOV)
 {
@@ -163,10 +186,10 @@ static inline FVector2D CreateWorldZToDeviceZTransform(float FOV)
 	return FVector2D{1.0f / DepthAdd, SubtractValue};
 }
 
-void FEncodePipelineMonoscopic::Initialize(const FRemotePlayEncodeParameters& InParams, avs::Queue* InColorQueue, avs::Queue* InDepthQueue)
+void FEncodePipelineMonoscopic::Initialize(const FRemotePlayEncodeParameters& InParams, struct FRemotePlayContext *context,avs::Queue* InColorQueue, avs::Queue* InDepthQueue)
 {
 	check(InColorQueue);
-
+	RemotePlayContext = context;
 	Params = InParams;
 	ColorQueue = InColorQueue;
 	DepthQueue = InDepthQueue;
@@ -193,6 +216,28 @@ void FEncodePipelineMonoscopic::Release()
 	DepthQueue = nullptr;
 }
 
+void FEncodePipelineMonoscopic::PrepareFrame(FSceneInterface* InScene, UTexture* InSourceTexture)
+{
+	if (!InScene || !InSourceTexture)
+	{
+		return;
+}
+
+	const ERHIFeatureLevel::Type FeatureLevel = InScene->GetFeatureLevel();
+
+	auto SourceTarget = CastChecked<UTextureRenderTargetCube>(InSourceTexture);
+	FTextureRenderTargetResource* TargetResource = SourceTarget->GameThread_GetRenderTargetResource();
+
+	ENQUEUE_RENDER_COMMAND(RemotePlayPrepareFrame)(
+		[this, TargetResource, FeatureLevel](FRHICommandListImmediate& RHICmdList)
+		{
+			SCOPED_DRAW_EVENT(RHICmdList, RemotePlayEncodePipelineMonoscopicPrepare);
+			PrepareFrame_RenderThread(RHICmdList, TargetResource, FeatureLevel);
+		}
+	);
+}
+
+
 void FEncodePipelineMonoscopic::EncodeFrame(FSceneInterface* InScene, UTexture* InSourceTexture)
 {
 	if(!InScene || !InSourceTexture)
@@ -209,7 +254,6 @@ void FEncodePipelineMonoscopic::EncodeFrame(FSceneInterface* InScene, UTexture* 
 		[this, TargetResource, FeatureLevel](FRHICommandListImmediate& RHICmdList)
 		{
 			SCOPED_DRAW_EVENT(RHICmdList, RemotePlayEncodePipelineMonoscopic);
-			PrepareFrame_RenderThread(RHICmdList, TargetResource, FeatureLevel);
 			EncodeFrame_RenderThread(RHICmdList);
 		}
 	);
@@ -232,6 +276,8 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 		avs::SurfaceFormat::NV12, // NV12 is needed for depth encoding
 	};
 
+	EPixelFormat PixelFormat = EPixelFormat::PF_R8G8B8A8;
+
 	switch(DeviceType)
 	{
 	case FRemotePlayRHI::EDeviceType::Direct3D11:
@@ -239,16 +285,20 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 		break;
 	case FRemotePlayRHI::EDeviceType::Direct3D12:
 		avsDeviceType = avs::DeviceType::Direct3D12;
+		PixelFormat = EPixelFormat::PF_B8G8R8A8;
 		break;
 	case FRemotePlayRHI::EDeviceType::OpenGL:
 		avsDeviceType = avs::DeviceType::OpenGL;
 		break;
 	default:
 		UE_LOG(LogRemotePlay, Error, TEXT("Failed to obtain native device handle"));
-		return;
-	}
-
-	ColorSurfaceTexture.Texture = RHI.CreateSurfaceTexture(Params.FrameWidth, Params.FrameHeight, EPixelFormat::PF_R8G8B8A8);
+		return; 
+	} 
+	// Roderick: we create a DOUBLE-HEIGHT texture, and encode colour in the top half, depth in the bottom.
+	int32 w = std::max<int32>(Params.FrameWidth, Params.DepthWidth);
+	
+	ColorSurfaceTexture.Texture = RHI.CreateSurfaceTexture(w, Params.FrameHeight+Params.DepthHeight, PixelFormat);
+	
 	if(ColorSurfaceTexture.Texture.IsValid())
 	{
 		ColorSurfaceTexture.UAV = RHI.CreateSurfaceUAV(ColorSurfaceTexture.Texture);
@@ -257,7 +307,7 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 		{
 			avsSurfaceBackends[0] = new avs::SurfaceDX11(reinterpret_cast<ID3D11Texture2D*>(ColorSurfaceTexture.Texture->GetNativeResource()));
 		}
-		if(avsDeviceType == avs::DeviceType::Direct3D12)
+		if(avsDeviceType == avs::DeviceType::Direct3D12) 
 		{
 			avsSurfaceBackends[0] = new avs::SurfaceDX12(reinterpret_cast<ID3D12Resource*>(ColorSurfaceTexture.Texture->GetNativeResource()));
 		}
@@ -318,24 +368,24 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	}
 
 	Pipeline.Reset(new avs::Pipeline);
-	Encoder.SetNum(NumStreams);
-	InputSurface.SetNum(NumStreams);
+	Encoders.SetNum(NumStreams);
+	InputSurfaces.SetNum(NumStreams);
+
 	for(uint32_t i=0; i<NumStreams; ++i)
-	{
-		if(!InputSurface[i].configure(avsSurfaceBackends[i]))
+	{ 
+		if(!InputSurfaces[i].configure(avsSurfaceBackends[i]))
 		{
 			UE_LOG(LogRemotePlay, Error, TEXT("Failed to configure input surface node #%d"), i);
 			return;
 		}
-
 		EncoderParams.inputFormat = avsInputFormats[i];
-		if(!Encoder[i].configure(avs::DeviceHandle{avsDeviceType, DeviceHandle}, Params.FrameWidth, Params.FrameHeight, EncoderParams))
+		if(!Encoders[i].configure(avs::DeviceHandle{avsDeviceType, DeviceHandle}, Params.FrameWidth, Params.FrameHeight+Params.DepthHeight, EncoderParams))
 		{
 			UE_LOG(LogRemotePlay, Error, TEXT("Failed to configure encoder #%d"), i);
 			return;
 		}
 
-		if(!Pipeline->link({&InputSurface[i], &Encoder[i], Outputs[i]}))
+		if(!Pipeline->link({&InputSurfaces[i], &Encoders[i], Outputs[i]}))
 		{
 			UE_LOG(LogRemotePlay, Error, TEXT("Error configuring the encoding pipeline"));
 			return;
@@ -346,8 +396,8 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 void FEncodePipelineMonoscopic::Release_RenderThread(FRHICommandListImmediate& RHICmdList)
 {
 	Pipeline.Reset();
-	Encoder.Empty();
-	InputSurface.Empty();
+	Encoders.Empty();
+	InputSurfaces.Empty();
 
 	ColorSurfaceTexture.Texture.SafeRelease();
 	ColorSurfaceTexture.UAV.SafeRelease();
@@ -363,7 +413,22 @@ void FEncodePipelineMonoscopic::PrepareFrame_RenderThread(
 { 
 	if(DepthQueue)
 	{
-		if(Params.bLinearDepth)
+		if (Params.bLinearDepth)
+		{
+			DispatchProjectCubemapShader<FProjectCubemapCS<EProjectCubemapVariant::ColorAndLinearDepthToTexture>>(RHICmdList, TargetResource->TextureRHI, FeatureLevel);
+		}
+		else
+		{
+			DispatchProjectCubemapShader<FProjectCubemapCS<EProjectCubemapVariant::ColorAndLinearDepthToTexture>>(RHICmdList, TargetResource->TextureRHI, FeatureLevel);
+		}
+	}
+	else
+	{
+		if (Params.bStackDepth)
+		{
+			DispatchProjectCubemapShader<FProjectCubemapCS<EProjectCubemapVariant::ColorAndLinearDepthStacked>>(RHICmdList, TargetResource->TextureRHI, FeatureLevel);
+		}
+		else if (Params.bLinearDepth)
 		{
 			DispatchProjectCubemapShader<FProjectCubemapCS<EProjectCubemapVariant::ColorAndLinearDepth>>(RHICmdList, TargetResource->TextureRHI, FeatureLevel);
 		}
@@ -371,22 +436,35 @@ void FEncodePipelineMonoscopic::PrepareFrame_RenderThread(
 		{
 			DispatchProjectCubemapShader<FProjectCubemapCS<EProjectCubemapVariant::ColorAndDepth>>(RHICmdList, TargetResource->TextureRHI, FeatureLevel);
 		}
-	}
-	else
-	{
-		DispatchProjectCubemapShader<FProjectCubemapCS<EProjectCubemapVariant::Color>>(RHICmdList, TargetResource->TextureRHI, FeatureLevel);
+		//DispatchProjectCubemapShader<FProjectCubemapCS<EProjectCubemapVariant::Color>>(RHICmdList, TargetResource->TextureRHI, FeatureLevel);
 	}
 }
 	
 void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediate& RHICmdList)
 {
 	check(Pipeline.IsValid());
-	if(!Pipeline->process())
+	// The transform of the capture component needs to be sent with the image
+	FTransform Transform;
+	if (CameraTransformQueue.Dequeue(Transform))
+	{
+		avs::Transform CamTransform;
+		FVector t = Transform.GetTranslation()*0.01f;
+		FQuat r = Transform.GetRotation();
+		const FVector s = Transform.GetScale3D();
+		CamTransform = { t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z };
+		for (auto& Encoder : Encoders)
+		{
+			avs::Transform transform =CamTransform;
+			avs::ConvertTransform(avs::AxesStandard::UnrealStyle, RemotePlayContext->axesStandard, transform);
+			Encoder.setCameraTransform(transform);
+		}
+	}
+	if (!Pipeline->process())
 	{
 		UE_LOG(LogRemotePlay, Warning, TEXT("Encode pipeline processing encountered an error"));
 	}
 }
-	
+
 template<typename ShaderType>
 void FEncodePipelineMonoscopic::DispatchProjectCubemapShader(FRHICommandListImmediate& RHICmdList, FTextureRHIRef TextureRHI, ERHIFeatureLevel::Type FeatureLevel)
 {
@@ -394,13 +472,19 @@ void FEncodePipelineMonoscopic::DispatchProjectCubemapShader(FRHICommandListImme
 	const uint32 NumThreadGroupsY = Params.FrameHeight / ShaderType::kThreadGroupSize;
 
 	TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
-			
+			 
 	TShaderMapRef<ShaderType> ComputeShader(GlobalShaderMap);
 	ComputeShader->SetParameters(RHICmdList, TextureRHI,
-		ColorSurfaceTexture.Texture, ColorSurfaceTexture.UAV,
+		ColorSurfaceTexture.Texture, ColorSurfaceTexture.UAV, 
 		DepthSurfaceTexture.Texture, DepthSurfaceTexture.UAV,
-		WorldZToDeviceZTransform);
+		WorldZToDeviceZTransform, Params.FrameHeight);
 	SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*ComputeShader));
 	DispatchComputeShader(RHICmdList, *ComputeShader, NumThreadGroupsX, NumThreadGroupsY, 1);
 	ComputeShader->UnsetParameters(RHICmdList);
 }
+
+void FEncodePipelineMonoscopic::AddCameraTransform(FTransform& Transform)
+{
+	CameraTransformQueue.Enqueue(Transform);
+}
+  

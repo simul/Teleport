@@ -23,6 +23,7 @@ set( src_api
 set( src_crossplatform
 	src/crossplatform/Actor.cpp
 	src/crossplatform/Actor.h
+	src/crossplatform/ActorManager.h
 	src/crossplatform/API.cpp
 	src/crossplatform/API.h
 	src/crossplatform/basic_linear_algebra.h
@@ -41,12 +42,15 @@ set( src_crossplatform
 	src/crossplatform/ResourceCreator.cpp
 	src/crossplatform/ResourceCreator.h
 	src/crossplatform/ResourceManager.h
+	src/crossplatform/ShaderSystem.h
 	)
 
 #Include its root directory
 include_directories(src)
 #Include libavstream
 include_directories(../libavstream/include)
+#Include Basis Universal
+include_directories(../thirdparty/basis_universal)
 
 if(WIN32)
 # Removed circular dependency

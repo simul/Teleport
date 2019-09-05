@@ -27,9 +27,9 @@ namespace scr
 
 	struct InputCommand_Mesh_Material_Transform : public InputCommand
 	{
-		Mesh*			pMesh;
-		Material*		pMaterial;
-		Transform*	pTransform;
+		std::shared_ptr<Mesh>			pMesh;
+		std::shared_ptr<Material>		pMaterial;
+		std::shared_ptr<Transform>		pTransform;
 
 		InputCommand_Mesh_Material_Transform(InputCommandCreateInfo* pInputCommandCreateInfo, Actor* pActor)
 		{
@@ -39,7 +39,7 @@ namespace scr
 			pCamera = pInputCommandCreateInfo->pCamera;
 
 			pMesh = pActor->GetMesh();
-			pMaterial = pActor->GetMaterial();
+			pMaterial = pActor->GetMaterials()[0];
 			pTransform = pActor->GetTransform();
 		};
 	};

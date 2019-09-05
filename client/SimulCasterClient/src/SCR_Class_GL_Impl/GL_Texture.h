@@ -24,14 +24,16 @@ class GL_Texture final : public scr::Texture
 		void Unbind() const override;
 
 		void GenerateMips() override;
-		void UseSampler(const scr::Sampler* sampler) override;
+		void UseSampler(std::shared_ptr<const scr::Sampler> sampler) override;
 		bool ResourceInUse(int timeout) override {return true;}
 
 		inline OVR::GlTexture& GetGlTexture() { return  m_Texture;}
 
-	private:
+
+private:
 		GLenum TypeToGLTarget(Type type) const;
 		GLenum ToBaseGLFormat(Format format) const;
 		GLenum ToGLFormat(Format format) const;
-	};
+		GLenum ToGLCompressedFormat(CompressionFormat format, uint32_t bytesPerPixel) const;
+};
 }

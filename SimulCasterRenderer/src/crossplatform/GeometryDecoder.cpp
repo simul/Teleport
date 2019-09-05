@@ -1,4 +1,7 @@
 #include "GeometryDecoder.h"
+#include <iostream>
+#include <Common.h>
+
 
 using namespace avs;
 
@@ -23,9 +26,16 @@ template<typename T> size_t get(const T* &data)
 	data++;
 	return t;
 }
+
 template<typename T> void get(T* target,const uint8_t *data, size_t count)
 {
 	memcpy(target, data, count*sizeof(T));
+}
+
+template<typename T> void copy(T* target, const uint8_t *data, size_t &dataOffset, size_t count)
+{
+	memcpy(target, data + dataOffset, count * sizeof(T));
+	dataOffset += count;
 }
 
 avs::Result GeometryDecoder::decode(const void* buffer, size_t bufferSizeInBytes, GeometryPayloadType type, GeometryTargetBackendInterface* target)
@@ -59,6 +69,11 @@ avs::Result GeometryDecoder::decode(const void* buffer, size_t bufferSizeInBytes
 	{
 		return decodeAnimation(target);
 	}
+	case GeometryPayloadType::Node:
+	{
+		return decodeNode(target);
+	}
+
 	default:
 	{ 
 		return avs::Result::GeometryDecoder_InvalidPayload;
@@ -75,7 +90,7 @@ avs::Result GeometryDecoder::decodeMesh(GeometryTargetBackendInterface*& target)
 	size_t meshCount = Next8B;
 	for (size_t i = 0; i < meshCount; i++)
 	{
-		uid = Next8B;
+		uid = Next8B; 
 		size_t primitiveArraysSize = Next8B;
 		for (size_t j = 0; j < primitiveArraysSize; j++)
 		{
@@ -83,92 +98,61 @@ avs::Result GeometryDecoder::decodeMesh(GeometryTargetBackendInterface*& target)
 			avs::uid indices_accessor = Next8B;
 			avs::uid material = Next8B;
 			PrimitiveMode primitiveMode = (PrimitiveMode)Next4B;
-			Attribute attributes[(size_t)AttributeSemantic::COUNT];
 
-			std::vector<Attribute> _attrib;
-			_attrib.reserve(attributeCount);
+			std::vector<Attribute> attributes;
+			attributes.reserve(attributeCount);
 			for (size_t k = 0; k < attributeCount; k++)
 			{
 				AttributeSemantic semantic = (AttributeSemantic)Next4B;
 				Next4B;
 				avs::uid accessor = Next8B;
-				_attrib.push_back({ semantic, accessor });
+				attributes.push_back({ semantic, accessor });
 			}
-			memcpy(attributes, _attrib.data(), attributeCount * sizeof(Attribute));
 
 			dg.primitiveArrays[uid].push_back({ attributeCount, attributes, indices_accessor, material, primitiveMode });
 		}
 	}
 
 	bool isIndexAccessor = true;
-	size_t primitiveArrayIndex = 0;
-	size_t k = 0;
+//	size_t primitiveArrayIndex = 0;
+//	size_t k = 0;
 	size_t accessorsSize = Next8B;
 	for (size_t j = 0; j < accessorsSize; j++)
 	{
+		avs::uid acc_uid= Next8B;
 		Accessor::DataType type = (Accessor::DataType)Next4B;
 		Accessor::ComponentType componentType = (Accessor::ComponentType)Next4B;
 		size_t count = Next8B;
 		avs::uid bufferView = Next8B;
 		size_t byteOffset = Next8B;
 
-		size_t primitiveArrayAttributeCount = dg.primitiveArrays[uid][primitiveArrayIndex].attributeCount;
 		if (isIndexAccessor) //For Indices Only
 		{
-			dg.accessors[dg.primitiveArrays[uid][primitiveArrayIndex].indices_accessor] = { type, componentType, count, bufferView, byteOffset };
+			dg.accessors[acc_uid] = { type, componentType, count, bufferView, byteOffset };
 			isIndexAccessor = false;
 		}
 		else
 		{
-			dg.accessors[dg.primitiveArrays[uid][primitiveArrayIndex].attributes[k].accessor] = { type, componentType, count, bufferView, byteOffset };
-			k++;
-			if (k < primitiveArrayAttributeCount == false)
-			{
-				
-				isIndexAccessor = true;
-				primitiveArrayIndex++;
-				k = 0;
-			}
+			dg.accessors[acc_uid] = { type, componentType, count, bufferView, byteOffset };
 		}
 		
 	}
-
-	std::map<avs::uid, avs::Accessor>::reverse_iterator rit_accessor = dg.accessors.rbegin();
-	std::map<avs::uid, avs::Accessor>::iterator it_accessor = dg.accessors.begin();
 	size_t bufferViewsSize = Next8B;
 	for (size_t j = 0; j < bufferViewsSize; j++)
 	{
+		avs::uid bv_uid = Next8B;
 		avs::uid buffer = Next8B;
 		size_t byteOffset = Next8B;
 		size_t byteLength = Next8B;
 		size_t byteStride = Next8B;
-
-		avs::uid key = 0;
-		if (j == 0)
-			key = dg.accessors[rit_accessor->first].bufferView;
-		else
-		{
-			key = dg.accessors[it_accessor->first].bufferView;
-			it_accessor++;
-		}
 		
-		dg.bufferViews[key] = { buffer, byteOffset, byteLength, byteStride };
+		dg.bufferViews[bv_uid] = { buffer, byteOffset, byteLength, byteStride };
 	}
 
-	std::map<avs::uid, avs::BufferView>::reverse_iterator rit_bufferView = dg.bufferViews.rbegin();
-	std::map<avs::uid, avs::BufferView>::iterator it_bufferView = dg.bufferViews.begin();
 	size_t buffersSize = Next8B;
 	for (size_t j = 0; j < buffersSize; j++)
 	{
-		avs::uid key = 0;
-		if (j == 0)
-			key = dg.bufferViews[rit_bufferView->first].buffer;
-		else
-		{
-			key = dg.bufferViews[it_bufferView->first].buffer;
-			it_bufferView++;
-		}
-		
+		avs::uid key = Next8B;
 		dg.buffers[key]= { 0, nullptr };
 		dg.buffers[key].byteLength = Next8B;
 		if(m_BufferSize < m_BufferOffset + dg.buffers[key].byteLength)
@@ -186,59 +170,77 @@ avs::Result GeometryDecoder::decodeMesh(GeometryTargetBackendInterface*& target)
 	}
 
 	//Push data to GeometryTargetBackendInterface
-	for (std::map<avs::uid, std::vector<avs::PrimitiveArray>>::iterator it = dg.primitiveArrays.begin();
+	for (std::map<avs::uid, std::vector<PrimitiveArray2>>::iterator it = dg.primitiveArrays.begin();
 		it != dg.primitiveArrays.end(); it++)
 	{
-		for (auto& primitive : it->second)
+		for (const auto& primitive : it->second)
 		{
+			ResourceCreate resourceCreate;
+			resourceCreate.mesh_uid = it->first;
+			size_t vertexCount = 0;
 			for (size_t i = 0; i < primitive.attributeCount; i++)
 			{
 				//Vertices
-				Attribute attrib = primitive.attributes[i];
-				const Accessor &accessor = dg.accessors[attrib.accessor];
+				const Attribute& attrib			= primitive.attributes[i];
+				const Accessor& accessor		= dg.accessors[attrib.accessor];
+				const BufferView& bufferView	= dg.bufferViews[accessor.bufferView];
+				const GeometryBuffer& buffer	= dg.buffers[bufferView.buffer];
+				const uint8_t* data				= buffer.data + bufferView.byteOffset;
 				switch (attrib.semantic)
 				{
 				case AttributeSemantic::POSITION:
-					target->ensureVertices(it->first, 0, (int)accessor.count, (const avs::vec3*)dg.buffers[dg.bufferViews[accessor.bufferView].buffer].data);
+					resourceCreate.m_VertexCount = vertexCount = accessor.count;
+					resourceCreate.m_Vertices = (const avs::vec3*)(data);
 					continue;
 				case AttributeSemantic::TANGENTNORMALXZ:
 				{
 					size_t tnSize = 0;
-					if (accessor.type == avs::Accessor::DataType::VEC2)
-						tnSize = 8;
-					else  if (accessor.type == avs::Accessor::DataType::VEC4)
-						tnSize = 16;
-					target->ensureTangentNormals(it->first, 0, (int)accessor.count, tnSize, (const uint8_t*)dg.buffers[dg.bufferViews[accessor.bufferView].buffer].data);
+					tnSize = avs::GetComponentSize(accessor.componentType) * avs::GetDataTypeSize(accessor.type);
+					resourceCreate.m_TangentNormalSize = tnSize;
+					resourceCreate.m_TangentNormals= (const uint8_t*)buffer.data;
 				}
 					continue;
 				case AttributeSemantic::NORMAL:
-					target->ensureNormals(it->first, 0, (int)accessor.count, (const avs::vec3*)dg.buffers[dg.bufferViews[accessor.bufferView].buffer].data);
+					//resourceCreate.m_Normals(mesh_uid, 0, (int)accessor.count, (const avs::vec3*)buffer.data);
 					continue;
 				case AttributeSemantic::TANGENT:
-					target->ensureTangents(it->first, 0, (int)accessor.count, (const avs::vec4*)dg.buffers[dg.bufferViews[accessor.bufferView].buffer].data);
+					//target->ensureTangents(it->first, 0, (int)accessor.count, (const avs::vec4*)buffer.data);
 					continue;
 				case AttributeSemantic::TEXCOORD_0:
-					target->ensureTexCoord0(it->first, 0, (int)accessor.count, (const avs::vec2*)dg.buffers[dg.bufferViews[accessor.bufferView].buffer].data);
+					resourceCreate.m_UV0s = (const avs::vec2*)(data);
+					assert(accessor.count == vertexCount);
+					//target->ensureTexCoord0(mesh_uid, 0, (int)accessor.count, bufferView.byteOffset, );
 					continue;
 				case AttributeSemantic::TEXCOORD_1:
-					target->ensureTexCoord1(it->first, 0, (int)accessor.count, (const avs::vec2*)dg.buffers[dg.bufferViews[accessor.bufferView].buffer].data);
-					continue;
+					resourceCreate.m_UV1s = (const avs::vec2*)(data);
+					assert(accessor.count == vertexCount);
+					//target->ensureTexCoord1(mesh_uid, 0, (int)accessor.count, bufferView.byteOffset, (const avs::vec2*)buffer.data);
+					continue;;
 				case AttributeSemantic::COLOR_0:
-					target->ensureColors(it->first, 0, (int)accessor.count, (const avs::vec4*)dg.buffers[dg.bufferViews[accessor.bufferView].buffer].data);
+					//target->ensureColors(mesh_uid, 0, (int)accessor.count, (const avs::vec4*)buffer.data);
 					continue;
 				case AttributeSemantic::JOINTS_0:
-					target->ensureJoints(it->first, 0, (int)accessor.count, (const avs::vec4*)dg.buffers[dg.bufferViews[accessor.bufferView].buffer].data);
+					//target->ensureJoints(it->first, 0, (int)accessor.count, (const avs::vec4*)buffer.data);
 					continue;
 				case AttributeSemantic::WEIGHTS_0:
-					target->ensureWeights(it->first, 0, (int)accessor.count, (const avs::vec4*)dg.buffers[dg.bufferViews[accessor.bufferView].buffer].data);
+					//target->ensureWeights(it->first, 0, (int)accessor.count, (const avs::vec4*)buffer.data);
 					continue;
+				default:
+				    SCR_CERR("Unknown attribute semantic: " << (uint32_t)attrib.semantic);
+				    continue;
 				}
 			}
 
 			//Indices
-			size_t componentSize = avs::GetComponentSize(dg.accessors[primitive.indices_accessor].componentType);
-			target->ensureIndices(it->first, (int)(dg.accessors[primitive.indices_accessor].byteOffset / componentSize), (int)dg.accessors[primitive.indices_accessor].count, (int)componentSize,dg.buffers[dg.bufferViews[dg.accessors[primitive.indices_accessor].bufferView].buffer].data);
-			avs::Result result = target->Assemble();
+			const Accessor& indicesAccessor = dg.accessors[primitive.indices_accessor];
+			const BufferView& indicesBufferView = dg.bufferViews[indicesAccessor.bufferView];
+			const GeometryBuffer& indicesBuffer = dg.buffers[indicesBufferView.buffer];
+			size_t componentSize = avs::GetComponentSize(indicesAccessor.componentType);
+			resourceCreate.m_Indices = (indicesBuffer.data + indicesAccessor.byteOffset);
+			resourceCreate.m_IndexSize = componentSize;
+			resourceCreate.m_IndexCount = indicesAccessor.count;
+			//resourceCreate.m_PolygonCount = 0;
+			avs::Result result = target->Assemble(&resourceCreate);
 			if (result != avs::Result::OK)
 				return result;
 		}
@@ -246,57 +248,124 @@ avs::Result GeometryDecoder::decodeMesh(GeometryTargetBackendInterface*& target)
 	return avs::Result::OK;
 }
 
-///MISSING PASSING DATA TO TARGET
 avs::Result GeometryDecoder::decodeMaterial(GeometryTargetBackendInterface*& target)
 {
 	size_t materialAmount = Next8B;
 
 	for(size_t i = 0; i < materialAmount; i++)
 	{
-		avs::Material material;
+		Material material;
+		
 		avs::uid mat_uid = Next8B;
-		material.diffuse_uid = Next8B;
-		material.normal_uid = Next8B;
-		material.mro_uid = Next8B;
+
+		size_t nameLength = Next8B;
+
+		material.name.resize(nameLength);
+		copy<char>(material.name.data(), m_Buffer.data(), m_BufferOffset, nameLength);
+		
+		material.pbrMetallicRoughness.baseColorTexture.index = Next8B;
+		material.pbrMetallicRoughness.baseColorTexture.texCoord = Next8B;
+		material.pbrMetallicRoughness.baseColorFactor.x = NextFloat;
+		material.pbrMetallicRoughness.baseColorFactor.y = NextFloat;
+		material.pbrMetallicRoughness.baseColorFactor.z = NextFloat;
+		material.pbrMetallicRoughness.baseColorFactor.w = NextFloat;
+
+		material.pbrMetallicRoughness.metallicRoughnessTexture.index = Next8B;
+		material.pbrMetallicRoughness.metallicRoughnessTexture.texCoord = Next8B;
+		material.pbrMetallicRoughness.metallicFactor = NextFloat;
+		material.pbrMetallicRoughness.roughnessFactor = NextFloat;
+
+		material.normalTexture.index = Next8B;
+		material.normalTexture.texCoord = Next8B;
+		material.normalTexture.scale = NextFloat;
+
+		material.occlusionTexture.index = Next8B;
+		material.occlusionTexture.texCoord = Next8B;
+		material.occlusionTexture.strength = NextFloat;
+
+		material.emissiveTexture.index = Next8B;
+		material.emissiveTexture.texCoord = Next8B;
+		material.emissiveFactor.x = NextFloat;
+		material.emissiveFactor.y = NextFloat;
+		material.emissiveFactor.z = NextFloat;
+
+		decodeTexture(target);
+
+		target->passMaterial(mat_uid, material);
 	}
 	
 	return avs::Result::OK;
 }
+
 avs::Result GeometryDecoder::decodeMaterialInstance(GeometryTargetBackendInterface*& target)
 {
 	return avs::Result::GeometryDecoder_Incomplete;
 }
 
-///MISSING PASSING DATA TO TARGET
-avs::Result GeometryDecoder::decodeTexture(GeometryTargetBackendInterface*& target)
+Result GeometryDecoder::decodeTexture(GeometryTargetBackendInterface *& target)
 {
 	size_t textureAmount = Next8B;
-
 	for(size_t i = 0; i < textureAmount; i++)
 	{
-		avs::Texture texture;
-		avs::uid tex_uid = Next8B;
+		Texture texture;
+		uid texture_uid = Next8B;
 
-		texture.width = static_cast<uint32_t>(Next8B);
-		texture.height = static_cast<uint32_t>(Next8B);
-		texture.bytesPerPixel = static_cast<uint32_t>(Next8B);
+		size_t nameLength = Next8B;
+		texture.name.resize(nameLength);
+		copy<char>(texture.name.data(), m_Buffer.data(), m_BufferOffset, nameLength);
 
-		size_t textureSize = Next8B;
+		texture.width = Next4B;
+		texture.height = Next4B;
+		texture.depth = Next4B;
+		texture.bytesPerPixel = Next4B;
+		texture.arrayCount = Next4B;
+		texture.mipCount = Next4B;
+		texture.format = static_cast<avs::TextureFormat>(Next4B);
 
-		unsigned char *pixelData = new unsigned char[textureSize];
+		texture.dataSize = Next4B;
+		texture.data = new unsigned char[texture.dataSize];
+		copy<unsigned char>(texture.data, m_Buffer.data(), m_BufferOffset, texture.dataSize);
 
-		for(size_t j = 0; j < textureSize; i++)
-		{
-			pixelData[j] = static_cast<uint32_t>(Next8B);
-		}
+		texture.sampler_uid = Next8B;
 
-		texture.data = pixelData;
+		target->passTexture(texture_uid, texture);
 	}
 
-	return avs::Result::OK;
+	return Result::OK;
 }
 
 avs::Result GeometryDecoder::decodeAnimation(GeometryTargetBackendInterface*& target)
 {
 	return avs::Result::GeometryDecoder_Incomplete;
+}
+
+avs::Result GeometryDecoder::decodeNode(avs::GeometryTargetBackendInterface*& target)
+{
+	uint32_t nodeCount = Next8B;
+	for (uint32_t i = 0; i < nodeCount; ++i)
+	{
+		avs::uid uid = Next8B;
+
+		avs::DataNode node;
+
+		node.transform = NextChunk(avs::Transform);
+
+		node.data_uid = Next8B;
+
+		node.data_type = static_cast<NodeDataType>(NextB);
+		
+		uint32_t materialCount = Next8B;
+		for (uint32_t j = 0; j < materialCount; ++j)
+		{
+			node.materials.push_back(Next8B);
+		}
+
+		uint32_t childCount = Next8B;
+		for (uint32_t j = 0; j < childCount; ++j)
+		{
+			node.childrenUids.push_back(Next8B);
+		}
+		target->passNode(uid, node);
+	}
+	return avs::Result::OK;
 }

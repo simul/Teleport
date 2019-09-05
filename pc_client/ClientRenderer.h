@@ -7,15 +7,22 @@
 #include "Simul/Platform/CrossPlatform/SL/CppSl.hs"
 #include "Simul/Platform/CrossPlatform/SL/camera_constants.sl"
 #include "SessionClient.h"
-#include "crossplatform/ResourceCreator.h"
-#include "crossplatform/GeometryDecoder.h"
-#include "SCR_Class_PC_Impl/PC_RenderPlatform.h"
+#include "Shaders/cubemap_constants.sl"
+#include "Shaders/pbr_constants.sl"
 
 #include <libavstream/libavstream.hpp>
 #include <libavstream/surfaces/surface_interface.hpp>
 #include <libavstream/geometrydecoder.hpp>
 
+#include "SCR_Class_PC_Impl/PC_RenderPlatform.h"
+#include "crossplatform/ResourceCreator.h"
 #include "crossplatform/ResourceManager.h"
+#include "crossplatform/GeometryDecoder.h"
+#include "api/IndexBuffer.h"
+#include "api/Shader.h"
+#include "api/Texture.h"
+#include "api/UniformBuffer.h"
+#include "api/VertexBuffer.h"
 
 namespace avs
 {
@@ -30,6 +37,11 @@ namespace pc_client
 	class UniformBuffer;
 	class VertexBuffer;
 	class PC_RenderPlatform;
+}
+
+namespace scr
+{
+	class Material;
 }
 
 struct AVSTexture
@@ -63,17 +75,25 @@ class ClientRenderer :public simul::crossplatform::PlatformRendererInterface, pu
 	// A simple example mesh to draw as transparent
 	simul::crossplatform::Mesh *transparentMesh;
 	simul::crossplatform::MeshRenderer *meshRenderer;
-	simul::crossplatform::Effect *transparentEffect;
+	simul::crossplatform::Effect *pbrEffect;
 	simul::crossplatform::Effect *cubemapClearEffect;
-	simul::crossplatform::ConstantBuffer<SolidConstants> solidConstants;
+	simul::crossplatform::ConstantBuffer<CubemapConstants> cubemapConstants;
+	simul::crossplatform::ConstantBuffer<PbrConstants> pbrConstants;
 	simul::crossplatform::ConstantBuffer<CameraConstants> cameraConstants;
 	simul::crossplatform::Texture *diffuseCubemapTexture;
 	simul::crossplatform::Texture *specularTexture;
+	simul::crossplatform::Texture* dummyDiffuse;
+	simul::crossplatform::Texture* dummyNormal;
+	simul::crossplatform::Texture* dummyCombined;
 	/// A camera instance to generate view and proj matrices and handle mouse control.
 	/// In practice you will have your own solution for this.
 	simul::crossplatform::Camera			camera;
 	simul::crossplatform::MouseCameraState	mouseCameraState;
 	simul::crossplatform::MouseCameraInput	mouseCameraInput;
+	// determined by the stream setup command:
+	vec4 colourOffsetScale;
+	vec4 depthOffsetScale;
+
 	bool keydown[256];
 	int framenumber;
 	SessionClient sessionClient;
@@ -83,20 +103,16 @@ class ClientRenderer :public simul::crossplatform::PlatformRendererInterface, pu
 	avs::Timestamp platformStartTimestamp; //Timestamp of when the system started.
 	uint32_t previousTimestamp; //Milliseconds since system started from when the state was last updated.
 	
-	ResourceManager<std::shared_ptr<scr::IndexBuffer>> indexBufferManager;
-	ResourceManager<std::shared_ptr<scr::Shader>> shaderManager;
-	ResourceManager<std::shared_ptr<scr::Texture>> textureManager;
-	ResourceManager<std::shared_ptr<scr::UniformBuffer>> uniformBufferManager;
-	ResourceManager<std::shared_ptr<scr::VertexBuffer>> vertexBufferManager;
+	scr::ResourceManagers resourceManagers;
 public:
 	ClientRenderer();
 	~ClientRenderer();
 	// Implement SessionCommandInterface
-	void OnVideoStreamChanged(uint port, uint width, uint height) override;
+	void OnVideoStreamChanged(const avs::SetupCommand &setupCommand) override;
 	void OnVideoStreamClosed() override;
 	// This allows live-recompile of shaders. 
 	void RecompileShaders();
-	void GenerateCubemaps();
+	void RenderLocalActors(simul::crossplatform::DeviceContext &);
 	int AddView();
 	void ResizeView(int view_id, int W, int H);
 	void RenderOpaqueTest(simul::crossplatform::DeviceContext &deviceContext);
@@ -147,4 +163,5 @@ public:
 	avs::DecoderParams decoderParams = {};
 	avs::Pipeline pipeline;
 	int RenderMode;
+	std::shared_ptr<scr::Material> mFlatColourMaterial;
 };

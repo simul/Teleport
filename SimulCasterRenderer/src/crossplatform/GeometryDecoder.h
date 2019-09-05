@@ -21,6 +21,7 @@ private:
 	avs::Result decodeMaterialInstance(avs::GeometryTargetBackendInterface*& target);
 	avs::Result decodeTexture(avs::GeometryTargetBackendInterface*& target);
 	avs::Result decodeAnimation(avs::GeometryTargetBackendInterface*& target);
+	avs::Result decodeNode(avs::GeometryTargetBackendInterface*& target);
 
 	//Use for the #define Next8B and #define Next4B macros
 	std::vector<uint8_t> m_Buffer;
@@ -29,11 +30,23 @@ private:
 
 #define Next8B get<uint64_t>(m_Buffer.data(), &m_BufferOffset)
 #define Next4B get<uint32_t>(m_Buffer.data(), &m_BufferOffset)
+#define Next2B get<uint16_t>(m_Buffer.data(), &m_BufferOffset)
+#define NextB get<uint8_t>(m_Buffer.data(), &m_BufferOffset)
+#define NextFloat get<float>(m_Buffer.data(), &m_BufferOffset)
+#define NextChunk(T) get<T>(m_Buffer.data(), &m_BufferOffset)  
 
 private:
+	struct PrimitiveArray2
+	{
+		size_t attributeCount;
+		std::vector<avs::Attribute> attributes;
+		avs::uid indices_accessor;
+		avs::uid material;
+		avs::PrimitiveMode primitiveMode;
+	};
 	struct DecodedGeometry
 	{
-		std::map<avs::uid, std::vector<avs::PrimitiveArray>> primitiveArrays;
+		std::map<avs::uid, std::vector<PrimitiveArray2>> primitiveArrays;
 		std::map<avs::uid, avs::Accessor> accessors;
 		std::map<avs::uid, avs::BufferView> bufferViews;
 		std::map<avs::uid, avs::GeometryBuffer> buffers;

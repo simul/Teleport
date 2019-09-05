@@ -11,24 +11,32 @@
 
 #include "GameFramework/Actor.h"
 #include "RemotePlaySettings.h"
-
+#include "RemotePlayMonitor.h"
+#include "RemotePlayReflectionCaptureComponent.h"
 
 URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 	: bRenderOwner(false)
 	, RemotePlayContext(nullptr)
+	, RemotePlayReflectionCaptureComponent(nullptr)
 	, bIsStreaming(false)
 {
 	PrimaryComponentTick.bCanEverTick = true;
 	bCaptureEveryFrame = false;
-	bCaptureOnMovement = false;
+	bCaptureOnMovement = false; 
 
 	EncodeParams.FrameWidth = 3840;
 	EncodeParams.FrameHeight = 1920;
+
+	EncodeParams.DepthWidth = 1920;
+	EncodeParams.DepthHeight = 960;
+
 	EncodeParams.IDRInterval = 120;
-	EncodeParams.TargetFPS = 60;
+	EncodeParams.TargetFPS = 60; 
 	EncodeParams.bDeferOutput = true;
-	EncodeParams.bLinearDepth = false;
-	EncodeParams.MaxDepth = 10000.0f;
+	EncodeParams.bLinearDepth = true;
+	EncodeParams.bWriteDepthTexture = false;
+	EncodeParams.bStackDepth = true;
+	EncodeParams.MaxDepth = 10000.0f; 
 }
 
 URemotePlayCaptureComponent::~URemotePlayCaptureComponent()
@@ -38,17 +46,21 @@ URemotePlayCaptureComponent::~URemotePlayCaptureComponent()
 void URemotePlayCaptureComponent::BeginPlay()
 {
 	Super::BeginPlay();
-	if (!bRenderOwner)
+	AActor* OwnerActor = GetTypedOuter<AActor>();
+	if (bRenderOwner)
 	{
-		AActor* OwnerActor = GetTypedOuter<AActor>();
+		RemotePlayReflectionCaptureComponent = Cast<URemotePlayReflectionCaptureComponent>(OwnerActor->GetComponentByClass(URemotePlayReflectionCaptureComponent::StaticClass()));
+	}
+	else
+	{
 		check(OwnerActor);
 
 		TArray<AActor*> OwnerAttachedActors;
 		OwnerActor->GetAttachedActors(OwnerAttachedActors);
 		HiddenActors.Add(OwnerActor);
 		HiddenActors.Append(OwnerAttachedActors);
-	}
 
+	}
 }
 
 void URemotePlayCaptureComponent::EndPlay(const EEndPlayReason::Type Reason)
@@ -60,6 +72,17 @@ void URemotePlayCaptureComponent::TickComponent(float DeltaTime, ELevelTick Tick
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 }
+
+void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Scene)
+{
+	if (bIsStreaming && RemotePlayContext != nullptr && RemotePlayContext->EncodePipeline.IsValid())
+	{
+		FTransform Transform = GetComponentTransform();
+		RemotePlayContext->EncodePipeline->AddCameraTransform(Transform);
+	}
+	Super::UpdateSceneCaptureContents(Scene);
+}
+
 
 void URemotePlayCaptureComponent::StartStreaming(FRemotePlayContext *Context)
 {
@@ -106,21 +129,43 @@ void URemotePlayCaptureComponent::OnViewportDrawn()
 		if (!RemotePlayContext->EncodePipeline.IsValid())
 		{
 			RemotePlayContext->EncodePipeline.Reset(new FEncodePipelineMonoscopic);
-			RemotePlayContext->EncodePipeline->Initialize(EncodeParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get());
+			RemotePlayContext->EncodePipeline->Initialize(EncodeParams, RemotePlayContext,RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get());
+			
+			if (RemotePlayReflectionCaptureComponent)
+			{
+				RemotePlayReflectionCaptureComponent->Initialize();
+				RemotePlayReflectionCaptureComponent->bAttached = true;
+			}
 		}
 
-		const URemotePlaySettings *RemotePlaySettings = GetDefault<URemotePlaySettings>();
+		ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
 
-
-		if (RemotePlaySettings&&RemotePlaySettings->VideoEncodeFrequency > 1)
+		if (Monitor&&Monitor->VideoEncodeFrequency > 1)
 		{
 			static int u = 1;
 			u--;
 			if (!u)
-				u = RemotePlaySettings->VideoEncodeFrequency;
+				u = Monitor->VideoEncodeFrequency;
 			else
-				return;
+				return; 
+		}
+		RemotePlayContext->EncodePipeline->PrepareFrame(GetWorld()->Scene, TextureTarget);
+		if (RemotePlayReflectionCaptureComponent)
+		{
+			RemotePlayReflectionCaptureComponent->UpdateContents(
+				GetWorld()->Scene->GetRenderScene()
+				, TextureTarget
+				, GetWorld()->Scene->GetFeatureLevel());
+			RemotePlayReflectionCaptureComponent->PrepareFrame(
+				GetWorld()->Scene->GetRenderScene()
+				, RemotePlayContext->EncodePipeline->GetSurfaceTexture()
+				, GetWorld()->Scene->GetFeatureLevel());
 		}
 		RemotePlayContext->EncodePipeline->EncodeFrame(GetWorld()->Scene, TextureTarget);
 	}
+}
+
+FTransform URemotePlayCaptureComponent::GetToWorldTransform()
+{
+	return GetComponentTransform();
 }

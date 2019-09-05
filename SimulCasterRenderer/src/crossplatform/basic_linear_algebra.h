@@ -250,11 +250,11 @@ namespace scr
 				(0), (0), -((zFar + zNear) / (zFar - zNear)), -((2 * zFar * zNear) / (zFar - zNear)),
 				(0), (0), (-1), (0));
 		};
-		static mat4 Orthographic(float left, float right, float bottom, float top, float near, float far) 
+		static mat4 Orthographic(float left, float right, float bottom, float top, float _near, float _far) 
 		{
 			return mat4((2 / (right - left)), (0), (0), (-(right + left) / (right - left)),
 				(0), (2 / (top - bottom)), (0), (-(top + bottom) / (top - bottom)),
-				(0), (0), (-2 / (far - near)), (-(far + near) / (far - near)),
+				(0), (0), (-2 / (_far - _near)), (-(_far + _near) / (_far - _near)),
 				(0), (0), (0), (1));
 		};
 		
@@ -268,13 +268,14 @@ namespace scr
 		};
 		static mat4 Rotation(const quat& orientation) 
 		{
-			vec3 axis = vec3(orientation.i, orientation.j, orientation.k);
-			float angle = 2 * acosf(orientation.s);
-			if (angle > 0)
-			{
-				axis * (1.0f / sinf(angle / 2.0f));
-			}
-			
+			return mat4(
+				(powf(orientation.s, 2) + powf(orientation.i, 2) - powf(orientation.j, 2) - powf(orientation.k, 2)), 2 * (orientation.i * orientation.j - orientation.k * orientation.s), 2 * (orientation.i*orientation.k + orientation.j * orientation.s), 0,
+				2 * (orientation.i * orientation.j + orientation.k * orientation.s), (powf(orientation.s, 2) - powf(orientation.i, 2) + powf(orientation.j, 2) - powf(orientation.k, 2)), 2 * (orientation.j*orientation.k - orientation.i * orientation.s), 0,
+				2 * (orientation.i * orientation.k - orientation.j * orientation.s), 2 * (orientation.j * orientation.k + orientation.i * orientation.s), (powf(orientation.s, 2) - powf(orientation.i, 2) - powf(orientation.j, 2) + powf(orientation.k, 2)), 0,
+				0, 0, 0, 1);
+		};
+		static mat4 Rotation(float angle, const vec3& axis)
+		{
 			mat4 result(1);
 			float c_angle = static_cast<float>(cos(angle));
 			float s_angle = static_cast<float>(sin(angle));

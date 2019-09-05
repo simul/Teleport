@@ -6,6 +6,7 @@
 #include "Components/StreamableGeometryComponent.h"
 #include "RemotePlayModule.h"
 #include "RemotePlaySettings.h"
+#include "RemotePlayMonitor.h"
 
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
@@ -85,8 +86,9 @@ public:
 
 enum ERemotePlaySessionChannel
 {
-	RPCH_Control = 0,
-	RPCH_HeadPose = 1,
+	RPCH_HANDSHAKE = 0,
+	RPCH_Control = 1,
+	RPCH_HeadPose = 2,
 	RPCH_NumChannels,
 };
 
@@ -108,7 +110,7 @@ URemotePlaySessionComponent::URemotePlaySessionComponent()
 void URemotePlaySessionComponent::BeginPlay()
 {
 	Super::BeginPlay();
-
+	Monitor=ARemotePlayMonitor::Instantiate(GetWorld());
 	Bandwidth = 0.0f;
 	//INC_DWORD_STAT(STAT_BANDWIDTH); //Increments the counter by one each call.
 #if STATS
@@ -117,16 +119,18 @@ void URemotePlaySessionComponent::BeginPlay()
 #endif // ENABLE_STATNAMEDEVENTS
 
 	PlayerController = Cast<APlayerController>(GetOuter());
-	if (!PlayerController.IsValid())
+	if(!PlayerController.IsValid())
 	{
 		UE_LOG(LogRemotePlay, Error, TEXT("Session: Session component must be attached to a player controller!"));
 		return;
 	}
 
-	if (bAutoStartSession)
+	if(bAutoStartSession)
 	{
 		StartSession(AutoListenPort, AutoDiscoveryPort);
 	}
+
+	GeometryStreamingService.Initialise(GetWorld(), IRemotePlay::Get().GetGeometrySource());
 }
 
 void URemotePlaySessionComponent::EndPlay(const EEndPlayReason::Type Reason)
@@ -163,6 +167,10 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 		{
 			RemotePlayContext->NetworkPipeline->Process();
 		}
+		if (Monitor)
+		{
+			GeometryStreamingService.SetStreamingContinuously(Monitor->StreamGeometryContinuously);
+		}
 		GeometryStreamingService.Tick();
 	}
 	else
@@ -188,7 +196,7 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 			UE_LOG(LogRemotePlay, Log, TEXT("Client disconnected: %s:%d"), *Client_GetIPAddress(), Client_GetPort());
 			ReleasePlayerPawn();
 			// TRY to restart the discovery service...
-			DiscoveryService.Initialize();
+			DiscoveryService.Initialize(Monitor);
 			ClientPeer = nullptr;
 			break;
 		case ENET_EVENT_TYPE_RECEIVE:
@@ -229,7 +237,7 @@ void URemotePlaySessionComponent::StartSession(int32 ListenPort, int32 Discovery
 
 	if (DiscoveryPort > 0)
 	{
-		if (!DiscoveryService.Initialize(DiscoveryPort, ListenPort))
+		if (!DiscoveryService.Initialize(Monitor,DiscoveryPort, ListenPort))
 		{
 			UE_LOG(LogRemotePlay, Warning, TEXT("Session: Failed to initialize discovery service"));
 		}
@@ -240,6 +248,7 @@ void URemotePlaySessionComponent::StopSession()
 {
 	ReleasePlayerPawn();
 	DiscoveryService.Shutdown();
+	GeometryStreamingService.Reset();
 
 	if (ClientPeer)
 	{
@@ -300,6 +309,10 @@ void URemotePlaySessionComponent::StartStreaming()
 	RemotePlayContext->ColorQueue.Reset(new avs::Queue);
 	RemotePlayContext->ColorQueue->configure(16);
 
+#if 0
+
+	// Roderick: with consumer GPU's we can't have more than one video stream.
+	// So we're encoding depth as alpha: no need for a separate source.
 	if (CaptureComponent->CaptureSource == ESceneCaptureSource::SCS_SceneColorSceneDepth)
 	{
 		RemotePlayContext->bCaptureDepth = true;
@@ -307,6 +320,7 @@ void URemotePlaySessionComponent::StartStreaming()
 		RemotePlayContext->DepthQueue->configure(16); 
 	}
 	else
+#endif
 	{
 		RemotePlayContext->bCaptureDepth = false;
 	}
@@ -315,27 +329,14 @@ void URemotePlaySessionComponent::StartStreaming()
 
 	const auto& EncodeParams = CaptureComponent->EncodeParams;
 	const int32 StreamingPort = ServerHost->address.port + 1;
-	Client_SendCommand(FString::Printf(TEXT("v %d %d %d"), StreamingPort, EncodeParams.FrameWidth, EncodeParams.FrameHeight));
-	
-	CaptureComponent->StartStreaming(RemotePlayContext);
-	const URemotePlaySettings *RemotePlaySettings = GetDefault<URemotePlaySettings>();
-	if (RemotePlaySettings&&RemotePlaySettings->StreamGeometry)
-	{
-		GeometryStreamingService.StartStreaming(GetWorld(), IRemotePlay::Get().GetGeometrySource(), RemotePlayContext);
-	}
-
-	if (!RemotePlayContext->NetworkPipeline.IsValid())
-	{
-		FRemotePlayNetworkParameters NetworkParams;
-		NetworkParams.RemoteIP = Client_GetIPAddress();
-		NetworkParams.LocalPort = StreamingPort;
-		NetworkParams.RemotePort = NetworkParams.LocalPort + 1;
-
-		RemotePlayContext->NetworkPipeline.Reset(new FNetworkPipeline);
-		RemotePlayContext->NetworkPipeline->Initialize(NetworkParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get(), RemotePlayContext->GeometryQueue.Get());
-	}
-
-	UE_LOG(LogRemotePlay, Log, TEXT("RemotePlay: Started streaming to %s:%d"), *Client_GetIPAddress(), StreamingPort);
+	avs::SetupCommand setupCommand;
+	setupCommand.video_width = EncodeParams.FrameWidth;
+	setupCommand.video_height = EncodeParams.FrameHeight;
+	setupCommand.depth_height = EncodeParams.DepthHeight;
+	setupCommand.depth_width = EncodeParams.DepthWidth;
+	setupCommand.port = StreamingPort;
+	Client_SendCommand(setupCommand);
+	//Client_SendCommand(FString::Printf(TEXT("v %d %d %d"), StreamingPort, EncodeParams.FrameWidth, EncodeParams.FrameHeight));
 }
 
 void URemotePlaySessionComponent::ReleasePlayerPawn()
@@ -397,11 +398,56 @@ void URemotePlaySessionComponent::ApplyPlayerInput(float DeltaTime)
 		PlayerController->InputKey(InputQueue.ButtonsReleased.Pop(), EInputEvent::IE_Released, 1.0f, true);
 	}
 }
+void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
+{
+	if (Packet->dataLength != sizeof(avs::Handshake))
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Received malformed handshake packet of length: %d"), Packet->dataLength);
+		return;
+	}
+	avs::Handshake handshake;
+	FPlatformMemory::Memcpy(&handshake, Packet->data, Packet->dataLength);
+	if (handshake.isReadyToReceivePayloads != true)
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Handshake not ready to receive."));
+		return;
+	}
+	RemotePlayContext->axesStandard = handshake.axesStandard;
+	URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
+	const int32 StreamingPort = ServerHost->address.port + 1;
+
+	CaptureComponent->StartStreaming(RemotePlayContext);
+	Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
+	if (Monitor&&Monitor->StreamGeometry)
+	{
+		GeometryStreamingService.SetStreamingContinuously(Monitor->StreamGeometryContinuously);
+		GeometryStreamingService.StartStreaming(RemotePlayContext);
+	}
+
+	if (!RemotePlayContext->NetworkPipeline.IsValid())
+	{
+		FRemotePlayNetworkParameters NetworkParams;
+		NetworkParams.RemoteIP = Client_GetIPAddress();
+		NetworkParams.LocalPort = StreamingPort;
+		NetworkParams.RemotePort = NetworkParams.LocalPort + 1;
+
+		RemotePlayContext->NetworkPipeline.Reset(new FNetworkPipeline);
+		RemotePlayContext->NetworkPipeline->Initialize(Monitor, NetworkParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get(), RemotePlayContext->GeometryQueue.Get());
+	}
+
+	UE_LOG(LogRemotePlay, Log, TEXT("RemotePlay: Started streaming to %s:%d"), *Client_GetIPAddress(), StreamingPort);
+}
 
 void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 {
 	switch (Event.channelID)
 	{
+	case RPCH_HANDSHAKE:
+		//Delay the actual start of streaming until we receive a confirmation from the client that they are ready.
+	{
+		RecvHandshake(Event.packet);
+		break;
+	}
 	case RPCH_Control:
 		RecvInput(Event.packet);
 		break;
@@ -419,17 +465,20 @@ void URemotePlaySessionComponent::RecvHeadPose(const ENetPacket* Packet)
 		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Received malformed head pose packet of length: %d"), Packet->dataLength);
 		return;
 	}
-
-	FQuat HeadPose;
+	if (!RemotePlayContext)
+		return;
+	avs::vec4 HeadPose;
 	FPlatformMemory::Memcpy(&HeadPose, Packet->data, Packet->dataLength);
 
 	// Here we set the angle of the player pawn.
 	// Convert quaternion from Simulcaster coordinate system (X right, Y forward, Z up) to UE4 coordinate system (left-handed, X left, Y forward, Z up).
-	const FQuat HeadPoseUE{ -HeadPose.X, HeadPose.Y, -HeadPose.Z, HeadPose.W };
+	avs::ConvertRotation(RemotePlayContext->axesStandard,avs::AxesStandard::UnrealStyle,HeadPose);
+	const FQuat HeadPoseUE{ HeadPose.x, HeadPose.y, HeadPose.z, HeadPose.w };
+	//const FQuat HeadPoseUE{ -HeadPose.x, HeadPose.y, -HeadPose.z, HeadPose.w };
 	FVector Euler = HeadPoseUE.Euler();
 	Euler.X = Euler.Y = 0.0f;
 	// Unreal thinks the Euler angle starts from facing X, but actually it's Y.
-	Euler.Z -= 90.0f;
+	//Euler.Z += 180.0f;
 	FQuat FlatPose = FQuat::MakeFromEuler(Euler);
 	check(PlayerController.IsValid());
 	PlayerController->SetControlRotation(FlatPose.Rotator());
@@ -462,7 +511,26 @@ void URemotePlaySessionComponent::RecvInput(const ENetPacket* Packet)
 inline bool URemotePlaySessionComponent::Client_SendCommand(const FString& Cmd) const
 {
 	check(ClientPeer);
-	ENetPacket* Packet = enet_packet_create(TCHAR_TO_UTF8(*Cmd), Cmd.Len(), ENET_PACKET_FLAG_RELIABLE);
+	// Convert the string to UTF8:
+	TStringConversion<FTCHARToUTF8_Convert> utf8((const TCHAR*)(*Cmd));
+	// first we send a payload type id. We here send the id that means "this is a text packet".
+	std::vector<uint8_t> packet_buffer;
+	avs::TextCommand textCommand;
+	size_t cmdSize = avs::GetCommandSize(textCommand.commandPayloadType);
+	packet_buffer.resize(cmdSize+utf8.Length()+1);
+	memcpy(packet_buffer.data() + cmdSize, utf8.Get(), utf8.Length()+1);// 1 extra char, should be zero!
+	check(packet_buffer[packet_buffer.size() - 1] == (uint8_t)0);
+	memcpy(packet_buffer.data(), &textCommand.commandPayloadType, cmdSize);
+	ENetPacket* Packet = enet_packet_create(packet_buffer.data(),packet_buffer.size(), ENET_PACKET_FLAG_RELIABLE);
+	check(Packet);
+	return enet_peer_send(ClientPeer, RPCH_Control, Packet) == 0;
+}
+
+bool URemotePlaySessionComponent::Client_SendCommand(const avs::Command &avsCommand) const
+{
+	check(ClientPeer);
+	ENetPacket* Packet = enet_packet_create(&avsCommand, avs::GetCommandSize(avsCommand.commandPayloadType), ENET_PACKET_FLAG_RELIABLE);
+	check(Packet);
 	return enet_peer_send(ClientPeer, RPCH_Control, Packet) == 0;
 }
 

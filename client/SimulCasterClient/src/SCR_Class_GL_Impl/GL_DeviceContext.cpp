@@ -4,6 +4,10 @@
 using namespace scc;
 using namespace scr;
 
+void GL_DeviceContext::Create(DeviceContextCreateInfo* pDeviceContextCreateInfo)
+{
+    m_CI = *pDeviceContextCreateInfo;
+}
 
 void GL_DeviceContext::Draw(InputCommand* pInputCommand)
 {
@@ -13,16 +17,17 @@ void GL_DeviceContext::DispatchCompute(InputCommand* pInputCommand)
 {
 
 }
-void BeginFrame()
+void GL_DeviceContext::BeginFrame()
 {
 
 }
-void EndFrame()
+void GL_DeviceContext::EndFrame()
 {
 
 }
 void GL_DeviceContext::ParseInputCommand(InputCommand* pInputCommand)
 {
+   /*
     //Set up for DescriptorSet binding
     std::vector<DescriptorSet> descriptorSets;
     Effect* effect = nullptr;
@@ -68,6 +73,7 @@ void GL_DeviceContext::ParseInputCommand(InputCommand* pInputCommand)
         }
     }
     BindDescriptorSets(descriptorSets, effect);
+    */
 
 }
 
@@ -112,7 +118,7 @@ void GL_DeviceContext::BindDescriptorSets(const std::vector<DescriptorSet>& desc
             DescriptorSetLayout::DescriptorType type = wds.descriptorType;
             if(type == DescriptorSetLayout::DescriptorType::COMBINED_IMAGE_SAMPLER)
             {
-                dynamic_cast<const GL_Texture*>(wds.pImageInfo->texture)->Bind();
+                dynamic_cast<const GL_Texture*>(wds.pImageInfo->texture.get())->Bind();
             }
             else if(type == DescriptorSetLayout::DescriptorType::UNIFORM_BUFFER)
             {

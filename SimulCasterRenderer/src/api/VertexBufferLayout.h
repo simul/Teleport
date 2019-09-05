@@ -12,12 +12,13 @@ namespace scr
 		{
 			FLOAT,
 			DOUBLE,
+			HALF,
 			UINT,
 			USHORT,
 			UBYTE,
 			INT,
 			SHORT,
-			BYTE
+			BYTE,
 		};
 		enum class ComponentCount : uint32_t
 		{
@@ -50,9 +51,27 @@ namespace scr
 		{
 			for (auto& attrib : m_Attributes)
 			{
-				m_Stride += static_cast<size_t>(attrib.componentCount);
+				m_Stride += static_cast<size_t>(attrib.componentCount) * GetAttributeTypeSize(attrib.type);
 			}
-			m_Stride *= 4;
+		}
+		inline size_t GetAttributeTypeSize(Type type)
+		{
+			switch (type)
+			{
+			case Type::DOUBLE:
+				return 8;
+			case Type::FLOAT:
+			case Type::UINT:
+			case Type::INT:
+				return 4;
+			case Type::USHORT:
+			case Type::SHORT:
+				return 2;
+			case Type::UBYTE:
+			case Type::BYTE:
+			default:
+				return 1;
+			}
 		}
 	};
 }

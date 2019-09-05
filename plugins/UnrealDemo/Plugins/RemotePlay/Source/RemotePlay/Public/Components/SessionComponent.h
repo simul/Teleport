@@ -55,12 +55,14 @@ private:
 	void ApplyPlayerInput(float DeltaTime);
 
 	void DispatchEvent(const ENetEvent& Event);
+	void RecvHandshake(const ENetPacket* Packet);
 	void RecvHeadPose(const ENetPacket* Packet);
 	void RecvInput(const ENetPacket* Packet);
 
-	inline bool    Client_SendCommand(const FString& Cmd) const;
-	inline FString Client_GetIPAddress() const;
-	inline uint16  Client_GetPort() const;
+	bool			Client_SendCommand(const FString& Cmd) const;
+	bool			Client_SendCommand(const avs::Command &avsSetup) const;
+	inline FString	Client_GetIPAddress() const;
+	inline uint16	Client_GetPort() const;
 	
 	static void TranslateButtons(uint32_t ButtonMask, TArray<FKey>& OutKeys);
 	void StartStreaming();
@@ -82,11 +84,12 @@ private:
 
 	FRemotePlayDiscoveryService DiscoveryService;
 	FGeometryStreamingService GeometryStreamingService;
-
+	 
 	struct FRemotePlayContext* RemotePlayContext;
 #if STATS || ENABLE_STATNAMEDEVENTS_UOBJECT
 	/** Stat id of this object, 0 if nobody asked for it yet */
 	mutable TStatId				BandwidthStatID;
 	float						Bandwidth;
 #endif // STATS || ENABLE_STATNAMEDEVENTS
+	class ARemotePlayMonitor	*Monitor;
 };
