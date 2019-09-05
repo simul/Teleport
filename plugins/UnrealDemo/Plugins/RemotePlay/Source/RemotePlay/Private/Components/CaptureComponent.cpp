@@ -75,11 +75,6 @@ void URemotePlayCaptureComponent::TickComponent(float DeltaTime, ELevelTick Tick
 
 void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Scene)
 {
-	if (bIsStreaming && RemotePlayContext != nullptr && RemotePlayContext->EncodePipeline.IsValid())
-	{
-		FTransform Transform = GetComponentTransform();
-		RemotePlayContext->EncodePipeline->AddCameraTransform(Transform);
-	}
 	Super::UpdateSceneCaptureContents(Scene);
 }
 
@@ -148,6 +143,10 @@ void URemotePlayCaptureComponent::OnViewportDrawn()
 				u = Monitor->VideoEncodeFrequency;
 			else
 				return; 
+		}
+		{
+			FTransform Transform = GetComponentTransform();
+			RemotePlayContext->EncodePipeline->AddCameraTransform(Transform);
 		}
 		RemotePlayContext->EncodePipeline->PrepareFrame(GetWorld()->Scene, TextureTarget);
 		if (RemotePlayReflectionCaptureComponent)
