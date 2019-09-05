@@ -221,7 +221,7 @@ void FEncodePipelineMonoscopic::PrepareFrame(FSceneInterface* InScene, UTexture*
 	if (!InScene || !InSourceTexture)
 	{
 		return;
-}
+	}
 
 	const ERHIFeatureLevel::Type FeatureLevel = InScene->GetFeatureLevel();
 
