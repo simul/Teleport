@@ -75,11 +75,9 @@ void URemotePlayCaptureComponent::TickComponent(float DeltaTime, ELevelTick Tick
 
 void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Scene)
 {
-	AActor* OwnerActor = GetTypedOuter<AActor>();
-	check(OwnerActor);
 	if (bIsStreaming && RemotePlayContext != nullptr && RemotePlayContext->EncodePipeline.IsValid())
 	{
-		FTransform Transform = OwnerActor->GetTransform();
+		FTransform Transform = GetComponentTransform();
 		RemotePlayContext->EncodePipeline->AddCameraTransform(Transform);
 	}
 	Super::UpdateSceneCaptureContents(Scene);
