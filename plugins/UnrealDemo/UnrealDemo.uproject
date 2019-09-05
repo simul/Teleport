@@ -45,7 +45,7 @@
 			"Enabled": true
 		},
 		{
-			"Name": "SteamVR",
+			"Name": "RemotePlay",
 			"Enabled": false
 		}
 	],
