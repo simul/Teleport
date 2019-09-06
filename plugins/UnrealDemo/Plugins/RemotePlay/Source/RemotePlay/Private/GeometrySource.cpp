@@ -24,6 +24,7 @@
 #include "Engine/Classes/Materials/MaterialExpressionConstant4Vector.h"
 #include "Engine/Classes/Materials/MaterialExpressionScalarParameter.h"
 #include "Engine/Classes/Materials/MaterialExpressionVectorParameter.h"
+#include "Engine/Classes/Materials/MaterialExpressionTextureCoordinate.h"
 
 #include "RemotePlayMonitor.h"
 
@@ -583,7 +584,19 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 
 		if(name.Contains("TextureSample"))
 		{
-			outTexture = {StoreTexture(Cast<UMaterialExpressionTextureBase>(outExpressions[expressionIndex])->Texture), DUMMY_TEX_COORD};
+			UMaterialExpressionTextureSample *texExp = Cast<UMaterialExpressionTextureSample>(outExpressions[expressionIndex]);
+			outTexture = {StoreTexture(texExp->Texture), DUMMY_TEX_COORD};
+
+			if(texExp->Coordinates.Expression)
+			{
+				FString coordName = texExp->Coordinates.Expression->GetName();
+
+				if(coordName.Contains("TextureCoordinate"))
+				{
+					UMaterialExpressionTextureCoordinate *texCoordExp = Cast<UMaterialExpressionTextureCoordinate>(texExp->Coordinates.Expression);
+					outTexture.tiling = {texCoordExp->UTiling, texCoordExp->VTiling};
+				}
+			}
 		}
 		else if(name.Contains("Constant"))
 		{
@@ -611,6 +624,7 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 			//There is no property chain, so everything should be left as default.
 			break;
 		case 1:
+		case 2:
 			handleExpression(0);
 
 			break;
@@ -650,7 +664,19 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 
 		if(name.Contains("TextureSample"))
 		{
-			outTexture = {StoreTexture(Cast<UMaterialExpressionTextureBase>(outExpressions[expressionIndex])->Texture), DUMMY_TEX_COORD};
+			UMaterialExpressionTextureSample *texExp = Cast<UMaterialExpressionTextureSample>(outExpressions[expressionIndex]);
+			outTexture = {StoreTexture(texExp->Texture), DUMMY_TEX_COORD};
+
+			if(texExp->Coordinates.Expression)
+			{
+				FString coordName = texExp->Coordinates.Expression->GetName();
+
+				if(coordName.Contains("TextureCoordinate"))
+				{
+					UMaterialExpressionTextureCoordinate *texCoordExp = Cast<UMaterialExpressionTextureCoordinate>(texExp->Coordinates.Expression);
+					outTexture.tiling = {texCoordExp->UTiling, texCoordExp->VTiling};
+				}
+			}
 		}
 		else if(name.Contains("Constant3Vector"))
 		{
@@ -682,11 +708,10 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 			//There is no property chain, so everything should be left as default.
 			break;
 		case 1:
-		{
+		case 2:
 			handleExpression(0);
-		}
 
-		break;
+			break;
 		case 3:
 		{
 			FString name = outExpressions[0]->GetName();
@@ -723,7 +748,19 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 
 		if(name.Contains("TextureSample"))
 		{
-			outTexture = {StoreTexture(Cast<UMaterialExpressionTextureBase>(outExpressions[expressionIndex])->Texture), DUMMY_TEX_COORD};
+			UMaterialExpressionTextureSample *texExp = Cast<UMaterialExpressionTextureSample>(outExpressions[expressionIndex]);
+			outTexture = {StoreTexture(texExp->Texture), DUMMY_TEX_COORD};
+
+			if(texExp->Coordinates.Expression)
+			{
+				FString coordName = texExp->Coordinates.Expression->GetName();
+				
+				if(coordName.Contains("TextureCoordinate"))
+				{
+					UMaterialExpressionTextureCoordinate *texCoordExp = Cast<UMaterialExpressionTextureCoordinate>(texExp->Coordinates.Expression);
+					outTexture.tiling = {texCoordExp->UTiling, texCoordExp->VTiling};
+				}
+			}
 		}
 		else if(name.Contains("Constant3Vector"))
 		{
@@ -760,6 +797,7 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 			//There is no property chain, so everything should be left as default.
 			break;
 		case 1:
+		case 2:
 			handleExpression(0);
 
 			break;
@@ -777,6 +815,23 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 				LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
 				GetDefaultTexture(materialInterface, propertyChain, outTexture);
 			}
+		}
+
+			break;
+		case 4:
+		{
+			FString name = outExpressions[0]->GetName();
+
+			if(name.Contains("Multiply"))
+			{
+				///ASSUMPTION: Texture = A, Factor = B
+
+				//1 = Texture, 2 = Coordinate
+				handleExpression(1);
+				handleExpression(3);
+			}
+
+			break;
 		}
 
 			break;

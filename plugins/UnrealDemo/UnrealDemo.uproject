@@ -1,6 +1,6 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "{C9473AAA-4135-5685-05B8-FA8DC5B34CD8}",
+	"EngineAssociation": "{F0348384-43AB-8ACD-E4B3-54A3FA192540}",
 	"Category": "Samples",
 	"Description": "",
 	"Modules": [
@@ -46,7 +46,7 @@
 		},
 		{
 			"Name": "RemotePlay",
-			"Enabled": false
+			"Enabled": true
 		}
 	],
 	"TargetPlatforms": [
