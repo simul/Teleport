@@ -99,6 +99,7 @@ URemotePlaySessionComponent::URemotePlaySessionComponent()
 	, DisconnectTimeout(1000)
 	, InputTouchSensitivity(1.0f)
 	, InputTouchAxis(0.f, 0.f)
+	, InputJoystick(0.f,0.f)
 	, ServerHost(nullptr)
 	, ClientPeer(nullptr)
 	, BandwidthStatID(0)
@@ -248,7 +249,7 @@ void URemotePlaySessionComponent::StopSession()
 {
 	ReleasePlayerPawn();
 	DiscoveryService.Shutdown();
-	GeometryStreamingService.Reset();
+	//GeometryStreamingService.Reset();
 
 	if (ClientPeer)
 	{
@@ -386,8 +387,8 @@ void URemotePlaySessionComponent::StopStreaming()
 void URemotePlaySessionComponent::ApplyPlayerInput(float DeltaTime)
 {
 	check(PlayerController.IsValid());
-	PlayerController->InputAxis(EKeys::MotionController_Right_Thumbstick_X, InputTouchAxis.X, DeltaTime, 1, true);
-	PlayerController->InputAxis(EKeys::MotionController_Right_Thumbstick_Y, InputTouchAxis.Y, DeltaTime, 1, true);
+	PlayerController->InputAxis(EKeys::MotionController_Right_Thumbstick_X, InputTouchAxis.X+ InputJoystick.X, DeltaTime, 1, true);
+	PlayerController->InputAxis(EKeys::MotionController_Right_Thumbstick_Y, InputTouchAxis.Y- InputJoystick.Y, DeltaTime, 1, true);
 
 	while (InputQueue.ButtonsPressed.Num() > 0)
 	{
@@ -492,6 +493,8 @@ void URemotePlaySessionComponent::RecvInput(const ENetPacket* Packet)
 		uint32 ButtonsReleased;
 		float RelativeTouchX;
 		float RelativeTouchY;
+		float JoystickX;
+		float JoystickY;
 	};
 	FInputState InputState;
 
@@ -504,6 +507,8 @@ void URemotePlaySessionComponent::RecvInput(const ENetPacket* Packet)
 	FPlatformMemory::Memcpy(&InputState, Packet->data, Packet->dataLength);
 	InputTouchAxis.X = FMath::Clamp(InputState.RelativeTouchX * InputTouchSensitivity, -1.0f, 1.0f);
 	InputTouchAxis.Y = FMath::Clamp(InputState.RelativeTouchY * InputTouchSensitivity, -1.0f, 1.0f);
+	InputJoystick.X = InputState.JoystickX;
+	InputJoystick.Y = InputState.JoystickY;
 	TranslateButtons(InputState.ButtonsPressed, InputQueue.ButtonsPressed);
 	TranslateButtons(InputState.ButtonsReleased, InputQueue.ButtonsReleased);
 }

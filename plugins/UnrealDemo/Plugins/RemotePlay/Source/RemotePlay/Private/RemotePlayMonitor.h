@@ -31,6 +31,9 @@ public:
 	int32 VideoEncodeFrequency;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
+	uint32 DeferOutput : 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
 	uint32 StreamGeometry : 1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)

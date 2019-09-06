@@ -447,16 +447,23 @@ void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediat
 	FTransform Transform;
 	if (CameraTransformQueue.Dequeue(Transform))
 	{
-		avs::Transform CamTransform;
-		FVector t = Transform.GetTranslation()*0.01f;
-		FQuat r = Transform.GetRotation();
-		const FVector s = Transform.GetScale3D();
-		CamTransform = { t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z };
-		for (auto& Encoder : Encoders)
+		CameraTransformArray.Add(Transform);
+		static int LagSize = 5;
+		if (CameraTransformArray.Num() >= LagSize)
 		{
-			avs::Transform transform =CamTransform;
-			avs::ConvertTransform(avs::AxesStandard::UnrealStyle, RemotePlayContext->axesStandard, transform);
-			Encoder.setCameraTransform(transform);
+			FTransform Tr = CameraTransformArray[0]; 
+			avs::Transform CamTransform;
+			FVector t = Tr.GetTranslation()*0.01f;
+			FQuat r = Tr.GetRotation();
+			const FVector s = Tr.GetScale3D();
+			CamTransform = { t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z };
+			for (auto& Encoder : Encoders)
+			{
+				avs::Transform transform = CamTransform;
+				avs::ConvertTransform(avs::AxesStandard::UnrealStyle, RemotePlayContext->axesStandard, transform);
+				Encoder.setCameraTransform(transform);
+			}
+			CameraTransformArray.RemoveAt(0);
 		}
 	}
 	if (!Pipeline->process())
