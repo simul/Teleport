@@ -261,6 +261,8 @@ avs::Result GeometryEncoder::encodeMaterials(avs::GeometrySourceBackendInterface
 			//Push base colour, and factor.
 			put(outMaterial.pbrMetallicRoughness.baseColorTexture.index);
 			put(outMaterial.pbrMetallicRoughness.baseColorTexture.texCoord);
+			put(outMaterial.pbrMetallicRoughness.baseColorTexture.tiling.x);
+			put(outMaterial.pbrMetallicRoughness.baseColorTexture.tiling.y);
 			put(outMaterial.pbrMetallicRoughness.baseColorFactor.x);
 			put(outMaterial.pbrMetallicRoughness.baseColorFactor.y);
 			put(outMaterial.pbrMetallicRoughness.baseColorFactor.z);
@@ -269,22 +271,30 @@ avs::Result GeometryEncoder::encodeMaterials(avs::GeometrySourceBackendInterface
 			//Push metallic roughness, and factors.
 			put(outMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index);
 			put(outMaterial.pbrMetallicRoughness.metallicRoughnessTexture.texCoord);
+			put(outMaterial.pbrMetallicRoughness.metallicRoughnessTexture.tiling.x);
+			put(outMaterial.pbrMetallicRoughness.metallicRoughnessTexture.tiling.y);
 			put(outMaterial.pbrMetallicRoughness.metallicFactor);
 			put(outMaterial.pbrMetallicRoughness.roughnessFactor);
 
 			//Push normal map, and scale.
 			put(outMaterial.normalTexture.index);
 			put(outMaterial.normalTexture.texCoord);
+			put(outMaterial.normalTexture.tiling.x);
+			put(outMaterial.normalTexture.tiling.y);
 			put(outMaterial.normalTexture.scale);
 
 			//Push occlusion texture, and strength.
 			put(outMaterial.occlusionTexture.index);
 			put(outMaterial.occlusionTexture.texCoord);
+			put(outMaterial.occlusionTexture.tiling.x);
+			put(outMaterial.occlusionTexture.tiling.y);
 			put(outMaterial.occlusionTexture.strength);
 
 			//Push emissive texture, and factor.
 			put(outMaterial.emissiveTexture.index);
 			put(outMaterial.emissiveTexture.texCoord);
+			put(outMaterial.emissiveTexture.tiling.x);
+			put(outMaterial.emissiveTexture.tiling.y);
 			put(outMaterial.emissiveFactor.x);
 			put(outMaterial.emissiveFactor.y);
 			put(outMaterial.emissiveFactor.z);
