@@ -41,6 +41,7 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = RemotePlay)
 	uint32 bRenderOwner : 1;
 
+	const FRemotePlayEncodeParameters &GetEncodeParams();
 private: 
 	void OnViewportDrawn();
 	FDelegateHandle ViewportDrawnDelegateHandle;

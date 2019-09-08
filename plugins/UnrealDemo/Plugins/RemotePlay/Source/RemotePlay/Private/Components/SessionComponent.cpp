@@ -328,13 +328,15 @@ void URemotePlaySessionComponent::StartStreaming()
 	RemotePlayContext->GeometryQueue.Reset(new avs::Queue);
 	RemotePlayContext->GeometryQueue->configure(16);
 
-	const auto& EncodeParams = CaptureComponent->EncodeParams;
+	const auto& EncodeParams = CaptureComponent->GetEncodeParams();
 	const int32 StreamingPort = ServerHost->address.port + 1;
 	avs::SetupCommand setupCommand;
-	setupCommand.video_width = EncodeParams.FrameWidth;
-	setupCommand.video_height = EncodeParams.FrameHeight;
-	setupCommand.depth_height = EncodeParams.DepthHeight;
-	setupCommand.depth_width = EncodeParams.DepthWidth;
+	setupCommand.video_width	= EncodeParams.FrameWidth;
+	setupCommand.video_height	= EncodeParams.FrameHeight;
+	setupCommand.depth_height	= EncodeParams.DepthHeight;
+	setupCommand.depth_width	= EncodeParams.DepthWidth;
+	setupCommand.colour_cubemap_size = EncodeParams.FrameWidth / 3;
+	setupCommand.compose_cube	= EncodeParams.bDecomposeCube;
 	setupCommand.port = StreamingPort;
 	Client_SendCommand(setupCommand);
 	//Client_SendCommand(FString::Printf(TEXT("v %d %d %d"), StreamingPort, EncodeParams.FrameWidth, EncodeParams.FrameHeight));

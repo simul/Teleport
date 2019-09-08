@@ -10,13 +10,17 @@ static const float TwoPI  = 2.0 * PI;
 TextureCube InputCubeMap;
 SamplerState DefaultSampler;
 
+// The input texture, but as an array of 6 2d faces.
+RWTexture2DArray<float4> RWInputCubeAsArray;
 RWTexture2D<float4> RWOutputColorTexture;
 
-#if WRITE_DEPTH
-RWTexture2D<float> RWOutputDepthTexture;
+int2 Offset;
+
 #if DEPTH_STACKED
 uint DepthPos;
 #endif
+#if WRITE_DEPTH
+RWTexture2D<float> RWOutputDepthTexture;
 #if WRITE_DEPTH_LINEAR
 float2 WorldZToDeviceZTransform;
 float ConvertToDeviceZ(float SceneDepth)
@@ -68,4 +72,38 @@ void MainCS(uint2 ThreadID : SV_DispatchThreadID)
 #if WRITE_DEPTH_TEXTURE
 	RWOutputDepthTexture[int2(ThreadID.x, ThreadID.y)] = DepthValue;
 #endif // WRITE_DEPTH
+}
+
+[numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
+void DecomposeCS(uint3 ThreadID : SV_DispatchThreadID)
+{
+	uint InputW, InputH, InputD;
+	RWInputCubeAsArray.GetDimensions(InputW, InputH, InputD);
+	uint OutputW, OutputH;
+	RWOutputColorTexture.GetDimensions(OutputW, OutputH);
+	int3 pos = int3(ThreadID);
+	int2 FaceOffsets[] = { {0,0},{1,0},{2,0},{0,1},{1,1},{2,1} };
+	RWOutputColorTexture.GetDimensions(OutputW, OutputH);
+	float4 SceneColor = RWInputCubeAsArray[pos];
+	float DepthValue = 0.0;
+	float4 d4 = float4(DepthValue, DepthValue, DepthValue, DepthValue);
+
+	RWOutputColorTexture[int2(ThreadID.x , ThreadID.y ) + Offset + InputW * FaceOffsets[pos.z]] = SceneColor;
+}
+
+[numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
+void DecomposeDepthCS(uint3 ThreadID : SV_DispatchThreadID)
+{
+	uint InputW, InputH, InputD;
+	RWInputCubeAsArray.GetDimensions(InputW, InputH, InputD);
+	uint OutputW, OutputH;
+	RWOutputColorTexture.GetDimensions(OutputW, OutputH);
+	int3 pos = int3(ThreadID);
+	int2 FaceOffsets[] = { {0,0},{1,0},{2,0},{0,1},{1,1},{2,1} };
+	RWOutputColorTexture.GetDimensions(OutputW, OutputH);
+	float4 SceneColor = RWInputCubeAsArray[pos];
+	float DepthValue = SceneColor.a / 100.0 / 50.0;
+	float4 d4 = float4(DepthValue, DepthValue, DepthValue, DepthValue);
+
+	RWOutputColorTexture[int2(ThreadID.x, ThreadID.y) + Offset + InputW * FaceOffsets[pos.z]/2] = d4;
 }

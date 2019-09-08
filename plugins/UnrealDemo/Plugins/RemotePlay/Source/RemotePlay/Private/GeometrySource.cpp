@@ -283,8 +283,7 @@ avs::uid GeometrySource::AddStreamableMeshComponent(UMeshComponent *MeshComponen
 		{
 			continue;
 		}
-		UStaticMesh* StaticMesh = Cast<UStaticMesh>(i.Value->StaticMesh);
-		if (StaticMesh == StaticMeshComponent->GetStaticMesh())
+		if (StaticMesh == i.Value->StaticMesh)
 		{
 			already_got_mesh = true;
 			mesh_uid = i.Key;
