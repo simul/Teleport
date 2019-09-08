@@ -40,9 +40,8 @@ void FromCubemapCS(uint2 ThreadID : SV_DispatchThreadID)
 	for (uint i = 0; i < DirLightCount; ++i)
 	{
 		float factor = dot(DirLights[i].Direction, view); 
-		Radiance += (DirLights[i].Color * factor * DirLights[i].Intensity);
+		Radiance += (DirLights[i].Color * factor);
 	}
-
 	RWOutputTexture[int3(ThreadID.x, ThreadID.y, CubeFace)] = saturate(Radiance);
 }
 
