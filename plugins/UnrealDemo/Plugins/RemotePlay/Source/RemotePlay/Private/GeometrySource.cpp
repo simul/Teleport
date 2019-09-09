@@ -354,6 +354,46 @@ avs::uid GeometrySource::AddMaterial(UMaterialInterface *materialInterface)
 		DecomposeMaterialProperty(materialInterface, EMaterialProperty::MP_Normal, newMaterial.normalTexture, newMaterial.normalTexture.scale);
 		DecomposeMaterialProperty(materialInterface, EMaterialProperty::MP_EmissiveColor, newMaterial.emissiveTexture, newMaterial.emissiveFactor);
 
+		//MP_WorldPositionOffset Property Chain for SimpleGrassWind
+		{
+			TArray<UMaterialExpression *> outExpressions;
+			materialInterface->GetMaterial()->GetExpressionsInPropertyChain(MP_WorldPositionOffset, outExpressions, nullptr);
+
+			if(outExpressions.Num() != 0)
+			{
+				if(outExpressions[0]->GetName().Contains("MaterialFunctionCall"))
+				{
+					UMaterialExpressionMaterialFunctionCall *functionExp = Cast<UMaterialExpressionMaterialFunctionCall>(outExpressions[0]);
+					if(functionExp->MaterialFunction->GetName() == "SimpleGrassWind")
+					{
+						avs::SimpleGrassWindExtension simpleGrassWind;
+
+						if(functionExp->FunctionInputs[0].Input.Expression && functionExp->FunctionInputs[0].Input.Expression->GetName().Contains("Constant"))
+						{
+							simpleGrassWind.windIntensity = Cast<UMaterialExpressionConstant>(functionExp->FunctionInputs[0].Input.Expression)->R;
+						}
+
+						if(functionExp->FunctionInputs[1].Input.Expression && functionExp->FunctionInputs[1].Input.Expression->GetName().Contains("Constant"))
+						{
+							simpleGrassWind.windWeight = Cast<UMaterialExpressionConstant>(functionExp->FunctionInputs[1].Input.Expression)->R;
+						}
+
+						if(functionExp->FunctionInputs[2].Input.Expression && functionExp->FunctionInputs[2].Input.Expression->GetName().Contains("Constant"))
+						{
+							simpleGrassWind.windSpeed = Cast<UMaterialExpressionConstant>(functionExp->FunctionInputs[2].Input.Expression)->R;
+						}
+
+						if(functionExp->FunctionInputs[3].Input.Expression && functionExp->FunctionInputs[3].Input.Expression->GetName().Contains("TextureSample"))
+						{
+							simpleGrassWind.texUID = StoreTexture(Cast<UMaterialExpressionTextureBase>(functionExp->FunctionInputs[3].Input.Expression)->Texture);
+						}
+
+						newMaterial.extensions[avs::MaterialExtensionIdentifier::SIMPLE_GRASS_WIND] = std::make_unique<avs::SimpleGrassWindExtension>(simpleGrassWind);
+					}
+				}
+			}
+		}
+		
 		mat_uid = avs::GenerateUid();
 
 		materials[mat_uid] = newMaterial;
@@ -593,6 +633,15 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 					UMaterialExpressionTextureCoordinate *texCoordExp = Cast<UMaterialExpressionTextureCoordinate>(texExp->Coordinates.Expression);
 					outTexture.tiling = {texCoordExp->UTiling, texCoordExp->VTiling};
 				}
+			}
+		}
+		else if(name.Contains("ConstantBiasScale"))
+		{
+			LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
+
+			if(outTexture.index == 0)
+			{
+				GetDefaultTexture(materialInterface, propertyChain, outTexture);
 			}
 		}
 		else if(name.Contains("Constant"))

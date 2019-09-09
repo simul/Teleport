@@ -299,6 +299,14 @@ avs::Result GeometryEncoder::encodeMaterials(avs::GeometrySourceBackendInterface
 			put(outMaterial.emissiveFactor.y);
 			put(outMaterial.emissiveFactor.z);
 
+			//Push extension amount.
+			put(outMaterial.extensions.size());
+			//Push extensions.
+			for(const auto &extensionPair : outMaterial.extensions)
+			{
+				extensionPair.second->serialise(buffer);
+			}
+
 			//UIDs used by textures in material.
 			std::vector<avs::uid> materialTexture_uids =
 			{
