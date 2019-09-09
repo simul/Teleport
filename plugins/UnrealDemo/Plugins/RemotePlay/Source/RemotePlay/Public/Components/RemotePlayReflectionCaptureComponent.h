@@ -53,6 +53,14 @@ private:
 		FTexture2DArrayRHIRef Texture2DArrayRHIRef;
 		FUnorderedAccessViewRHIRef UnorderedAccessViewRHIRefs[12];
 	};
+
+	struct FShaderDirectionalLight
+	{
+		FLinearColor Color;
+		FVector Direction;
+	};
+
+	TQueue<TResourceArray<FShaderDirectionalLight>> ShaderDirLightsQueue;
 	FCubeTexture ReflectionCubeTexture;
 };
 

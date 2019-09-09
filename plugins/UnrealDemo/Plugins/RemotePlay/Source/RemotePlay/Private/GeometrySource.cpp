@@ -24,6 +24,7 @@
 #include "Engine/Classes/Materials/MaterialExpressionConstant4Vector.h"
 #include "Engine/Classes/Materials/MaterialExpressionScalarParameter.h"
 #include "Engine/Classes/Materials/MaterialExpressionVectorParameter.h"
+#include "Engine/Classes/Materials/MaterialExpressionTextureCoordinate.h"
 
 #include "RemotePlayMonitor.h"
 
@@ -44,8 +45,8 @@ struct GeometrySource::Mesh
 	~Mesh()
 	{
 	}
-	UMeshComponent* MeshComponent;
-	unsigned long long SentFrame;
+	UStaticMesh* StaticMesh;
+	//unsigned long long SentFrame;
 	bool Confirmed;
 	std::vector<avs::PrimitiveArray> primitiveArrays;
 	std::vector<avs::Attribute> attributes;
@@ -105,13 +106,12 @@ avs::AttributeSemantic IndexToSemantic(int index)
 
 bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 {
-	if (m->MeshComponent->GetClass()->IsChildOf(USkeletalMeshComponent::StaticClass()))
+	if (m->StaticMesh->GetClass()->IsChildOf(USkeletalMesh::StaticClass()))
 	{
 		return false;
 	}
 
-	UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(m->MeshComponent);
-	UStaticMesh *StaticMesh = StaticMeshComponent->GetStaticMesh();
+	UStaticMesh *StaticMesh = Cast<UStaticMesh>(m->StaticMesh);
 	auto &lods = StaticMesh->RenderData->LODResources;
 	if (!lods.Num())
 		return false;
@@ -254,13 +254,12 @@ void GeometrySource::clearData()
 }
 
 // By adding a m, we also add a pipe, including the InputMesh, which must be configured with the appropriate 
-avs::uid GeometrySource::AddMesh(UMeshComponent *MeshComponent)
+avs::uid GeometrySource::AddMesh(UStaticMesh *StaticMesh)
 {
 	avs::uid uid = avs::GenerateUid();
 	TSharedPtr<Mesh> m(new Mesh);
 	Meshes.Add(uid, m);
-	m->MeshComponent = MeshComponent;
-	m->SentFrame = (unsigned long long)0;
+	m->StaticMesh = StaticMesh;
 	m->Confirmed = false;
 	PrepareMesh(*m);
 	return uid;
@@ -280,12 +279,12 @@ avs::uid GeometrySource::AddStreamableMeshComponent(UMeshComponent *MeshComponen
 	bool already_got_mesh = false;
 	for (auto &i : Meshes)
 	{
-		if (i.Value->MeshComponent->GetClass()->IsChildOf(USkeletalMeshComponent::StaticClass()))
+		if (i.Value->StaticMesh->GetClass()->IsChildOf(USkeletalMesh::StaticClass()))
 		{
 			continue;
 		}
-		UStaticMeshComponent* c = Cast<UStaticMeshComponent>(i.Value->MeshComponent);
-		if (c->GetStaticMesh() == StaticMeshComponent->GetStaticMesh())
+		UStaticMesh* StaticMesh = Cast<UStaticMesh>(i.Value->StaticMesh);
+		if (StaticMesh == StaticMeshComponent->GetStaticMesh())
 		{
 			already_got_mesh = true;
 			mesh_uid = i.Key;
@@ -293,7 +292,7 @@ avs::uid GeometrySource::AddStreamableMeshComponent(UMeshComponent *MeshComponen
 	}
 	if (!already_got_mesh)
 	{
-		mesh_uid = AddMesh(MeshComponent);
+		mesh_uid = AddMesh(StaticMesh);
 	}
 
 	return mesh_uid;
@@ -372,10 +371,9 @@ void GeometrySource::Tick()
 void GeometrySource::PrepareMesh(Mesh &m)
 {
 	// We will pre-encode the mesh to prepare it for streaming.
-	if (m.MeshComponent->GetClass()->IsChildOf(UStaticMeshComponent::StaticClass()))
+	if (m.StaticMesh->GetClass()->IsChildOf(UStaticMesh::StaticClass()))
 	{
-		UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(m.MeshComponent);
-		UStaticMesh* StaticMesh = StaticMeshComponent->GetStaticMesh();
+		UStaticMesh* StaticMesh = m.StaticMesh;
 		int verts = StaticMesh->GetNumVertices(0);
 		FStaticMeshRenderData *StaticMeshRenderData = StaticMesh->RenderData.Get();
 		if (!StaticMeshRenderData->IsInitialized())
@@ -583,7 +581,19 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 
 		if(name.Contains("TextureSample"))
 		{
-			outTexture = {StoreTexture(Cast<UMaterialExpressionTextureBase>(outExpressions[expressionIndex])->Texture), DUMMY_TEX_COORD};
+			UMaterialExpressionTextureSample *texExp = Cast<UMaterialExpressionTextureSample>(outExpressions[expressionIndex]);
+			outTexture = {StoreTexture(texExp->Texture), DUMMY_TEX_COORD};
+
+			if(texExp->Coordinates.Expression)
+			{
+				FString coordName = texExp->Coordinates.Expression->GetName();
+
+				if(coordName.Contains("TextureCoordinate"))
+				{
+					UMaterialExpressionTextureCoordinate *texCoordExp = Cast<UMaterialExpressionTextureCoordinate>(texExp->Coordinates.Expression);
+					outTexture.tiling = {texCoordExp->UTiling, texCoordExp->VTiling};
+				}
+			}
 		}
 		else if(name.Contains("Constant"))
 		{
@@ -611,6 +621,7 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 			//There is no property chain, so everything should be left as default.
 			break;
 		case 1:
+		case 2:
 			handleExpression(0);
 
 			break;
@@ -650,7 +661,19 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 
 		if(name.Contains("TextureSample"))
 		{
-			outTexture = {StoreTexture(Cast<UMaterialExpressionTextureBase>(outExpressions[expressionIndex])->Texture), DUMMY_TEX_COORD};
+			UMaterialExpressionTextureSample *texExp = Cast<UMaterialExpressionTextureSample>(outExpressions[expressionIndex]);
+			outTexture = {StoreTexture(texExp->Texture), DUMMY_TEX_COORD};
+
+			if(texExp->Coordinates.Expression)
+			{
+				FString coordName = texExp->Coordinates.Expression->GetName();
+
+				if(coordName.Contains("TextureCoordinate"))
+				{
+					UMaterialExpressionTextureCoordinate *texCoordExp = Cast<UMaterialExpressionTextureCoordinate>(texExp->Coordinates.Expression);
+					outTexture.tiling = {texCoordExp->UTiling, texCoordExp->VTiling};
+				}
+			}
 		}
 		else if(name.Contains("Constant3Vector"))
 		{
@@ -682,11 +705,10 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 			//There is no property chain, so everything should be left as default.
 			break;
 		case 1:
-		{
+		case 2:
 			handleExpression(0);
-		}
 
-		break;
+			break;
 		case 3:
 		{
 			FString name = outExpressions[0]->GetName();
@@ -723,7 +745,19 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 
 		if(name.Contains("TextureSample"))
 		{
-			outTexture = {StoreTexture(Cast<UMaterialExpressionTextureBase>(outExpressions[expressionIndex])->Texture), DUMMY_TEX_COORD};
+			UMaterialExpressionTextureSample *texExp = Cast<UMaterialExpressionTextureSample>(outExpressions[expressionIndex]);
+			outTexture = {StoreTexture(texExp->Texture), DUMMY_TEX_COORD};
+
+			if(texExp->Coordinates.Expression)
+			{
+				FString coordName = texExp->Coordinates.Expression->GetName();
+				
+				if(coordName.Contains("TextureCoordinate"))
+				{
+					UMaterialExpressionTextureCoordinate *texCoordExp = Cast<UMaterialExpressionTextureCoordinate>(texExp->Coordinates.Expression);
+					outTexture.tiling = {texCoordExp->UTiling, texCoordExp->VTiling};
+				}
+			}
 		}
 		else if(name.Contains("Constant3Vector"))
 		{
@@ -760,6 +794,7 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 			//There is no property chain, so everything should be left as default.
 			break;
 		case 1:
+		case 2:
 			handleExpression(0);
 
 			break;
@@ -777,6 +812,23 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 				LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
 				GetDefaultTexture(materialInterface, propertyChain, outTexture);
 			}
+		}
+
+			break;
+		case 4:
+		{
+			FString name = outExpressions[0]->GetName();
+
+			if(name.Contains("Multiply"))
+			{
+				///ASSUMPTION: Texture = A, Factor = B
+
+				//1 = Texture, 2 = Coordinate
+				handleExpression(1);
+				handleExpression(3);
+			}
+
+			break;
 		}
 
 			break;
@@ -836,13 +888,11 @@ avs::uid GeometrySource::getMeshUid(size_t index) const
 size_t GeometrySource::getMeshPrimitiveArrayCount(avs::uid mesh_uid) const
 {
 	auto &mesh = Meshes[mesh_uid];
-	if (mesh->MeshComponent->GetClass()->IsChildOf(UStaticMeshComponent::StaticClass()))
+	if (mesh->StaticMesh->GetClass()->IsChildOf(UStaticMesh::StaticClass()))
 	{
-		UStaticMeshComponent* staticMeshComponent = Cast<UStaticMeshComponent>(mesh->MeshComponent);
-		UStaticMesh* staticMesh = staticMeshComponent->GetStaticMesh();
-		if (!staticMesh->RenderData)
+		if (!mesh->StaticMesh->RenderData)
 			return 0;
-		auto &lods = staticMesh->RenderData->LODResources;
+		auto &lods = mesh->StaticMesh->RenderData->LODResources;
 		if (!lods.Num())
 			return 0;
 		return lods[0].Sections.Num();

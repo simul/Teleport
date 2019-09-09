@@ -78,6 +78,7 @@ private:
 	};
 	FInputQueue InputQueue;
 	FVector2D   InputTouchAxis;
+	FVector2D   InputJoystick;
 
 	ENetHost* ServerHost;
 	ENetPeer* ClientPeer;

@@ -75,12 +75,52 @@ void URemotePlayCaptureComponent::TickComponent(float DeltaTime, ELevelTick Tick
 
 void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Scene)
 {
-	if (bIsStreaming && RemotePlayContext != nullptr && RemotePlayContext->EncodePipeline.IsValid())
-	{
-		FTransform Transform = GetComponentTransform();
-		RemotePlayContext->EncodePipeline->AddCameraTransform(Transform);
-	}
 	Super::UpdateSceneCaptureContents(Scene);
+
+	if (TextureTarget&&RemotePlayContext)
+	{
+		ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
+		if (!RemotePlayContext->EncodePipeline.IsValid())
+		{
+			EncodeParams.bDeferOutput = Monitor->DeferOutput;
+			RemotePlayContext->EncodePipeline.Reset(new FEncodePipelineMonoscopic);
+			RemotePlayContext->EncodePipeline->Initialize(EncodeParams, RemotePlayContext, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get());
+
+			if (RemotePlayReflectionCaptureComponent)
+			{
+				RemotePlayReflectionCaptureComponent->Initialize();
+				RemotePlayReflectionCaptureComponent->bAttached = true;
+			}
+		}
+
+
+		if (Monitor&&Monitor->VideoEncodeFrequency > 1)
+		{
+			static int u = 1;
+			u--;
+			if (!u)
+				u = Monitor->VideoEncodeFrequency;
+			else
+				return;
+		}
+		{
+			FTransform Transform = GetComponentTransform();
+			RemotePlayContext->EncodePipeline->AddCameraTransform(Transform);
+		}
+		RemotePlayContext->EncodePipeline->PrepareFrame(GetWorld()->Scene, TextureTarget);
+		if (RemotePlayReflectionCaptureComponent)
+		{
+			RemotePlayReflectionCaptureComponent->UpdateContents(
+				GetWorld()->Scene->GetRenderScene()
+				, TextureTarget
+				, GetWorld()->Scene->GetFeatureLevel());
+			RemotePlayReflectionCaptureComponent->PrepareFrame(
+				GetWorld()->Scene->GetRenderScene()
+				, RemotePlayContext->EncodePipeline->GetSurfaceTexture()
+				, GetWorld()->Scene->GetFeatureLevel());
+		}
+		RemotePlayContext->EncodePipeline->EncodeFrame(GetWorld()->Scene, TextureTarget);
+	}
 }
 
 
@@ -124,45 +164,6 @@ void URemotePlayCaptureComponent::StopStreaming()
 
 void URemotePlayCaptureComponent::OnViewportDrawn()
 {
-	if (TextureTarget)
-	{
-		if (!RemotePlayContext->EncodePipeline.IsValid())
-		{
-			RemotePlayContext->EncodePipeline.Reset(new FEncodePipelineMonoscopic);
-			RemotePlayContext->EncodePipeline->Initialize(EncodeParams, RemotePlayContext,RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get());
-			
-			if (RemotePlayReflectionCaptureComponent)
-			{
-				RemotePlayReflectionCaptureComponent->Initialize();
-				RemotePlayReflectionCaptureComponent->bAttached = true;
-			}
-		}
-
-		ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
-
-		if (Monitor&&Monitor->VideoEncodeFrequency > 1)
-		{
-			static int u = 1;
-			u--;
-			if (!u)
-				u = Monitor->VideoEncodeFrequency;
-			else
-				return; 
-		}
-		RemotePlayContext->EncodePipeline->PrepareFrame(GetWorld()->Scene, TextureTarget);
-		if (RemotePlayReflectionCaptureComponent)
-		{
-			RemotePlayReflectionCaptureComponent->UpdateContents(
-				GetWorld()->Scene->GetRenderScene()
-				, TextureTarget
-				, GetWorld()->Scene->GetFeatureLevel());
-			RemotePlayReflectionCaptureComponent->PrepareFrame(
-				GetWorld()->Scene->GetRenderScene()
-				, RemotePlayContext->EncodePipeline->GetSurfaceTexture()
-				, GetWorld()->Scene->GetFeatureLevel());
-		}
-		RemotePlayContext->EncodePipeline->EncodeFrame(GetWorld()->Scene, TextureTarget);
-	}
 }
 
 FTransform URemotePlayCaptureComponent::GetToWorldTransform()

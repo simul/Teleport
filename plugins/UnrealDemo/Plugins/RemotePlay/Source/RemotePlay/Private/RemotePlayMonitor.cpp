@@ -22,6 +22,8 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 		VideoEncodeFrequency = 2;
 		StreamGeometry = true;
 	}
+	DeferOutput = true;
+
 	DebugStream = 0;
 	Checksums = false;
 

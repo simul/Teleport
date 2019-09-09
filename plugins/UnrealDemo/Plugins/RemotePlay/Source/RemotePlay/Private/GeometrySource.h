@@ -19,7 +19,7 @@ public:
 	void Initialize(class ARemotePlayMonitor *m);
 	void clearData();
 
-	avs::uid AddMesh(class UMeshComponent *MeshComponent);
+	avs::uid AddMesh(class UStaticMesh *);
 	avs::uid AddStreamableMeshComponent(UMeshComponent *MeshComponent);
 	avs::uid CreateNode(const struct FTransform& transform, avs::uid data_uid, avs::NodeDataType data_type,const std::vector<avs::uid> &mat_uids);
 	avs::uid GetRootNodeUid();
