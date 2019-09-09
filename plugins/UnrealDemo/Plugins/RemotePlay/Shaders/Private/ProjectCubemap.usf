@@ -85,9 +85,6 @@ void DecomposeCS(uint3 ThreadID : SV_DispatchThreadID)
 	int2 FaceOffsets[] = { {0,0},{1,0},{2,0},{0,1},{1,1},{2,1} };
 	RWOutputColorTexture.GetDimensions(OutputW, OutputH);
 	float4 SceneColor = RWInputCubeAsArray[pos];
-	float DepthValue = 0.0;
-	float4 d4 = float4(DepthValue, DepthValue, DepthValue, DepthValue);
-
 	RWOutputColorTexture[int2(ThreadID.x , ThreadID.y ) + Offset + InputW * FaceOffsets[pos.z]] = SceneColor;
 }
 
