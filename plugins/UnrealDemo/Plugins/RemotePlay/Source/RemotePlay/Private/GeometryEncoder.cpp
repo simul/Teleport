@@ -316,8 +316,15 @@ avs::Result GeometryEncoder::encodeMaterials(avs::GeometrySourceBackendInterface
 				outMaterial.occlusionTexture.index,
 				outMaterial.emissiveTexture.index
 			};
-			//Remove 0s from vector.
-			materialTexture_uids.erase(std::remove(materialTexture_uids.begin(), materialTexture_uids.end(), 0), materialTexture_uids.end());
+
+			//Array needs to be sorted for std::unique; we won't have many elements anyway.
+			std::sort(materialTexture_uids.begin(), materialTexture_uids.end());
+
+			//Shift data over 0s.
+			std::remove(materialTexture_uids.begin(), materialTexture_uids.end(), 0);
+
+			//Shift data over duplicates, and erase.
+			materialTexture_uids.erase(std::unique(materialTexture_uids.begin(), materialTexture_uids.end()), materialTexture_uids.end());
 			
 			//Don't send what we have already sent.
 			GetNewUIDs(materialTexture_uids, req);
