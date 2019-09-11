@@ -75,7 +75,8 @@ GeometrySource::~GeometrySource()
 
 void GeometrySource::Initialize(class ARemotePlayMonitor *monitor)
 {
-	rootNodeUid = CreateNode(FTransform::Identity, -1, avs::NodeDataType::Scene,std::vector<avs::uid>());
+	//0 == No item. First generated UID will be 1.
+	rootNodeUid = CreateNode(FTransform::Identity, 0, avs::NodeDataType::Scene,std::vector<avs::uid>());
 
 	Monitor = monitor;
 }
@@ -246,8 +247,8 @@ void GeometrySource::clearData()
 
 	nodes.clear();
 
-	processedTextures.clear();
-	processedMaterials.clear();
+	decomposedTextures.clear();
+	decomposedMaterials.clear();
 
 	textures.clear();
 	materials.clear();
@@ -270,7 +271,7 @@ avs::uid GeometrySource::AddStreamableMeshComponent(UMeshComponent *MeshComponen
 	if (MeshComponent->GetClass()->IsChildOf(USkeletalMeshComponent::StaticClass()))
 	{
 		UE_LOG(LogRemotePlay, Warning, TEXT("Skeletal meshes not supported yet"));
-		return -1;
+		return 0;
 	}
 
 	avs::uid mesh_uid=avs::uid(0);
@@ -295,6 +296,54 @@ avs::uid GeometrySource::AddStreamableMeshComponent(UMeshComponent *MeshComponen
 	}
 
 	return mesh_uid;
+}
+
+avs::uid GeometrySource::AddNode(avs::uid parent_uid, UMeshComponent *component)
+{
+	avs::uid node_uid;
+	int32 unrealUniqueID = component->GetUniqueID(); //These get reused on object deletion.
+	std::unordered_map<int32, avs::uid>::iterator nodeIt = decomposedNodes.find(unrealUniqueID);
+
+	if(nodeIt != decomposedNodes.end())
+	{
+		node_uid = nodeIt->second;
+	}
+	else
+	{
+		std::shared_ptr<avs::DataNode> parent;
+		getNode(parent_uid, parent);
+
+		avs::uid mesh_uid = AddStreamableMeshComponent(component);
+		// the material/s that this particular instance of the mesh has applied to its slots...
+		TArray<UMaterialInterface *> materials = component->GetMaterials();
+
+		std::vector<avs::uid> mat_uids;
+		//Add material, and textures, for streaming to clients.
+		int32 num_mats = materials.Num();
+		for(int32 i = 0; i < num_mats; i++)
+		{
+			UMaterialInterface *materialInterface = materials[i];
+			mat_uids.push_back(AddMaterial(materialInterface));
+		}
+
+		node_uid = CreateNode(component->GetRelativeTransform(), mesh_uid, avs::NodeDataType::Mesh, mat_uids);
+		decomposedNodes[unrealUniqueID] = node_uid;
+
+		parent->childrenUids.push_back(node_uid);
+
+		TArray<USceneComponent *> children;
+		component->GetChildrenComponents(false, children);
+
+		for(auto child : children)
+		{
+			if(child->GetClass()->IsChildOf(UMeshComponent::StaticClass()))
+			{
+				AddNode(node_uid, Cast<UMeshComponent>(child));
+			}
+		}
+	}
+
+	return node_uid;
 }
 
 avs::uid GeometrySource::CreateNode(const FTransform& transform, avs::uid data_uid, avs::NodeDataType data_type, const std::vector<avs::uid> &mat_uids)
@@ -332,10 +381,10 @@ avs::uid GeometrySource::AddMaterial(UMaterialInterface *materialInterface)
 	avs::uid mat_uid;
 
 	//Try and locate the pointer in the list of processed materials.
-	std::unordered_map<UMaterialInterface*, avs::uid>::iterator materialIt = processedMaterials.find(materialInterface);
+	std::unordered_map<UMaterialInterface*, avs::uid>::iterator materialIt = decomposedMaterials.find(materialInterface);
 
 	//Return the UID of the already processed material, if we have already processed the material.
-	if(materialIt != processedMaterials.end())
+	if(materialIt != decomposedMaterials.end())
 	{
 		mat_uid = materialIt->second;
 	}
@@ -396,7 +445,7 @@ avs::uid GeometrySource::AddMaterial(UMaterialInterface *materialInterface)
 		mat_uid = avs::GenerateUid();
 
 		materials[mat_uid] = newMaterial;
-		processedMaterials[materialInterface] = mat_uid;
+		decomposedMaterials[materialInterface] = mat_uid;
 	}
 
 	return mat_uid;
@@ -439,10 +488,10 @@ void GeometrySource::PrepareMesh(Mesh &m)
 avs::uid GeometrySource::StoreTexture(UTexture * texture)
 {
 	avs::uid texture_uid;
-	auto it = processedTextures.find(texture);
+	auto it = decomposedTextures.find(texture);
 
 	//Retrieve the uid if we have already processed this texture.
-	if(it != processedTextures.end())
+	if(it != decomposedTextures.end())
 	{
 		texture_uid = it->second;
 	}
@@ -590,7 +639,7 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 		avs::uid sampler_uid = 0;
 
 		textures[texture_uid] = {textureName, width, height, depth, bytesPerPixel, arrayCount, mipCount, format, dataSize, data, sampler_uid};
-		processedTextures[texture] = texture_uid;
+		decomposedTextures[texture] = texture_uid;
 	}
 
 	return texture_uid;

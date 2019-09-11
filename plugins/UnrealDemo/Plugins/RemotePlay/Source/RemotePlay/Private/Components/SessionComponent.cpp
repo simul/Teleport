@@ -14,6 +14,8 @@
 #include "enet/enet.h"
 DECLARE_STATS_GROUP(TEXT("RemotePlay_Game"), STATGROUP_RemotePlay, STATCAT_Advanced);
 
+#include "Engine/Classes/Components/SphereComponent.h"
+
 template< typename TStatGroup>
 static TStatId CreateStatId(const FName StatNameOrDescription, EStatDataType::Type dataType)
 { 
@@ -145,6 +147,12 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	if (!ServerHost || !PlayerController.IsValid())
 	{
 		return;
+	}
+
+	if(PlayerPawn.IsValid())
+	{
+		DetectionSphereInner->SetSphereRadius(Monitor->DetectionSphereRadius);
+		DetectionSphereOuter->SetSphereRadius(Monitor->DetectionSphereRadius + Monitor->DetectionSphereBufferDistance);
 	}
 	 
 	if (ClientPeer)
@@ -296,6 +304,31 @@ void URemotePlaySessionComponent::SwitchPlayerPawn(APawn* NewPawn)
 
 	if (PlayerPawn.IsValid())
 	{
+		FAttachmentTransformRules transformRules = FAttachmentTransformRules(EAttachmentRule::KeepRelative, true);
+
+		//Attach streamable geometry detection spheres to player pawn.
+		{
+			DetectionSphereInner = NewObject<USphereComponent>(PlayerPawn.Get(), "InnerSphere");
+			DetectionSphereInner->OnComponentBeginOverlap.AddDynamic(this, &URemotePlaySessionComponent::OnInnerSphereBeginOverlap);
+			DetectionSphereInner->SetCollisionProfileName("RemotePlaySensor");
+			DetectionSphereInner->SetGenerateOverlapEvents(true);
+			DetectionSphereInner->SetSphereRadius(0); //Set to zero, so it doesn't clear the actor list on creation.
+
+			DetectionSphereInner->RegisterComponent();
+			DetectionSphereInner->AttachToComponent(PlayerPawn->GetRootComponent(), transformRules);
+		}
+
+		{
+			DetectionSphereOuter = NewObject<USphereComponent>(PlayerPawn.Get(), "OuterSphere");
+			DetectionSphereOuter->OnComponentEndOverlap.AddDynamic(this, &URemotePlaySessionComponent::OnOuterSphereEndOverlap);
+			DetectionSphereOuter->SetCollisionProfileName("RemotePlaySensor");
+			DetectionSphereOuter->SetGenerateOverlapEvents(true);
+			DetectionSphereOuter->SetSphereRadius(0); //Set to zero, so it doesn't clear the actor list on creation.
+
+			DetectionSphereOuter->RegisterComponent();
+			DetectionSphereOuter->AttachToComponent(PlayerPawn->GetRootComponent(), transformRules);
+		}
+
 		StartStreaming();
 	}
 }
@@ -384,6 +417,18 @@ void URemotePlaySessionComponent::StopStreaming()
 	}
 	delete RemotePlayContext;
 	RemotePlayContext = nullptr;
+}
+
+void URemotePlaySessionComponent::OnInnerSphereBeginOverlap(UPrimitiveComponent *OverlappedComponent, AActor *OtherActor, UPrimitiveComponent *OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult &SweepResult)
+{
+	UE_LOG(LogRemotePlay, Verbose, TEXT("%s"), *("<" + OverlappedComponent->GetName() + "> BEGAN overlap with actor <" + OtherActor->GetName() + ">"));
+	GeometryStreamingService.AddActor(OtherActor);
+}
+
+void URemotePlaySessionComponent::OnOuterSphereEndOverlap(UPrimitiveComponent * OverlappedComponent, AActor * OtherActor, UPrimitiveComponent * OtherComp, int32 OtherBodyIndex)
+{
+	UE_LOG(LogRemotePlay, Verbose, TEXT("%s"), *("<" + OverlappedComponent->GetName() + "> ENDED overlap with actor <" + OtherActor->GetName() + ">"));
+	GeometryStreamingService.RemoveActor(OtherActor);
 }
 
 void URemotePlaySessionComponent::ApplyPlayerInput(float DeltaTime)

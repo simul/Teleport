@@ -28,6 +28,9 @@ public:
 
 	virtual void EncodedResource(avs::uid resource_uid) override;
 	virtual void RequestResource(avs::uid resource_uid) override;
+
+	virtual void GetResourcesClientNeeds(std::vector<avs::uid> &outMeshIds, std::vector<avs::uid> &outMaterialIds, std::vector<avs::uid> &outNodeIds) override;
+
 	virtual avs::AxesStandard GetAxesStandard() const override
 	{
 		return RemotePlayContext->axesStandard;
@@ -41,9 +44,15 @@ public:
 	void StopStreaming();
 	void Tick();
 
-
 	//Reset GeometryStreamingService to default state.
 	void Reset();
+
+	//Add actor to be streamed to the client.
+	//	newActor : Actor to be sent to the client.
+	void AddActor(AActor *newActor);
+	//Remove actor from list of actors the client needs.
+	//	oldActor : Actor to be removed from the list.
+	void RemoveActor(AActor *oldActor);
 
 	// avs::GeometryTransferState
 	size_t getNumRequiredNodes() const;
@@ -61,26 +70,8 @@ private:
 
 	bool bStreamingContinuously = false;
 	std::unordered_map<avs::uid, bool> sentResources; //Tracks the resources sent to the user; <resource identifier, doesClientHave>.
-	
-	avs::uid AddNode(avs::uid parent_uid, UMeshComponent* component);
-	
-	bool hasMesh(avs::uid mesh_uid) const override
-	{
-		return false;
-	}
+	std::unordered_map<int32, avs::uid> streamedActors; //Actors that the client needs to draw, and should be sent to them; <Actor Unique ID, Node UID of root mesh>.
 
-	virtual bool hasTexture(avs::uid texture_uid) const override
-	{
-		return false;
-	}
-
-	virtual bool hasMaterial(avs::uid material_uid) const
-	{
-		return false;
-	}
-
-	virtual bool hasNodesToSend() const
-	{
-		return true;
-	}
+	//Recursive function to retrieve the resource UIDs from a node, and its child nodes.
+	void GetNodeResourceUIDs(avs::uid nodeUID, std::vector<avs::uid> &outMeshIds, std::vector<avs::uid> &outMaterialIds, std::vector<avs::uid> &outNodeIds);
 };
