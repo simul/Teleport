@@ -465,7 +465,7 @@ void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediat
 	if (CameraTransformQueue.Dequeue(Transform))
 	{
 		CameraTransformArray.Add(Transform);
-		static int LagSize = 5;
+		static int LagSize = 4;
 		if (CameraTransformArray.Num() >= LagSize)
 		{
 			FTransform Tr = CameraTransformArray[0]; 
