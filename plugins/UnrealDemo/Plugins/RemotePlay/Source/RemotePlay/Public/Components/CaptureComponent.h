@@ -32,14 +32,14 @@ public:
 	void StartStreaming(FRemotePlayContext *Context);
 
 	void StopStreaming();
-	
-	FTransform GetToWorldTransform();
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = RemotePlay)
 	FRemotePlayEncodeParameters EncodeParams;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = RemotePlay)
 	uint32 bRenderOwner : 1;
+
+	uint32 count = 0;
 
 private: 
 	void OnViewportDrawn();

@@ -238,7 +238,7 @@ void FEncodePipelineMonoscopic::PrepareFrame(FSceneInterface* InScene, UTexture*
 }
 
 
-void FEncodePipelineMonoscopic::EncodeFrame(FSceneInterface* InScene, UTexture* InSourceTexture)
+void FEncodePipelineMonoscopic::EncodeFrame(FSceneInterface* InScene, UTexture* InSourceTexture, FTransform& CameraTransform)
 {
 	if(!InScene || !InSourceTexture)
 	{
@@ -251,10 +251,10 @@ void FEncodePipelineMonoscopic::EncodeFrame(FSceneInterface* InScene, UTexture* 
 	FTextureRenderTargetResource* TargetResource = SourceTarget->GameThread_GetRenderTargetResource();
 
 	ENQUEUE_RENDER_COMMAND(RemotePlayEncodeFrame)(
-		[this, TargetResource, FeatureLevel](FRHICommandListImmediate& RHICmdList)
+		[this, CameraTransform](FRHICommandListImmediate& RHICmdList)
 		{
 			SCOPED_DRAW_EVENT(RHICmdList, RemotePlayEncodePipelineMonoscopic);
-			EncodeFrame_RenderThread(RHICmdList);
+			EncodeFrame_RenderThread(RHICmdList, CameraTransform);
 		}
 	);
 }
@@ -273,7 +273,7 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 
 	const avs::SurfaceFormat avsInputFormats[2] = {
 		avs::SurfaceFormat::Unknown, // Any suitable for color (preferably ARGB or ABGR)
-		avs::SurfaceFormat::NV12, // NV12 is needed for depth encoding
+		avs::SurfaceFormat::NV12 // NV12 is needed for depth encoding
 	};
 
 	EPixelFormat PixelFormat = EPixelFormat::PF_R8G8B8A8;
@@ -371,6 +371,7 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	Encoders.SetNum(NumStreams);
 	InputSurfaces.SetNum(NumStreams);
 
+	uint8 expectedLag = 2;
 	for(uint32_t i=0; i<NumStreams; ++i)
 	{ 
 		if(!InputSurfaces[i].configure(avsSurfaceBackends[i]))
@@ -389,6 +390,11 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 		{
 			UE_LOG(LogRemotePlay, Error, TEXT("Error configuring the encoding pipeline"));
 			return;
+		}
+		avs::Transform Transform = avs::Transform();
+		for (uint8 j = 0; j < expectedLag; ++j)
+		{
+			Encoders[i].setCameraTransform(Transform);
 		}
 	}
 }
@@ -440,32 +446,21 @@ void FEncodePipelineMonoscopic::PrepareFrame_RenderThread(
 	}
 }
 	
-void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediate& RHICmdList)
+void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediate& RHICmdList, FTransform CameraTransform)
 {
 	check(Pipeline.IsValid());
 	// The transform of the capture component needs to be sent with the image
-	FTransform Transform;
-	if (CameraTransformQueue.Dequeue(Transform))
-	{
-		CameraTransformArray.Add(Transform);
-		static int LagSize = 5;
-		if (CameraTransformArray.Num() >= LagSize)
-		{
-			FTransform Tr = CameraTransformArray[0]; 
-			avs::Transform CamTransform;
-			FVector t = Tr.GetTranslation()*0.01f;
-			FQuat r = Tr.GetRotation();
-			const FVector s = Tr.GetScale3D();
-			CamTransform = { t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z };
-			for (auto& Encoder : Encoders)
-			{
-				avs::Transform transform = CamTransform;
-				avs::ConvertTransform(avs::AxesStandard::UnrealStyle, RemotePlayContext->axesStandard, transform);
-				Encoder.setCameraTransform(transform);
-			}
-			CameraTransformArray.RemoveAt(0);
-		}
+	avs::Transform CamTransform;
+	FVector t = CameraTransform.GetTranslation()*0.01;
+	FQuat r = CameraTransform.GetRotation();
+	const FVector s = CameraTransform.GetScale3D();
+	CamTransform = { t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z };
+	avs::ConvertTransform(avs::AxesStandard::UnrealStyle, RemotePlayContext->axesStandard, CamTransform);
+	for (auto& Encoder : Encoders)
+	{	
+		Encoder.setCameraTransform(CamTransform);
 	}
+	
 	if (!Pipeline->process())
 	{
 		UE_LOG(LogRemotePlay, Warning, TEXT("Encode pipeline processing encountered an error"));
@@ -488,10 +483,5 @@ void FEncodePipelineMonoscopic::DispatchProjectCubemapShader(FRHICommandListImme
 	SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*ComputeShader));
 	DispatchComputeShader(RHICmdList, *ComputeShader, NumThreadGroupsX, NumThreadGroupsY, 1);
 	ComputeShader->UnsetParameters(RHICmdList);
-}
-
-void FEncodePipelineMonoscopic::AddCameraTransform(FTransform& Transform)
-{
-	CameraTransformQueue.Enqueue(Transform);
 }
   

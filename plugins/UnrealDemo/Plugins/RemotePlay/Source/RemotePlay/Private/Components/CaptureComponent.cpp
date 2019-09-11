@@ -75,6 +75,13 @@ void URemotePlayCaptureComponent::TickComponent(float DeltaTime, ELevelTick Tick
 
 void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Scene)
 {
+	// Aidan: The parent function belongs to SceneCaptureComponentCube and is located in SceneCaptureComponent.cpp. 
+	// The parent function calls UpdateSceneCaptureContents function in SceneCaptureRendering.cpp.
+	// UpdateSceneCaptureContents enqueues the rendering commands to render to the scene capture cube's render target.
+	// The parent function is called from the static function UpdateDeferredCaptures located in
+	// SceneCaptureComponent.cpp. UpdateDeferredCaptures is called by the BeginRenderingViewFamily function in SceneRendering.cpp.
+	// Therefore the rendering commands queued after this function call below directly follow the scene capture cube's commands in the queue.
+
 	Super::UpdateSceneCaptureContents(Scene);
 
 	if (TextureTarget&&RemotePlayContext)
@@ -93,33 +100,34 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 			}
 		}
 
-
 		if (Monitor&&Monitor->VideoEncodeFrequency > 1)
 		{
 			static int u = 1;
 			u--;
 			if (!u)
+			{
 				u = Monitor->VideoEncodeFrequency;
+			}
 			else
+			{
 				return;
+			}
 		}
-		{
-			FTransform Transform = GetComponentTransform();
-			RemotePlayContext->EncodePipeline->AddCameraTransform(Transform);
-		}
-		RemotePlayContext->EncodePipeline->PrepareFrame(GetWorld()->Scene, TextureTarget);
+		FTransform Transform = GetComponentTransform();
+
+		RemotePlayContext->EncodePipeline->PrepareFrame(Scene, TextureTarget);
 		if (RemotePlayReflectionCaptureComponent)
 		{
 			RemotePlayReflectionCaptureComponent->UpdateContents(
-				GetWorld()->Scene->GetRenderScene()
+				Scene->GetRenderScene()
 				, TextureTarget
-				, GetWorld()->Scene->GetFeatureLevel());
+				, Scene->GetFeatureLevel());
 			RemotePlayReflectionCaptureComponent->PrepareFrame(
-				GetWorld()->Scene->GetRenderScene()
+				Scene->GetRenderScene()
 				, RemotePlayContext->EncodePipeline->GetSurfaceTexture()
-				, GetWorld()->Scene->GetFeatureLevel());
+				, Scene->GetFeatureLevel());
 		}
-		RemotePlayContext->EncodePipeline->EncodeFrame(GetWorld()->Scene, TextureTarget);
+		RemotePlayContext->EncodePipeline->EncodeFrame(Scene, TextureTarget, Transform);
 	}
 }
 
@@ -166,7 +174,3 @@ void URemotePlayCaptureComponent::OnViewportDrawn()
 {
 }
 
-FTransform URemotePlayCaptureComponent::GetToWorldTransform()
-{
-	return GetComponentTransform();
-}
