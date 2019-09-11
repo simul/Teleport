@@ -23,6 +23,8 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 		StreamGeometry = true;
 	}
 	DeferOutput = true;
+	DetectionSphereRadius = 500;
+	DetectionSphereBufferDistance = 200;
 
 	DebugStream = 0;
 	Checksums = false;

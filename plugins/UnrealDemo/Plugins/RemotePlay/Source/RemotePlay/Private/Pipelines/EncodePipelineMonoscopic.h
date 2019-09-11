@@ -33,8 +33,10 @@ private:
 	void EncodeFrame_RenderThread(FRHICommandListImmediate& RHICmdList);
 
 	template<typename ShaderType>
-	void DispatchProjectCubemapShader(FRHICommandListImmediate& RHICmdList, FTextureRHIRef TextureRHI, ERHIFeatureLevel::Type FeatureLevel);
+	void DispatchProjectCubemapShader(FRHICommandListImmediate& RHICmdList, FTextureRHIRef TextureRHI, FUnorderedAccessViewRHIRef TextureUAVRHI, ERHIFeatureLevel::Type FeatureLevel);
 
+	void DispatchDecomposeCubemapShader(FRHICommandListImmediate& RHICmdList, FTextureRHIRef TextureRHI, FUnorderedAccessViewRHIRef TextureUAVRHI, ERHIFeatureLevel::Type FeatureLevel);
+	
 	struct FRemotePlayContext* RemotePlayContext;
 
 	FRemotePlayEncodeParameters Params;
@@ -51,4 +53,7 @@ private:
 
 	TQueue<FTransform> CameraTransformQueue;
 	TArray<FTransform> CameraTransformArray;
+
+	FTextureRHIRef				SourceCubemapRHI;
+	FUnorderedAccessViewRHIRef UnorderedAccessViewRHIRef;
 };
