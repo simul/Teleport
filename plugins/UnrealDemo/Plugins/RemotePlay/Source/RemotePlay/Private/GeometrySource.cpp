@@ -326,7 +326,7 @@ avs::uid GeometrySource::AddNode(avs::uid parent_uid, UMeshComponent *component)
 			mat_uids.push_back(AddMaterial(materialInterface));
 		}
 
-		node_uid = CreateNode(component->GetRelativeTransform(), mesh_uid, avs::NodeDataType::Mesh, mat_uids);
+		node_uid = CreateNode(component->GetComponentTransform(), mesh_uid, avs::NodeDataType::Mesh, mat_uids);
 		decomposedNodes[unrealUniqueID] = node_uid;
 
 		parent->childrenUids.push_back(node_uid);
