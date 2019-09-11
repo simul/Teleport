@@ -50,9 +50,6 @@ private:
 
 	FVector2D WorldZToDeviceZTransform;
 
-	TQueue<FTransform> CameraTransformQueue;
-	TArray<FTransform> CameraTransformArray;
-
 	FTextureRHIRef				SourceCubemapRHI;
 	FUnorderedAccessViewRHIRef UnorderedAccessViewRHIRef;
 };
