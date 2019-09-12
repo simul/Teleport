@@ -413,8 +413,8 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 		for (uint8 j = 0; j < expectedLag; ++j)
 		{
 			Encoders[i].setCameraTransform(Transform);
-		}
 	}
+}
 }
 	
 void FEncodePipelineMonoscopic::Release_RenderThread(FRHICommandListImmediate& RHICmdList)
@@ -467,16 +467,24 @@ void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediat
 {
 	check(Pipeline.IsValid());
 	// The transform of the capture component needs to be sent with the image
-	avs::Transform CamTransform;
+	//FTransform Transform;
+	//if (CameraTransformQueue.Dequeue(Transform))
+	{
+		//CameraTransformArray.Add(Transform);
+		//static int LagSize = 4;
+		//if (CameraTransformArray.Num() >= LagSize)
+		{
+			//FTransform Tr = CameraTransformArray[0]; 
+			avs::Transform CamTransform;
 	FVector t = CameraTransform.GetTranslation()*0.01;
 	FQuat r = CameraTransform.GetRotation();
 	const FVector s = CameraTransform.GetScale3D();
-	CamTransform = { t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z };
+			CamTransform = { t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z };
 	avs::ConvertTransform(avs::AxesStandard::UnrealStyle, RemotePlayContext->axesStandard, CamTransform);
-	for (auto& Encoder : Encoders)
-	{	
+			for (auto& Encoder : Encoders)
+			{
 		Encoder.setCameraTransform(CamTransform);
-	}
+			}
 	
 	if (!Pipeline->process())
 	{
@@ -540,4 +548,4 @@ void FEncodePipelineMonoscopic::DispatchDecomposeCubemapShader(FRHICommandListIm
 	}
 	
 }
-  
+
