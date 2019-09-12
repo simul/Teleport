@@ -39,6 +39,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
 	uint32 StreamGeometryContinuously : 1;	
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
+	int32 DetectionSphereRadius;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
+	int32 DetectionSphereBufferDistance;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
 	int32 DebugStream;
 

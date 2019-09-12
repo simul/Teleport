@@ -35,21 +35,25 @@ void FGeometryStreamingService::Initialise(UWorld *World, GeometrySource *geomSo
 
 	geometrySource->Initialize(ARemotePlayMonitor::Instantiate(World));
 
-	// It is intended that each session component should track the streamed actors that enter its bubble.
-	// These should be disposed of when they move out of range.
-	TArray<AActor*> GSActors;
-	UGameplayStatics::GetAllActorsOfClass(World, AStaticMeshActor::StaticClass(), GSActors);
+	//Decompose all relevant actors into streamable geometry.
+	TArray<AActor*> staticMeshActors;
+	UGameplayStatics::GetAllActorsOfClass(World, AStaticMeshActor::StaticClass(), staticMeshActors);
+
+	ECollisionChannel remotePlayChannel; FCollisionResponseParams profileResponses;
+	//Returns the collision channel used by RemotePlay; uses the object type of the profile to determine the channel.
+	UCollisionProfile::GetChannelAndResponseParams("RemotePlaySensor", remotePlayChannel, profileResponses);
 
 	avs::uid root_node_uid = geometrySource->GetRootNodeUid();
 
-	for(auto actor : GSActors)
+	for(auto actor : staticMeshActors)
 	{
-		auto c = actor->GetComponentByClass(UStreamableGeometryComponent::StaticClass());
-		if(!c)
-			continue;
-
-		UStreamableGeometryComponent* geometryComponent = static_cast<UStreamableGeometryComponent*>(c);
-		AddNode(root_node_uid, geometryComponent->GetMesh());
+		UMeshComponent *rootMesh = Cast<UMeshComponent>(actor->GetComponentByClass(UMeshComponent::StaticClass()));
+		
+		//Decompose the meshes that would cause an overlap event to occur with the "RemotePlaySensor" profile.
+		if(rootMesh->GetGenerateOverlapEvents() && rootMesh->GetCollisionResponseToChannel(remotePlayChannel) != ECollisionResponse::ECR_Ignore)
+		{
+			geometrySource->AddNode(root_node_uid, rootMesh);
+		}
 	}
 }
 
@@ -66,41 +70,6 @@ void FGeometryStreamingService::StartStreaming(FRemotePlayContext *Context)
 	avsGeometryEncoder->configure(&geometryEncoder);
 
 	avsPipeline->link({ avsGeometrySource.Get(), avsGeometryEncoder.Get(), RemotePlayContext->GeometryQueue.Get() });
-}
-
-avs::uid FGeometryStreamingService::AddNode(avs::uid parent_uid, UMeshComponent* component)
-{
-	std::shared_ptr<avs::DataNode> parent;
-	geometrySource->getNode(parent_uid, parent);
-
-	avs::uid mesh_uid = geometrySource->AddStreamableMeshComponent(component);
-	// the material/s that this particular instance of the mesh has applied to its slots...
-	TArray<UMaterialInterface*> materials=component->GetMaterials();
-
-	std::vector<avs::uid> mat_uids;
-	//Add material, and textures, for streaming to clients.
-	int32 num_mats = materials.Num();
-	for (int32 i = 0; i < num_mats; i++)
-	{
-		UMaterialInterface *materialInterface = materials[i];
-		mat_uids.push_back(geometrySource->AddMaterial(materialInterface));
-	}
-
-	avs::uid node_uid = geometrySource->CreateNode(component->GetRelativeTransform(), mesh_uid, avs::NodeDataType::Mesh, mat_uids);
-	
-	parent->childrenUids.push_back(node_uid);
-
-	TArray<USceneComponent*> children;
-	component->GetChildrenComponents(false, children);
-
-	for (auto child : children)
-	{
-		if (child->GetClass()->IsChildOf(UMeshComponent::StaticClass()))
-		{
-			AddNode(node_uid, Cast<UMeshComponent>(child));
-		}
-	}
-	return node_uid;
 }
 
 void FGeometryStreamingService::StopStreaming()
@@ -139,6 +108,39 @@ void FGeometryStreamingService::Reset()
 	geometrySource->clearData();
 }
 
+void FGeometryStreamingService::AddActor(AActor *newActor)
+{
+	streamedActors[newActor->GetUniqueID()] = geometrySource->AddNode(geometrySource->GetRootNodeUid(), Cast<UMeshComponent>(newActor->GetComponentByClass(UMeshComponent::StaticClass())));
+}
+
+void FGeometryStreamingService::RemoveActor(AActor *oldActor)
+{
+	streamedActors.erase(oldActor->GetUniqueID());
+}
+
+void FGeometryStreamingService::GetNodeResourceUIDs(avs::uid nodeUID, std::vector<avs::uid> &outMeshIds, std::vector<avs::uid> &outMaterialIds, std::vector<avs::uid> &outNodeIds)
+{
+	//Retrieve node.
+	std::shared_ptr<avs::DataNode> thisNode;
+	geometrySource->getNode(nodeUID, thisNode);
+
+	//Add mesh UID.
+	outMeshIds.push_back(thisNode->data_uid);
+
+	//Add all material UIDs.
+	for(auto materialId : thisNode->materials)
+	{
+		outMaterialIds.push_back(materialId);
+	}
+
+	//Add all child node UIDs.
+	for(auto childNode : thisNode->childrenUids)
+	{
+		outNodeIds.push_back(childNode);
+		GetNodeResourceUIDs(childNode, outMeshIds, outMaterialIds, outNodeIds);
+	}
+}
+
 bool FGeometryStreamingService::HasResource(avs::uid resource_uid) const
 {
 	///We need clientside to handshake when it is ready to receive payloads of resources.
@@ -156,4 +158,27 @@ void FGeometryStreamingService::EncodedResource(avs::uid resource_uid)
 void FGeometryStreamingService::RequestResource(avs::uid resource_uid)
 {
 	sentResources[resource_uid] = false;
+}
+
+void FGeometryStreamingService::GetResourcesClientNeeds(std::vector<avs::uid> &outMeshIds, std::vector<avs::uid> &outMaterialIds, std::vector<avs::uid> &outNodeIds)
+{
+	outMeshIds.empty();
+	outMaterialIds.empty();
+	outNodeIds.empty();
+
+	for(auto nodePair : streamedActors)
+	{
+		outNodeIds.push_back(nodePair.second);
+		GetNodeResourceUIDs(nodePair.second, outMeshIds, outMaterialIds, outNodeIds);
+	}
+
+	//Remove duplicates, and 0s, from mesh IDs.
+	std::sort(outMeshIds.begin(), outMeshIds.end());
+	outMeshIds.erase(std::unique(outMeshIds.begin(), outMeshIds.end()), outMeshIds.end());
+	outMeshIds.erase(std::remove(outMeshIds.begin(), outMeshIds.end(), 0), outMeshIds.end());
+
+	//Remove duplicates, and 0s, from material IDs.
+	std::sort(outMaterialIds.begin(), outMaterialIds.end());
+	outMaterialIds.erase(std::unique(outMaterialIds.begin(), outMaterialIds.end()), outMaterialIds.end());
+	outMaterialIds.erase(std::remove(outMaterialIds.begin(), outMaterialIds.end(), 0), outMaterialIds.end()); ///Do Nodes contain 0 material ids?
 }
