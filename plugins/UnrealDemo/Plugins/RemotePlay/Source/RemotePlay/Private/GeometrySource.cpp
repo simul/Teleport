@@ -315,14 +315,14 @@ avs::uid GeometrySource::AddNode(avs::uid parent_uid, UMeshComponent *component)
 
 		avs::uid mesh_uid = AddStreamableMeshComponent(component);
 		// the material/s that this particular instance of the mesh has applied to its slots...
-		TArray<UMaterialInterface *> materials = component->GetMaterials();
+		TArray<UMaterialInterface *> mats = component->GetMaterials();
 
 		std::vector<avs::uid> mat_uids;
 		//Add material, and textures, for streaming to clients.
-		int32 num_mats = materials.Num();
+		int32 num_mats = mats.Num();
 		for(int32 i = 0; i < num_mats; i++)
 		{
-			UMaterialInterface *materialInterface = materials[i];
+			UMaterialInterface *materialInterface = mats[i];
 			mat_uids.push_back(AddMaterial(materialInterface));
 		}
 
