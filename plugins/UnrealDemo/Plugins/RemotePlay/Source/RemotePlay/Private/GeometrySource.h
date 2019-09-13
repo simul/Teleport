@@ -3,6 +3,7 @@
 #include <map>
 #include <unordered_map>
 #include <CoreMinimal.h>
+#include <Runtime/Engine/Classes/Components/LightComponent.h>
 
 #include "basisu_comp.h"
 
@@ -101,4 +102,20 @@ protected:
 	void DecomposeMaterialProperty(UMaterialInterface *materialInterface, EMaterialProperty propertyChain, avs::TextureAccessor &outTexture, avs::vec4 &outFactor);
 
 	class ARemotePlayMonitor* Monitor;
+};
+
+struct ShadowMapData
+{
+	const FStaticShadowDepthMap& depthTexture;
+	const FVector4& position;
+	const FQuat& orientation;
+
+	ShadowMapData(const FStaticShadowDepthMap& _depthTexture, const FVector4& _position, const FQuat& _orientation)
+		:depthTexture(_depthTexture), position(_position), orientation(_orientation) {}
+
+	ShadowMapData(const ULightComponent* light)
+		:depthTexture(light->StaticShadowDepthMap),
+		position(light->GetLightPosition()),
+		orientation(light->GetDirection().Rotation().Quaternion())
+		{}
 };

@@ -55,6 +55,25 @@ void FGeometryStreamingService::Initialise(UWorld *World, GeometrySource *geomSo
 			geometrySource->AddNode(root_node_uid, rootMesh);
 		}
 	}
+
+	//Decompose all relevant light actors into streamable geometry.
+	TArray<AActor*> lightActors;
+	UGameplayStatics::GetAllActorsOfClass(World, ALight::StaticClass(), lightActors);
+
+	for (auto actor : lightActors)
+	{
+		auto sgc = actor->GetComponentByClass(UStreamableGeometryComponent::StaticClass());
+		if (sgc)
+		{
+			TArray<UTexture2D*> shadowAndLightMaps = static_cast<UStreamableGeometryComponent*>(sgc)->GetLightAndShadowMaps();
+			ULightComponent* lc = static_cast<UStreamableGeometryComponent*>(sgc)->GetLightComponent();
+			if (lc)
+			{
+				ShadowMapData smd(lc);
+				UE_LOG(LogRemotePlay, Warning, TEXT("LightComponent Orientation: {%4.4f, %4.4f, %4.4f}, %4.4f"), smd.orientation.X, smd.orientation.Y, smd.orientation.Z, smd.orientation.W);
+			}
+		}
+	}
 }
 
 void FGeometryStreamingService::StartStreaming(FRemotePlayContext *Context)

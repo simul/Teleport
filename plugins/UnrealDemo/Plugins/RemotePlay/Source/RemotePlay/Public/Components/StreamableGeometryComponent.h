@@ -44,9 +44,15 @@ public:
 	//Returns the first texture from the property chain.
 	//	materialProperty : Which property chain we are pulling the texture from.
 	UTexture* GetTexture(EMaterialProperty materialProperty);
+	
+	ULightComponent* GetLightComponent();
+	TArray<UTexture2D*> GetLightAndShadowMaps();
+
 private:
 	TWeakObjectPtr<AActor> Actor;
 	TWeakObjectPtr<UStaticMeshComponent> StaticMeshComponent;
+	TWeakObjectPtr<ULightComponent> LightComponent;
+	TArray<UTexture2D*> LightAndShadowMaps;
 
 	EMaterialQualityLevel::Type textureQualityLevel; //Quality level to retrieve the textures.
 	ERHIFeatureLevel::Type textureFeatureLevel; //Feature level to retrieve the textures.
