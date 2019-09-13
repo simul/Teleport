@@ -4,23 +4,22 @@
 
 using namespace scr;
 
-bool Material::s_UninitialisedUB = false;
+bool Material::s_UninitialisedUB = true;
 
-Material::Material(RenderPlatform *rp, MaterialCreateInfo* pMaterialCreateInfo)
-	:APIObject(rp), m_CI (*pMaterialCreateInfo)
+Material::Material(MaterialCreateInfo* pMaterialCreateInfo)
+	:m_CI(*pMaterialCreateInfo)
 {
 	//Set up UB
-	if (s_UninitialisedUB)
+	if (false)//s_UninitialisedUB)
 	{
-		const float zero[sizeof(MaterialData)] = { 0 };
-
 		UniformBuffer::UniformBufferCreateInfo ub_ci;
-		ub_ci.bindingLocation = 2;
+		ub_ci.bindingLocation = 3;
 		ub_ci.size = sizeof(MaterialData);
-		ub_ci.data = zero;
+		ub_ci.data = &m_MaterialData;
 
+		m_UB = m_CI.renderPlatform->InstantiateUniformBuffer();
 		m_UB->Create(&ub_ci);
-		s_UninitialisedUB = true;
+		s_UninitialisedUB = false;
 	}
 
 	m_MaterialData.diffuseOutputScalar			= m_CI.diffuse.textureOutputScalar;
@@ -41,21 +40,18 @@ Material::Material(RenderPlatform *rp, MaterialCreateInfo* pMaterialCreateInfo)
 	m_MaterialData.combinedTexCoordsScalar_B	= m_CI.combined.texCoordsScalar[2];
 	m_MaterialData.combinedTexCoordsScalar_A	= m_CI.combined.texCoordsScalar[3];
 
+	//UpdateMaterialUB();
+
 	//Set up Descriptor Set for Textures and UB
 	//UB from 0 - 9, Texture/Samplers 10+
-	m_SetLayout.AddBinding(10, DescriptorSetLayout::DescriptorType::COMBINED_IMAGE_SAMPLER, Shader::Stage::SHADER_STAGE_FRAGMENT);
-	m_SetLayout.AddBinding(11, DescriptorSetLayout::DescriptorType::COMBINED_IMAGE_SAMPLER, Shader::Stage::SHADER_STAGE_FRAGMENT);
-	m_SetLayout.AddBinding(12, DescriptorSetLayout::DescriptorType::COMBINED_IMAGE_SAMPLER, Shader::Stage::SHADER_STAGE_FRAGMENT);
-	m_SetLayout.AddBinding(3, DescriptorSetLayout::DescriptorType::UNIFORM_BUFFER, Shader::Stage::SHADER_STAGE_FRAGMENT);
+	m_ShaderResourceLayout.AddBinding(10, ShaderResourceLayout::ShaderResourceType::COMBINED_IMAGE_SAMPLER, Shader::Stage::SHADER_STAGE_FRAGMENT);
+	m_ShaderResourceLayout.AddBinding(11, ShaderResourceLayout::ShaderResourceType::COMBINED_IMAGE_SAMPLER, Shader::Stage::SHADER_STAGE_FRAGMENT);
+	m_ShaderResourceLayout.AddBinding(12, ShaderResourceLayout::ShaderResourceType::COMBINED_IMAGE_SAMPLER, Shader::Stage::SHADER_STAGE_FRAGMENT);
+	m_ShaderResourceLayout.AddBinding(3, ShaderResourceLayout::ShaderResourceType::UNIFORM_BUFFER, Shader::Stage::SHADER_STAGE_FRAGMENT);
 
-	m_Set = DescriptorSet({ m_SetLayout });
-	m_Set.AddImage(0, DescriptorSetLayout::DescriptorType::COMBINED_IMAGE_SAMPLER, 10, "u_Diffuse",  { m_CI.diffuse.texture != nullptr ? m_CI.diffuse.texture->GetSampler() : nullptr, m_CI.diffuse.texture });
-	m_Set.AddImage(0, DescriptorSetLayout::DescriptorType::COMBINED_IMAGE_SAMPLER, 11, "u_Normal",   { m_CI.normal.texture != nullptr ? m_CI.normal.texture->GetSampler() : nullptr, m_CI.normal.texture });
-	m_Set.AddImage(0, DescriptorSetLayout::DescriptorType::COMBINED_IMAGE_SAMPLER, 12, "u_Combined", { m_CI.combined.texture != nullptr ? m_CI.combined.texture->GetSampler() : nullptr, m_CI.combined.texture });
-	m_Set.AddBuffer(0, DescriptorSetLayout::DescriptorType::UNIFORM_BUFFER, 3, "u_MaterialData", { m_UB.get(), 0, sizeof(MaterialData) });
-}
-
-void Material::UpdateMaterialUB()
-{
-	m_UB->Update(0, sizeof(MaterialData), &m_MaterialData);
+	m_ShaderResource = ShaderResource({ m_ShaderResourceLayout });
+	m_ShaderResource.AddImage(0, ShaderResourceLayout::ShaderResourceType::COMBINED_IMAGE_SAMPLER, 10, "u_Diffuse",  { m_CI.diffuse.texture != nullptr ? m_CI.diffuse.texture->GetSampler() : nullptr, m_CI.diffuse.texture });
+	m_ShaderResource.AddImage(0, ShaderResourceLayout::ShaderResourceType::COMBINED_IMAGE_SAMPLER, 11, "u_Normal",   { m_CI.normal.texture != nullptr ? m_CI.normal.texture->GetSampler() : nullptr, m_CI.normal.texture });
+	m_ShaderResource.AddImage(0, ShaderResourceLayout::ShaderResourceType::COMBINED_IMAGE_SAMPLER, 12, "u_Combined", { m_CI.combined.texture != nullptr ? m_CI.combined.texture->GetSampler() : nullptr, m_CI.combined.texture });
+	m_ShaderResource.AddBuffer(0, ShaderResourceLayout::ShaderResourceType::UNIFORM_BUFFER, 3, "u_MaterialData", { m_UB.get(), 0, sizeof(MaterialData) });
 }

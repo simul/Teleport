@@ -8,7 +8,7 @@
 
 namespace scc
 {
-class GL_Texture final : public scr::Texture
+	class GL_Texture final : public scr::Texture
 	{
 	private:
 		OVR::GlTexture m_Texture;
@@ -21,15 +21,16 @@ class GL_Texture final : public scr::Texture
 		void Destroy() override;
 
 		void Bind() const override;
+		void BindForWrite(uint32_t slot) const override;
 		void Unbind() const override;
 
 		void GenerateMips() override;
-		void UseSampler(std::shared_ptr<const scr::Sampler> sampler) override;
+		void UseSampler(const std::shared_ptr<scr::Sampler>& sampler) override;
 		bool ResourceInUse(int timeout) override {return true;}
 
-		inline OVR::GlTexture& GetGlTexture() { return  m_Texture;}
+		inline OVR::GlTexture& GetGlTexture() { return m_Texture;}
 
-
+		void SetExternalGlTexture(GLuint tex_id);
 private:
 		GLenum TypeToGLTarget(Type type) const;
 		GLenum ToBaseGLFormat(Format format) const;

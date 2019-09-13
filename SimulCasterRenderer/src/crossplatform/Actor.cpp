@@ -5,27 +5,27 @@
 using namespace scr;
 
 //Transform
-bool Transform::s_UninitialisedUB = false;
+bool Transform::s_UninitialisedUB = true;
 
-Transform::Transform()
+Transform::Transform(TransformCreateInfo* pTransformCreateInfo)
+	:m_CI(*pTransformCreateInfo)
 {
-	if (s_UninitialisedUB)
+	if (false)//s_UninitialisedUB)
 	{
-		const float zero[sizeof(TransformData)] = { 0 };
-		
 		UniformBuffer::UniformBufferCreateInfo ub_ci;
 		ub_ci.bindingLocation = 1;
 		ub_ci.size = sizeof(TransformData);
-		ub_ci.data = zero;
+		ub_ci.data = &m_TransformData;
 
+		m_UB = m_CI.renderPlatform->InstantiateUniformBuffer();
 		m_UB->Create(&ub_ci);
-		s_UninitialisedUB = true;
+		s_UninitialisedUB = false;
 	}
 
-	m_SetLayout.AddBinding(1, DescriptorSetLayout::DescriptorType::UNIFORM_BUFFER, Shader::Stage::SHADER_STAGE_VERTEX);
+	m_ShaderResourceLayout.AddBinding(1, ShaderResourceLayout::ShaderResourceType::UNIFORM_BUFFER, Shader::Stage::SHADER_STAGE_VERTEX);
 
-	m_Set = DescriptorSet({ m_SetLayout });
-	m_Set.AddBuffer(0, DescriptorSetLayout::DescriptorType::UNIFORM_BUFFER, 1, "u_ActorUBO", { m_UB.get(), 0, sizeof(TransformData) });
+	m_ShaderResource = ShaderResource({ m_ShaderResourceLayout });
+	m_ShaderResource.AddBuffer(0, ShaderResourceLayout::ShaderResourceType::UNIFORM_BUFFER, 1, "u_ActorUBO", { m_UB.get(), 0, sizeof(TransformData) });
 }
 
 void Transform::UpdateModelMatrix(const vec3& translation, const quat& rotation, const vec3& scale)
@@ -36,16 +36,11 @@ void Transform::UpdateModelMatrix(const vec3& translation, const quat& rotation,
 	m_TransformData.m_ModelMatrix = mat4::Translation(translation) * mat4::Rotation(rotation) * mat4::Scale(scale);
 }
 
-void Transform::UpdateModelUBO() const
-{
-	m_UB->Update(0, sizeof(TransformData), &m_TransformData);
-}
-
 //Actor
 Actor::Actor(ActorCreateInfo* pActorCreateInfo)
 	:m_CI(*pActorCreateInfo)
 {
-};
+}
 
 void Actor::UpdateModelMatrix(const vec3& translation, const quat& rotation, const vec3& scale)
 {

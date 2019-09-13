@@ -19,8 +19,6 @@ void ResourceCreator::SetRenderPlatform(scr::RenderPlatform* r)
 {
 	m_API.SetAPI(r->GetAPI());
 	m_pRenderPlatform = r;
-
-	// Removed circular dependencies.
 }
 
 
@@ -315,13 +313,13 @@ void ResourceCreator::passMaterial(avs::uid material_uid, const avs::Material & 
 		}
 	}
 
-	if(material.occlusionTexture.index != 0)
+	if(material.pbrMetallicRoughness.metallicRoughnessTexture.index != 0)
 	{
-		const std::shared_ptr<scr::Texture> occlusionTexture = m_TextureManager->Get(material.normalTexture.index);
+		const std::shared_ptr<scr::Texture> metallicRoughnessTexture = m_TextureManager->Get(material.pbrMetallicRoughness.metallicRoughnessTexture.index);
 
-		if(occlusionTexture)
+		if(metallicRoughnessTexture)
 		{
-			materialInfo.combined.texture = occlusionTexture;
+			materialInfo.combined.texture = metallicRoughnessTexture;
 
 			scr::vec2 tiling = {material.pbrMetallicRoughness.metallicRoughnessTexture.tiling.x, material.pbrMetallicRoughness.metallicRoughnessTexture.tiling.y};
 
@@ -340,7 +338,8 @@ void ResourceCreator::passMaterial(avs::uid material_uid, const avs::Material & 
 
 	///This needs an actual value.
 	materialInfo.effect = nullptr;
-	std::shared_ptr<scr::Material> scr_material = std::make_shared<scr::Material>(m_pRenderPlatform, &materialInfo);
+	materialInfo.renderPlatform = m_pRenderPlatform;
+	std::shared_ptr<scr::Material> scr_material = std::make_shared<scr::Material>(&materialInfo);
 	m_MaterialManager->Add(material_uid, scr_material);
 	m_pActorManager->AddMaterial(material_uid, scr_material);
 }
@@ -368,7 +367,8 @@ void ResourceCreator::passNode(avs::uid node_uid, avs::DataNode& node)
 	}
 	else
 	{
-		std::shared_ptr<scr::Transform> transform = std::make_shared<scr::Transform>();
+		scr::Transform::TransformCreateInfo tci = { m_pRenderPlatform };
+		std::shared_ptr<scr::Transform> transform = std::make_shared<scr::Transform>(&tci);
 		transform->UpdateModelMatrix(translation, rotation, scale);
 		m_pActorManager->AddTransform(node_uid, transform);
 

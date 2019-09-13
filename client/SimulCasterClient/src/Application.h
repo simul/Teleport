@@ -24,12 +24,15 @@ namespace OVR {
 	class ovrLocale;
 }
 
+namespace scr {
+	class Texture;
+}
 class Application : public OVR::VrAppInterface, public SessionCommandInterface, public DecodeEventInterface
 {
 public:
 	Application();
 
-	virtual    ~Application();
+	virtual	~Application();
 
 	virtual void Configure(OVR::ovrSettings &settings) override;
 
@@ -62,33 +65,40 @@ public:
 	/* End DecodeEventInterface */
 
 private:
+	struct CubemapUB
+	{
+		scr::ivec2 sourceOffset;
+		uint32_t   faceSize;
+		float _pad = 0;
+	};
+	CubemapUB cubemapUB;
 	static void avsMessageHandler(avs::LogSeverity severity, const char *msg, void *);
 
 	avs::Context  mContext;
 	avs::Pipeline mPipeline;
 
-	avs::Decoder       mDecoder;
-	avs::Surface       mSurface;
+	avs::Decoder	   mDecoder;
+	avs::Surface	   mSurface;
 	avs::NetworkSource mNetworkSource;
-	bool               mPipelineConfigured;
+	bool			   mPipelineConfigured;
 
 	static constexpr size_t NumStreams = 1;
 	static constexpr bool   GeoStream  = true;
 
-	scc::GL_RenderPlatform renderPlatform;
-	GeometryDecoder        geometryDecoder;
-	ResourceCreator        resourceCreator;
-	avs::GeometryDecoder   avsGeometryDecoder;
-	avs::GeometryTarget    avsGeometryTarget;
+	scc::GL_RenderPlatform	renderPlatform;
+	GeometryDecoder			geometryDecoder;
+	ResourceCreator			resourceCreator;
+	avs::GeometryDecoder	avsGeometryDecoder;
+	avs::GeometryTarget		avsGeometryTarget;
 
 	struct RenderConstants
 	{
 		avs::vec4 colourOffsetScale;
 		avs::vec4 depthOffsetScale;
 	};
-	RenderConstants        renderConstants;
+	RenderConstants		renderConstants;
 
-	OVR::ovrSoundEffectContext        *mSoundEffectContext;
+	OVR::ovrSoundEffectContext		*mSoundEffectContext;
 	OVR::OvrGuiSys::SoundEffectPlayer *mSoundEffectPlayer;
 
 	OVR::OvrGuiSys *mGuiSys;
@@ -96,30 +106,44 @@ private:
 
 	OVR::OvrSceneView mScene;
 
-	OVR::ovrSurfaceDef mVideoSurfaceDef;
-	OVR::GlProgram     mVideoSurfaceProgram;
-	OVR::GlTexture     mVideoTexture;
-	OVR::SurfaceTexture *mVideoSurfaceTexture;
-	ovrMobile     *mOvrMobile;
+	OVR::ovrSurfaceDef	mVideoSurfaceDef;
+	OVR::GlProgram		mVideoSurfaceProgram;
+	OVR::SurfaceTexture* mVideoSurfaceTexture;
+    std::shared_ptr<scr::Texture> mVideoTexture;
+	std::shared_ptr<scr::Texture> mCubemapTexture;
+    std::shared_ptr<scr::UniformBuffer> mCubemapUB ;
+    std::vector<scr::ShaderResource> mCubemapComputeShaderResources;
+	std::shared_ptr<scr::Effect> mCopyCubemapEffect;
+	std::string CopyCubemapSrc;
+	ovrMobile			*mOvrMobile;
 	SessionClient mSession;
 
 	std::vector<float> mRefreshRates;
 
 	ovrDeviceID mControllerID;
-	//int         mControllerIndex;
+	//int		 mControllerIndex;
 	ovrVector2f mTrackpadDim;
 
 	int mNumPendingFrames = 0;
 
 	scr::ResourceManagers resourceManagers;
 
-    //Clientside Renderering Objects
-    scr::vec3 capturePosition;
-    scc::GL_DeviceContext mDeviceContext;
-    scc::GL_Effect mEffects;
+	//Clientside Renderering Objects
+	scr::vec3 capturePosition;
+	scr::Camera::CameraCreateInfo cci = {
+			(scr::RenderPlatform*)(&renderPlatform),
+			scr::Camera::ProjectionType::PERSPECTIVE,
+			scr::quat(1.0f, 0.0f, 0.0f, 0.0f),
+			capturePosition
+	};
+	scr::Camera scrCamera = scr::Camera(&cci);
+
+
+	scc::GL_DeviceContext mDeviceContext;
+	scc::GL_Effect mEffect;
 	std::shared_ptr<scr::Sampler> mSampler = renderPlatform.InstantiateSampler();
-    std::map<avs::uid, OVR::ovrSurfaceDef> mOVRActors;
-    inline void RemoveInvalidOVRActors()
+	std::map<avs::uid, OVR::ovrSurfaceDef> mOVRActors;
+	inline void RemoveInvalidOVRActors()
 	{
 		for(std::map<avs::uid, OVR::ovrSurfaceDef>::iterator it = mOVRActors.begin(); it != mOVRActors.end(); it++)
 		{
@@ -129,6 +153,8 @@ private:
 			}
 		}
 	}
+	void CopyToCubemaps();
 	void RenderLocalActors(OVR::ovrFrameResult& res);
-    const scr::Effect::EffectPassCreateInfo& BuildEffect(const char* effectPassName, scr::VertexBufferLayout* vbl, const char* vertexSource, const char* fragmentSource);
+    const scr::Effect::EffectPassCreateInfo& BuildEffectPass(const char* effectPassName, scr::VertexBufferLayout* vbl, const scr::ShaderSystem::PipelineCreateInfo*, const std::vector<scr::ShaderResource>& shaderResources);
+	std::string LoadTextFile(const char *filename);
 };

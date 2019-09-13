@@ -271,6 +271,7 @@ void URemotePlayReflectionCaptureComponent::UpdateReflections_RenderThread(
 	FTextureRenderTargetCubeResource* SourceCubeResource = nullptr;
 	if(InSourceTexture)
 		SourceCubeResource =static_cast<FTextureRenderTargetCubeResource*>(InSourceTexture->GetRenderTargetResource());
+		//SourceCubeResource->G
 	const int32 EffectiveTopMipSize = 128;
 
 	const int32 NumMips =  FMath::CeilLogTwo(EffectiveTopMipSize) + 1;
@@ -466,8 +467,12 @@ void URemotePlayReflectionCaptureComponent::TickComponent(float DeltaTime, ELeve
 
 		FShaderDirectionalLight Light;
 		Light.Color = LC->LightColor;
+		float Intensity = LC->Intensity * 0.05f;
+		Light.Color.R *= Intensity;
+		Light.Color.G *= Intensity;
+		Light.Color.B *= Intensity;
+		Light.Color.A *= Intensity;
 		Light.Direction = LC->GetDirection();
-		Light.intensity = LC->Intensity;
 
 		ShaderDirLights.Add(Light);
 	}

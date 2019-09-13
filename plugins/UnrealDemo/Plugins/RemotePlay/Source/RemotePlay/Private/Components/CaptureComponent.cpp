@@ -33,9 +33,10 @@ URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 	EncodeParams.IDRInterval = 120;
 	EncodeParams.TargetFPS = 60; 
 	EncodeParams.bDeferOutput = true;
-	EncodeParams.bLinearDepth = true;
+
 	EncodeParams.bWriteDepthTexture = false;
 	EncodeParams.bStackDepth = true;
+	EncodeParams.bDecomposeCube = true;
 	EncodeParams.MaxDepth = 10000.0f; 
 }
 
@@ -45,6 +46,10 @@ URemotePlayCaptureComponent::~URemotePlayCaptureComponent()
 
 void URemotePlayCaptureComponent::BeginPlay()
 {
+	if (TextureTarget && !TextureTarget->bCanCreateUAV)
+	{
+		TextureTarget->bCanCreateUAV = true;
+	}
 	Super::BeginPlay();
 	AActor* OwnerActor = GetTypedOuter<AActor>();
 	if (bRenderOwner)
@@ -73,12 +78,38 @@ void URemotePlayCaptureComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 }
 
+const FRemotePlayEncodeParameters &URemotePlayCaptureComponent::GetEncodeParams()
+{
+	if (EncodeParams.bDecomposeCube)
+	{
+		int32 W = TextureTarget->GetSurfaceWidth();
+		// 3 across...
+		EncodeParams.FrameWidth = 3 * W;
+		// and 2 down... for the colour, depth, and light cubes.
+		EncodeParams.FrameHeight = 2 * (W + W / 2 + 128);
+	}
+	else
+	{
+		EncodeParams.FrameWidth = 2048;
+		EncodeParams.FrameHeight = 1024 + 512;
+	}
+	return EncodeParams;
+}
+
 void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Scene)
 {
+	// Aidan: The parent function belongs to SceneCaptureComponentCube and is located in SceneCaptureComponent.cpp. 
+	// The parent function calls UpdateSceneCaptureContents function in SceneCaptureRendering.cpp.
+	// UpdateSceneCaptureContents enqueues the rendering commands to render to the scene capture cube's render target.
+	// The parent function is called from the static function UpdateDeferredCaptures located in
+	// SceneCaptureComponent.cpp. UpdateDeferredCaptures is called by the BeginRenderingViewFamily function in SceneRendering.cpp.
+	// Therefore the rendering commands queued after this function call below directly follow the scene capture cube's commands in the queue.
+
 	Super::UpdateSceneCaptureContents(Scene);
 
 	if (TextureTarget&&RemotePlayContext)
 	{
+
 		ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
 		if (!RemotePlayContext->EncodePipeline.IsValid())
 		{
@@ -93,33 +124,34 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 			}
 		}
 
-
 		if (Monitor&&Monitor->VideoEncodeFrequency > 1)
 		{
 			static int u = 1;
 			u--;
 			if (!u)
+			{
 				u = Monitor->VideoEncodeFrequency;
+			}
 			else
+			{
 				return;
+			}
 		}
-		{
-			FTransform Transform = GetComponentTransform();
-			RemotePlayContext->EncodePipeline->AddCameraTransform(Transform);
-		}
-		RemotePlayContext->EncodePipeline->PrepareFrame(GetWorld()->Scene, TextureTarget);
+		FTransform Transform = GetComponentTransform();
+
+		RemotePlayContext->EncodePipeline->PrepareFrame(Scene, TextureTarget);
 		if (RemotePlayReflectionCaptureComponent)
 		{
 			RemotePlayReflectionCaptureComponent->UpdateContents(
-				GetWorld()->Scene->GetRenderScene()
+				Scene->GetRenderScene()
 				, TextureTarget
-				, GetWorld()->Scene->GetFeatureLevel());
+				, Scene->GetFeatureLevel());
 			RemotePlayReflectionCaptureComponent->PrepareFrame(
-				GetWorld()->Scene->GetRenderScene()
+				Scene->GetRenderScene()
 				, RemotePlayContext->EncodePipeline->GetSurfaceTexture()
-				, GetWorld()->Scene->GetFeatureLevel());
+				, Scene->GetFeatureLevel());
 		}
-		RemotePlayContext->EncodePipeline->EncodeFrame(GetWorld()->Scene, TextureTarget);
+		RemotePlayContext->EncodePipeline->EncodeFrame(Scene, TextureTarget, Transform);
 	}
 }
 
@@ -166,7 +198,3 @@ void URemotePlayCaptureComponent::OnViewportDrawn()
 {
 }
 
-FTransform URemotePlayCaptureComponent::GetToWorldTransform()
-{
-	return GetComponentTransform();
-}

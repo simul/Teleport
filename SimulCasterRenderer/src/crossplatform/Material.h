@@ -2,13 +2,14 @@
 #pragma once
 
 #include "api/Texture.h"
-#include "DescriptorSet.h"
+#include "ShaderResource.h"
 #include "api/Effect.h"
+#include "api/RenderPlatform.h"
 #include "basic_linear_algebra.h"
 
 namespace scr
 {
-	class Material : public APIObject
+	class Material
 	{
 	public:
 		struct MaterialParameter
@@ -19,6 +20,7 @@ namespace scr
 		};
 		struct MaterialCreateInfo
 		{
+			RenderPlatform* renderPlatform;
 			MaterialParameter diffuse;	//RGBA Colour Texture
 			MaterialParameter normal;	//R: Tangent, G: Bi-normals and B: Normals
 			MaterialParameter combined;	//R: Ambient Occlusion, G: Roughness, B: Metallic, A: Specular
@@ -51,17 +53,15 @@ namespace scr
 
 
 		static bool s_UninitialisedUB;
-		std::unique_ptr<UniformBuffer> m_UB;
+		std::shared_ptr<UniformBuffer> m_UB;
 
-		DescriptorSetLayout m_SetLayout;
-		DescriptorSet m_Set;
+		ShaderResourceLayout m_ShaderResourceLayout;
+		ShaderResource m_ShaderResource;
 	
 	public:
-		Material(RenderPlatform* r, MaterialCreateInfo* pMaterialCreateInfo);
+		Material(MaterialCreateInfo* pMaterialCreateInfo);
 
-		void UpdateMaterialUB();
-
-		inline const DescriptorSet& GetDescriptorSet() const { return m_Set; }
+		inline const ShaderResource& GetShaderResource() const { return m_ShaderResource; }
 		inline const MaterialCreateInfo& GetMaterialCreateInfoConst() const { return m_CI; }
 		inline MaterialCreateInfo& GetMaterialCreateInfo() { return m_CI; }
 		inline const MaterialData& GetMaterialData() { return m_MaterialData; }

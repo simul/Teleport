@@ -3,7 +3,6 @@
 
 #include "Common.h"
 
-#include "API.h"
 #include "Camera.h"
 
 #include "api/FrameBuffer.h"
@@ -23,6 +22,7 @@ namespace scr
 		};
 		struct LightCreateInfo
 		{
+			RenderPlatform* renderPlatform;
 			Type type;
 			const vec3& position;
 			const vec3& direction;
@@ -43,15 +43,16 @@ namespace scr
 			float m_Power;		 //Strength or Power of the light in Watts equilavent to Radiant Flux in Radiometry.
 			vec3 m_Direction;
 			float m_SpotAngle;
-		}m_LightData;
+		};
+		LightData m_LightData;
 
 		LightCreateInfo m_CI;
 		
 		static bool s_UninitialisedUB;
-		std::unique_ptr<UniformBuffer> m_UB;
+		std::shared_ptr<UniformBuffer> m_UB;
 
-		DescriptorSetLayout m_SetLayout;
-		DescriptorSet m_Set;
+		ShaderResourceLayout m_ShaderResourceLayout;
+		ShaderResource m_ShaderResource;
 		
 		uint32_t m_ShadowMapSize = 256;
 		std::unique_ptr<FrameBuffer>m_ShadowMapFBO = nullptr; 
@@ -68,7 +69,7 @@ namespace scr
 
 		void UpdateLightUBO();
 
-		inline const DescriptorSet& GetDescriptorSet() const { return m_Set; }
+		inline const ShaderResource& GetDescriptorSet() const { return m_ShaderResource; }
 
 		inline std::unique_ptr<FrameBuffer>& GetShadowMapFBO() { return m_ShadowMapFBO; }
 

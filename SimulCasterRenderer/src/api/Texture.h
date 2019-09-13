@@ -22,6 +22,7 @@ namespace scr
 			TEXTURE_UNKNOWN = 0,
 			TEXTURE_1D,
 			TEXTURE_2D,
+			TEXTURE_2D_EXTERNAL_OES,	// External video texture for OpenGL.
 			TEXTURE_3D,
 			TEXTURE_1D_ARRAY,
 			TEXTURE_2D_ARRAY,
@@ -132,15 +133,17 @@ namespace scr
 			const uint8_t* data;
 
 			CompressionFormat compression; //The format the texture is compressed in.
+
+			bool externalResource;	// If true, the actual API resource will be created and managed externally on a per-platform basis.
 		};
 
 	protected:
 		TextureCreateInfo m_CI;
 
-		std::shared_ptr<const Sampler> m_Sampler = nullptr;
+		std::shared_ptr<Sampler> m_Sampler = nullptr;
 
 	public:
-		Texture(RenderPlatform *r) : APIObject(r) {}
+		Texture(RenderPlatform *r) : APIObject(r) {m_CI={};}
 		virtual ~Texture()
 		{
 			m_CI.width = 0;
@@ -155,14 +158,21 @@ namespace scr
 			m_CI.data = nullptr;
 		}
 
+		bool IsValid() const
+		{
+			return (m_CI.width>0);
+		}
+
+
 		//For cubemaps pass in a uint8_t* to continuous array of data for all 6 sides. Width, height, depth and bytesPerPixel will be the same for all faces.
 		virtual void Create(TextureCreateInfo* pTextureCreateInfo) = 0;
 		virtual void Destroy() = 0;
 
-		virtual void UseSampler(std::shared_ptr<const Sampler> ) = 0;
+		virtual void UseSampler(const std::shared_ptr<Sampler>& sampler) = 0;
 		virtual void GenerateMips() = 0;
 
-		inline std::shared_ptr<const Sampler> GetSampler() const { return m_Sampler; }
+		inline std::shared_ptr<Sampler> GetSampler() { return m_Sampler; }
+		inline const TextureCreateInfo GetTextureCreateInfo() const { return m_CI;}
 
 		virtual bool ResourceInUse(int timeout) = 0;
 		std::function<bool(Texture*, int)> ResourceInUseCallback = &Texture::ResourceInUse;
@@ -171,6 +181,7 @@ namespace scr
 
 	protected:
 		virtual void Bind() const = 0;
+		virtual void BindForWrite(uint32_t slot) const =0;
 		virtual void Unbind() const = 0;
 	};
 }

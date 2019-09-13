@@ -58,7 +58,6 @@ private:
 	{
 		FLinearColor Color;
 		FVector Direction;
-		float intensity;
 	};
 
 	TQueue<TResourceArray<FShaderDirectionalLight>> ShaderDirLightsQueue;

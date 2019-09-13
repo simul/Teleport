@@ -25,10 +25,11 @@ namespace pc_client
 		void Destroy() override;
 
 		void Bind() const override;
+		void BindForWrite(uint32_t slot) const override;
 		void Unbind() const override;
 
 		void GenerateMips() override;
-		void UseSampler(std::shared_ptr<const scr::Sampler> sampler) override;
+		void UseSampler(const std::shared_ptr<scr::Sampler>& sampler) override;
 		bool ResourceInUse(int timeout) override {return true;}
 
 		// Inherited via Texture

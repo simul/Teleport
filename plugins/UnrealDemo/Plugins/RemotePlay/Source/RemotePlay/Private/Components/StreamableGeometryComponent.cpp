@@ -26,6 +26,7 @@ void UStreamableGeometryComponent::BeginPlay()
 	Super::BeginPlay();
 	Actor = Cast<AActor>(GetOuter());
 	StaticMeshComponent = Cast<UStaticMeshComponent>(Actor->GetComponentByClass(UStaticMeshComponent::StaticClass()));
+	LightComponent = Cast<ULightComponent>(Actor->GetComponentByClass(ULightComponent::StaticClass()));
 }
 	
 void UStreamableGeometryComponent::EndPlay(const EEndPlayReason::Type Reason)
@@ -120,4 +121,18 @@ UTexture * UStreamableGeometryComponent::GetTexture(EMaterialProperty materialPr
 	}
 
 	return texture;
+}
+
+ULightComponent* UStreamableGeometryComponent::GetLightComponent()
+{
+	return LightComponent.Get();
+}
+
+TArray<UTexture2D*> UStreamableGeometryComponent::GetLightAndShadowMaps()
+{
+	UWorld* world = Actor->GetWorld();
+	ULevel* level = world->GetCurrentLevel();
+	world->GetLightMapsAndShadowMaps(level, LightAndShadowMaps);
+
+	return LightAndShadowMaps;
 }

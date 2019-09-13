@@ -9,6 +9,7 @@
 
 class APawn;
 class APlayerController;
+class USphereComponent;
 
 typedef struct _ENetHost   ENetHost;
 typedef struct _ENetPeer   ENetPeer;
@@ -67,9 +68,18 @@ private:
 	static void TranslateButtons(uint32_t ButtonMask, TArray<FKey>& OutKeys);
 	void StartStreaming();
 	void StopStreaming();
-	 
+
+	UFUNCTION()
+	void OnInnerSphereBeginOverlap(UPrimitiveComponent *OverlappedComponent, AActor *OtherActor, UPrimitiveComponent *OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult &SweepResult);
+
+	UFUNCTION()
+	void OnOuterSphereEndOverlap(UPrimitiveComponent *OverlappedComponent, AActor *OtherActor, UPrimitiveComponent *OtherComp, int32 OtherBodyIndex);
+
 	TWeakObjectPtr<APlayerController> PlayerController;
 	TWeakObjectPtr<APawn> PlayerPawn;
+
+	TWeakObjectPtr<USphereComponent> DetectionSphereInner; //Detects when a steamable actor has moved close enough to the client to be sent to them.
+	TWeakObjectPtr<USphereComponent> DetectionSphereOuter; //Detects when a streamable actor has moved too far from the client.
 	
 	struct FInputQueue
 	{
