@@ -4,6 +4,8 @@
 
 #include "libavstream/common.hpp"
 
+#include "LogMacros.h"
+
 GeometryEncoder::GeometryEncoder()
 { 
 }
@@ -44,8 +46,8 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp, avs::GeometrySourceBacke
 	// The source backend will give us the data to encode.
 	// What data it provides depends on the contents of the avs::GeometryRequesterBackendInterface object.
 	
-	std::vector<avs::uid> meshUIDs, materialUIDs, nodeUIDs;
-	req->GetResourcesClientNeeds(meshUIDs, materialUIDs, nodeUIDs);
+	std::vector<avs::uid> meshUIDs, textureUIDs, materialUIDs, nodeUIDs;
+	req->GetResourcesClientNeeds(meshUIDs, textureUIDs, materialUIDs, nodeUIDs);
 
 	if(GetNewUIDs(meshUIDs, req) != 0)
 	{
@@ -57,12 +59,12 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp, avs::GeometrySourceBacke
 		encodeMaterials(src, req, materialUIDs);
 	}
 
-	///We need a way to determine which excess textures actually need sending.
-	//std::vector<avs::uid> textureUIDs = src->getTextureUIDs();
-	//if(GetNewUIDs(textureUIDs, req) != 0)
-	//{
-	//	encodeTextures(src, req, textureUIDs);
-	//}
+	if(GetNewUIDs(textureUIDs, req) != 0)
+	{
+		size_t previousSize = buffer.size();
+		encodeTextures(src, req, textureUIDs);
+		UE_LOG(LogRemotePlay, Log, TEXT("Texture Buffer Size: %d"), buffer.size() - previousSize);
+	}
 
 	if(GetNewUIDs(nodeUIDs, req) != 0)
 	{
@@ -313,20 +315,22 @@ avs::Result GeometryEncoder::encodeMaterials(avs::GeometrySourceBackendInterface
 
 			//Array needs to be sorted for std::unique; we won't have many elements anyway.
 			std::sort(materialTexture_uids.begin(), materialTexture_uids.end());
-
 			//Shift data over duplicates, and erase.
 			materialTexture_uids.erase(std::unique(materialTexture_uids.begin(), materialTexture_uids.end()), materialTexture_uids.end());
-
 			//Shift data over 0s, and erase.
 			materialTexture_uids.erase(std::remove(materialTexture_uids.begin(), materialTexture_uids.end(), 0), materialTexture_uids.end());
 			
-			//Don't send what we have already sent.
+			//Only send textures that we have not already sent to the client.
 			GetNewUIDs(materialTexture_uids, req);
 
 			//Push amount of textures we are sending.
 			put(materialTexture_uids.size());
-			//Push textures.
-			encodeTexturesBackend(src, req, materialTexture_uids);
+			
+			if(materialTexture_uids.size() != 0)
+			{
+				//Push textures.
+				encodeTexturesBackend(src, req, materialTexture_uids);
+			}
 
 			//Flag we have encoded the material.
 			req->EncodedResource(uid);
