@@ -52,4 +52,7 @@ private:
 
 	FTextureRHIRef				SourceCubemapRHI;
 	FUnorderedAccessViewRHIRef UnorderedAccessViewRHIRef;
+
+	FTextureCubeRHIRef LightingTextureCubeRHIRef;
+	FUnorderedAccessViewRHIRef LightingUnorderedAccessViewRHIRefs[8];
 };
