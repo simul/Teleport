@@ -117,29 +117,102 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 	if (!lods.Num())
 		return false;
 
+	auto AddBuffer = [this](GeometrySource::Mesh *m, avs::uid b_uid, size_t num, size_t stride, const void *data)
+	{
+		// Data may already exist:
+		if (geometryBuffers.find(b_uid) == geometryBuffers.end())
+		{
+			avs::GeometryBuffer& b = geometryBuffers[b_uid];
+			b.byteLength = num * stride;
+			b.data = (const uint8_t *)data;			// Remember, just a pointer: we don't own this data.
+		}
+	};
+	auto AddBufferView = [this](GeometrySource::Mesh *m, avs::uid b_uid, avs::uid v_uid, size_t start_index, size_t num, size_t stride)
+	{
+		avs::BufferView &bv = bufferViews[v_uid];
+		bv.byteOffset = start_index * stride;
+		bv.byteLength = num * stride;
+		bv.byteStride = stride;
+		bv.buffer = b_uid;
+	};
+
 	auto &lod = lods[lodIndex];
-	m->primitiveArrays.resize(lod.Sections.Num());
-	for (size_t i = 0; i < m->primitiveArrays.size(); i++)
+	FPositionVertexBuffer &pb = lod.VertexBuffers.PositionVertexBuffer;
+	FStaticMeshVertexBuffer &vb = lod.VertexBuffers.StaticMeshVertexBuffer;
+
+	avs::uid positions_uid = avs::GenerateUid();
+	avs::uid normals_uid = avs::GenerateUid();
+	avs::uid tangents_uid = avs::GenerateUid();
+	avs::uid texcoords_uid = avs::GenerateUid();
+	avs::uid indices_uid = avs::GenerateUid();
+	avs::uid positions_view_uid = avs::GenerateUid();
+	avs::uid normals_view_uid = avs::GenerateUid();
+	avs::uid tangents_view_uid = avs::GenerateUid();
+	avs::uid texcoords_view_uid = avs::GenerateUid();
+	size_t attributeCount = 2 + (vb.GetTangentData() ? 1 : 0) + (vb.GetTexCoordData() ? vb.GetNumTexCoords() : 0);
+
+	// First create the Buffers:
+	// Position:
+	{
+		std::vector<avs::vec3> &p = scaledPositionBuffers[positions_uid];
+		p.resize(pb.GetNumVertices());
+		const avs::vec3 *orig = (const avs::vec3 *) pb.GetVertexData();
+		for (size_t j = 0; j < pb.GetNumVertices(); j++)
+		{
+			p[j].x = orig[j].x *0.01f;
+			p[j].y = orig[j].y *0.01f;
+			p[j].z = orig[j].z *0.01f;
+		}
+		size_t stride = pb.GetStride();
+		AddBuffer(m, positions_uid, pb.GetNumVertices(), stride, (const void*)p.data());
+		size_t position_stride = pb.GetStride();
+		// Offset is zero, because the sections are just lists of indices. 
+		AddBufferView(m, positions_uid, positions_view_uid, 0, pb.GetNumVertices(), position_stride);
+	}
+	size_t tangent_stride = vb.GetTangentSize() / vb.GetNumVertices();
+	// Normal:
+	{
+		size_t stride = vb.GetTangentSize() / vb.GetNumVertices();
+		AddBuffer(m, normals_uid, vb.GetNumVertices(), stride, vb.GetTangentData());
+		AddBufferView(m, normals_uid, normals_view_uid,  0, pb.GetNumVertices(), tangent_stride);
+	}
+
+	// Tangent:
+	if (vb.GetTangentData())
+	{
+		size_t stride = vb.GetTangentSize() / vb.GetNumVertices();
+		AddBuffer(m, tangents_uid, vb.GetNumVertices(), stride, vb.GetTangentData());
+		AddBufferView(m, tangents_uid, tangents_view_uid, 0, pb.GetNumVertices(), tangent_stride);
+	}
+	// TexCoords:
+	for (size_t j = 0; j < vb.GetNumTexCoords(); j++)
+	{
+		//bool IsFP32 = vb.GetUseFullPrecisionUVs(); //Not need vb.GetVertexUV() returns FP32 regardless. 
+		std::vector<FVector2D>& uvData = processedUVs[texcoords_uid];
+		uvData.reserve(vb.GetNumVertices());
+		for (uint32_t k = 0; k < vb.GetNumVertices(); k++)
+			uvData.push_back(vb.GetVertexUV(k, j));
+		size_t texcoords_stride = sizeof(FVector2D);
+		AddBuffer(m, texcoords_uid, vb.GetNumVertices(), texcoords_stride, uvData.data());
+		AddBufferView(m, texcoords_uid, texcoords_view_uid, 0, pb.GetNumVertices(), texcoords_stride);
+	}
+	FRawStaticIndexBuffer &ib = lod.IndexBuffer;
+	FIndexArrayView arr = ib.GetArrayView();
+	avs::Accessor::ComponentType componentType = ib.Is32Bit() ? avs::Accessor::ComponentType::UINT : avs::Accessor::ComponentType::USHORT;
+	size_t istride = avs::GetComponentSize(componentType);
+	AddBuffer(m, indices_uid, ib.GetNumIndices(), istride, (const void*)((uint64*)&arr)[0]);
+	avs::uid indices_view_uid = avs::GenerateUid();
+	AddBufferView(m, indices_uid, indices_view_uid, 0, ib.GetNumIndices(), istride);
+	
+	// Now create the views:
+	size_t  num_elements = lod.Sections.Num();
+	m->primitiveArrays.resize(num_elements);
+	for (size_t i = 0; i < num_elements; i++)
 	{
 		auto &section = lod.Sections[i];
-		FPositionVertexBuffer &pb = lod.VertexBuffers.PositionVertexBuffer;
-		FStaticMeshVertexBuffer &vb = lod.VertexBuffers.StaticMeshVertexBuffer;
 		auto &pa = m->primitiveArrays[i];
 		pa.attributeCount = 2 + (vb.GetTangentData() ? 1 : 0) + (vb.GetTexCoordData() ? vb.GetNumTexCoords() : 0);
 		pa.attributes = new avs::Attribute[pa.attributeCount];
-		auto AddBufferAndView = [this](GeometrySource::Mesh *m, avs::uid v_uid, avs::uid b_uid, size_t num, size_t stride, const void *data)
-		{
-			avs::BufferView &bv = bufferViews[v_uid];
-			bv.byteOffset = 0;
-			bv.byteLength = num * stride;
-			bv.byteStride = stride;
-			bv.buffer = b_uid;
-			avs::GeometryBuffer& b = geometryBuffers[bv.buffer];
-			b.byteLength = bv.byteLength;
-			
-			b.data = (const uint8_t *)data;			// Remember, just a pointer: we don't own this data.
-			
-		};
 		size_t idx = 0;
 		// Position:
 		{
@@ -151,19 +224,7 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 			a.type = avs::Accessor::DataType::VEC3;
 			a.componentType = avs::Accessor::ComponentType::FLOAT;
 			a.count = pb.GetNumVertices();
-			a.bufferView = avs::GenerateUid();
-			avs::uid bufferUid = avs::GenerateUid();
-		
-			std::vector<avs::vec3> &p = scaledPositionBuffers[bufferUid];
-			p.resize(a.count);
-			const avs::vec3 *orig =(const avs::vec3 *) pb.GetVertexData();
-			for (size_t j = 0; j < a.count; j++)
-			{
-				p[j].x	 =orig[j].x *0.01f;
-				p[j].y	 =orig[j].y *0.01f;
-				p[j].z	 =orig[j].z *0.01f;
-			}
-			AddBufferAndView(m, a.bufferView, bufferUid, pb.GetNumVertices(), pb.GetStride(), (const void*)p.data());
+			a.bufferView = positions_view_uid;
 		}
 		// Normal:
 		{
@@ -179,8 +240,7 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 			else
 				a.componentType = avs::Accessor::ComponentType::USHORT;
 			a.count = vb.GetNumVertices();// same as pb???
-			a.bufferView = avs::GenerateUid();
-			AddBufferAndView(m, a.bufferView, avs::GenerateUid(), vb.GetNumVertices(), vb.GetTangentSize() / vb.GetNumVertices(), vb.GetTangentData());
+			a.bufferView = normals_view_uid;
 		}
 		// Tangent:
 		if (vb.GetTangentData())
@@ -193,8 +253,7 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 			a.type = avs::Accessor::DataType::VEC4;
 			a.componentType = avs::Accessor::ComponentType::FLOAT;
 			a.count = vb.GetTangentSize();// same as pb???
-			a.bufferView = avs::GenerateUid();
-			AddBufferAndView(m, a.bufferView, avs::GenerateUid(),vb.GetNumVertices(), vb.GetTangentSize() / vb.GetNumVertices(), vb.GetTangentData());
+			a.bufferView = tangents_view_uid;
 		}
 		// TexCoords:
 		for (size_t j = 0; j < vb.GetNumTexCoords(); j++)
@@ -207,29 +266,16 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 			a.type = avs::Accessor::DataType::VEC2;
 			a.componentType = avs::Accessor::ComponentType::FLOAT;
 			a.count = vb.GetNumVertices();// same as pb???
-			a.bufferView = avs::GenerateUid();
-			avs::uid bufferUid = avs::GenerateUid();
-			
-			//bool IsFP32 = vb.GetUseFullPrecisionUVs(); //Not need vb.GetVertexUV() returns FP32 regardless. 
-			std::vector<FVector2D>& uvData = processedUVs[bufferUid];
-			uvData.reserve(a.count);
-			for (uint32_t k = 0; k < vb.GetNumVertices(); k++)
-				uvData.push_back(vb.GetVertexUV(k, j));
-
-			AddBufferAndView(m, a.bufferView, bufferUid, vb.GetNumVertices(), sizeof(FVector2D), uvData.data());
+			a.bufferView = texcoords_view_uid;
 		}
-		// Indices:
 		pa.indices_accessor = avs::GenerateUid();
 
-		FRawStaticIndexBuffer &ib = lod.IndexBuffer;
 		avs::Accessor &i_a = accessors[pa.indices_accessor];
-		i_a.byteOffset = 0;
+		i_a.byteOffset = section.FirstIndex*istride;
 		i_a.type = avs::Accessor::DataType::SCALAR;
-		i_a.componentType = ib.Is32Bit() ? avs::Accessor::ComponentType::UINT : avs::Accessor::ComponentType::USHORT;
-		i_a.count = ib.GetNumIndices();// same as pb???
-		i_a.bufferView = avs::GenerateUid();
-		FIndexArrayView arr = ib.GetArrayView();
-		AddBufferAndView(m, i_a.bufferView, avs::GenerateUid(), ib.GetNumIndices(), avs::GetComponentSize(i_a.componentType), (const void*)((uint64*)&arr)[0]);
+		i_a.componentType = componentType;
+		i_a.count = section.NumTriangles*3;// same as pb???
+		i_a.bufferView = indices_view_uid ;
 
 		// probably no default material in UE4?
 		pa.material = 0;
