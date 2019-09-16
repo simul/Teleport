@@ -79,8 +79,10 @@ public:
 		{
 			DepthPos.Bind(Initializer.ParameterMap, TEXT("DepthPos"));
 		}
-		if(bDecomposeCubemaps)
+		if (bDecomposeCubemaps)
+		{
 			Offset.Bind(Initializer.ParameterMap, TEXT("Offset"));
+		}
 	}
 	 
 	void SetParameters(
@@ -467,11 +469,10 @@ void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediat
 {
 	check(Pipeline.IsValid());
 	// The transform of the capture component needs to be sent with the image
-	avs::Transform CamTransform;
 	FVector t = CameraTransform.GetTranslation()*0.01;
 	FQuat r = CameraTransform.GetRotation();
 	const FVector s = CameraTransform.GetScale3D();
-	CamTransform = { t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z };
+	avs::Transform CamTransform = { t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z };
 	avs::ConvertTransform(avs::AxesStandard::UnrealStyle, RemotePlayContext->axesStandard, CamTransform);
 	for (auto& Encoder : Encoders)
 	{	
@@ -513,7 +514,7 @@ void FEncodePipelineMonoscopic::DispatchDecomposeCubemapShader(FRHICommandListIm
 	{
 		const uint32 NumThreadGroupsX = W / ShaderType::kThreadGroupSize;
 		const uint32 NumThreadGroupsY = W / ShaderType::kThreadGroupSize;
-		const uint32 NumThreadGroupsZ =  6 ;
+		const uint32 NumThreadGroupsZ = CubeFace_MAX;
 
 		TShaderMapRef<ShaderType> ComputeShader(GlobalShaderMap);
 		ComputeShader->SetParameters(RHICmdList, TextureRHI, TextureUAVRHI,
@@ -528,7 +529,7 @@ void FEncodePipelineMonoscopic::DispatchDecomposeCubemapShader(FRHICommandListIm
 	{
 		const uint32 NumThreadGroupsX = W/2 / ShaderType::kThreadGroupSize;
 		const uint32 NumThreadGroupsY = W/2 / ShaderType::kThreadGroupSize;
-		const uint32 NumThreadGroupsZ = 6;
+		const uint32 NumThreadGroupsZ = CubeFace_MAX;
 		TShaderMapRef<DepthShaderType> DepthShader(GlobalShaderMap);
 		DepthShader->SetParameters(RHICmdList, TextureRHI, TextureUAVRHI,
 			ColorSurfaceTexture.Texture, ColorSurfaceTexture.UAV,
@@ -539,5 +540,6 @@ void FEncodePipelineMonoscopic::DispatchDecomposeCubemapShader(FRHICommandListIm
 		DepthShader->UnsetParameters(RHICmdList);
 	}
 	
+
 }
   
