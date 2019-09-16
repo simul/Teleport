@@ -58,6 +58,9 @@ public:
 	virtual void OnVideoStreamChanged(const avs::SetupCommand &setupCommand) override;
 
 	virtual void OnVideoStreamClosed() override;
+
+	virtual bool OnActorEnteredBounds(avs::uid actor_uid) override;
+	virtual bool OnActorLeftBounds(avs::uid actor_uid) override;
 	/* End SessionCommandInterface */
 
 	/* Begin DecodeEventInterface */
@@ -65,6 +68,13 @@ public:
 	/* End DecodeEventInterface */
 
 private:
+	struct CubemapUB
+	{
+		scr::ivec2 sourceOffset;
+		uint32_t   faceSize;
+		float _pad = 0;
+	};
+	CubemapUB cubemapUB;
 	static void avsMessageHandler(avs::LogSeverity severity, const char *msg, void *);
 
 	avs::Context  mContext;
@@ -104,7 +114,7 @@ private:
 	OVR::SurfaceTexture* mVideoSurfaceTexture;
     std::shared_ptr<scr::Texture> mVideoTexture;
 	std::shared_ptr<scr::Texture> mCubemapTexture;
-    std::shared_ptr<scr::UniformBuffer> mCubemapUB = renderPlatform.InstantiateUniformBuffer();
+    std::shared_ptr<scr::UniformBuffer> mCubemapUB;
     std::vector<scr::ShaderResource> mCubemapComputeShaderResources;
 	std::shared_ptr<scr::Effect> mCopyCubemapEffect;
 	std::string CopyCubemapSrc;
@@ -123,6 +133,8 @@ private:
 
 	//Clientside Renderering Objects
 	scr::vec3 capturePosition;
+	std::shared_ptr<scr::Camera> scrCamera;
+
 	scc::GL_DeviceContext mDeviceContext;
 	scc::GL_Effect mEffect;
 	std::shared_ptr<scr::Sampler> mSampler = renderPlatform.InstantiateSampler();
@@ -131,7 +143,7 @@ private:
 	{
 		for(std::map<avs::uid, OVR::ovrSurfaceDef>::iterator it = mOVRActors.begin(); it != mOVRActors.end(); it++)
 		{
-			if(resourceManagers.mActorManager.m_Actors.find(it->first) == resourceManagers.mActorManager.m_Actors.end())
+			if(resourceManagers.mActorManager.GetActorList().find(it->first) == resourceManagers.mActorManager.GetActorList().end())
 			{
 				mOVRActors.erase(it);
 			}
@@ -140,6 +152,5 @@ private:
 	void CopyToCubemaps();
 	void RenderLocalActors(OVR::ovrFrameResult& res);
     const scr::Effect::EffectPassCreateInfo& BuildEffectPass(const char* effectPassName, scr::VertexBufferLayout* vbl, const scr::ShaderSystem::PipelineCreateInfo*, const std::vector<scr::ShaderResource>& shaderResources);
-
 	std::string LoadTextFile(const char *filename);
 };

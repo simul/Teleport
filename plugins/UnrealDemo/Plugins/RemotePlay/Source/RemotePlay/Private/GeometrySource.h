@@ -3,6 +3,7 @@
 #include <map>
 #include <unordered_map>
 #include <CoreMinimal.h>
+#include <Runtime/Engine/Classes/Components/LightComponent.h>
 
 #include "basisu_comp.h"
 
@@ -67,7 +68,7 @@ protected:
 
 	std::unordered_map<UTexture*, avs::uid> decomposedTextures; //Textures we have already stored in the GeometrySource; the pointer points to the uid of the stored texture information.
 	std::unordered_map<UMaterialInterface*, avs::uid> decomposedMaterials; //Materials we have already stored in the GeometrySource; the pointer points to the uid of the stored material information.
-	std::unordered_map<int32, avs::uid> decomposedNodes; //Nodes we have already stored in the GeometrySource; uses GetUniqueID() on the MeshComponent that represents the node.
+	std::unordered_map<std::string, avs::uid> decomposedNodes; //Nodes we have already stored in the GeometrySource; <Level Unique Node Name, Node Identifier>.
 
 	std::map<avs::uid, avs::Texture> textures;
 	std::map<avs::uid, avs::Material> materials;
@@ -101,4 +102,20 @@ protected:
 	void DecomposeMaterialProperty(UMaterialInterface *materialInterface, EMaterialProperty propertyChain, avs::TextureAccessor &outTexture, avs::vec4 &outFactor);
 
 	class ARemotePlayMonitor* Monitor;
+};
+
+struct ShadowMapData
+{
+	const FStaticShadowDepthMap& depthTexture;
+	const FVector4& position;
+	const FQuat& orientation;
+
+	ShadowMapData(const FStaticShadowDepthMap& _depthTexture, const FVector4& _position, const FQuat& _orientation)
+		:depthTexture(_depthTexture), position(_position), orientation(_orientation) {}
+
+	ShadowMapData(const ULightComponent* light)
+		:depthTexture(light->StaticShadowDepthMap),
+		position(light->GetLightPosition()),
+		orientation(light->GetDirection().Rotation().Quaternion())
+		{}
 };

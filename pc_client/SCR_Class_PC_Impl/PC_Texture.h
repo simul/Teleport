@@ -25,6 +25,7 @@ namespace pc_client
 		void Destroy() override;
 
 		void Bind() const override;
+		void BindForWrite(uint32_t slot) const override;
 		void Unbind() const override;
 
 		void GenerateMips() override;
@@ -32,7 +33,7 @@ namespace pc_client
 		bool ResourceInUse(int timeout) override {return true;}
 
 		// Inherited via Texture
-		void Create(TextureCreateInfo * pTextureCreateInfo) override;
+		void Create(const TextureCreateInfo& pTextureCreateInfo) override;
 
 		simul::crossplatform::Texture* GetSimulTexture()
 		{

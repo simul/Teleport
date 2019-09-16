@@ -4,26 +4,27 @@
 
 using namespace scr;
 
-bool Camera::s_UninitialisedUB = false;
+bool Camera::s_UninitialisedUB = true;
 
 Camera::Camera(CameraCreateInfo* pCameraCreateInfo)
 	:m_CI(*pCameraCreateInfo)
 {
 	if (s_UninitialisedUB)
 	{
-		const float zero[sizeof(CameraData)] = { 0 };
 
 		UniformBuffer::UniformBufferCreateInfo ub_ci;
 		ub_ci.bindingLocation = 0;
 		ub_ci.size = sizeof(CameraData);
-		ub_ci.data = zero;
+		ub_ci.data =  &m_CameraData;
 
+		m_UB = m_CI.renderPlatform->InstantiateUniformBuffer();
 		m_UB->Create(&ub_ci);
-		s_UninitialisedUB = true;
+		s_UninitialisedUB = false;
 	}
 	
 	UpdatePosition(m_CI.position);
 	UpdateOrientation(m_CI.orientation);
+
 	UpdateView();
 
 	m_ShaderResourceLayout.AddBinding(0, ShaderResourceLayout::ShaderResourceType::UNIFORM_BUFFER, Shader::Stage::SHADER_STAGE_VERTEX);
@@ -61,8 +62,4 @@ void Camera::UpdateProjection(float left, float right, float bottom, float top, 
 		return;
 	}
 	m_CameraData.m_ProjectionMatrix = mat4::Orthographic(left, right, bottom, top, near, far);
-}
-void Camera::UpdateCameraUBO()
-{
-	m_UB->Update(0, sizeof(CameraData), &m_CameraData);
 }

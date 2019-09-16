@@ -17,10 +17,11 @@ namespace scc
 		GL_Texture(scr::RenderPlatform* r)
 			:scr::Texture(r) {}
 
-		void Create(TextureCreateInfo* pTextureCreateInfo) override;
+		void Create(const TextureCreateInfo& pTextureCreateInfo) override;
 		void Destroy() override;
 
 		void Bind() const override;
+		void BindForWrite(uint32_t slot) const override;
 		void Unbind() const override;
 
 		void GenerateMips() override;
@@ -29,6 +30,7 @@ namespace scc
 
 		inline OVR::GlTexture& GetGlTexture() { return m_Texture;}
 
+		void SetExternalGlTexture(GLuint tex_id);
 private:
 		GLenum TypeToGLTarget(Type type) const;
 		GLenum ToBaseGLFormat(Format format) const;

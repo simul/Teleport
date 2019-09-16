@@ -6,22 +6,22 @@ using namespace scr;
 
 uint32_t Light::s_NumOfLights = 0;
 const uint32_t Light::s_MaxLights = 64;
-bool Light::s_UninitialisedUB = false;
+bool Light::s_UninitialisedUB = true;
 
 Light::Light(LightCreateInfo* pLightCreateInfo)
 	:m_CI(*pLightCreateInfo)
 {
-	if (s_UninitialisedUB)
+	//m_LightData.resize(s_MaxLights);
+	if (false)//s_UninitialisedUB)
 	{
-		const float zero[s_MaxLights * sizeof(LightData)] = { 0 };
-
 		UniformBuffer::UniformBufferCreateInfo ub_ci;
 		ub_ci.bindingLocation = 2;
-		ub_ci.size = s_MaxLights * sizeof(LightData);
-		ub_ci.data = zero;
+		ub_ci.size = sizeof(LightData);//s_MaxLights
+		ub_ci.data = &m_LightData;
 
+		m_UB = m_CI.renderPlatform->InstantiateUniformBuffer();
 		m_UB->Create(&ub_ci);
-		s_UninitialisedUB = true;
+		s_UninitialisedUB = false;
 	}
 
 	m_ShaderResourceLayout.AddBinding(2, ShaderResourceLayout::ShaderResourceType::UNIFORM_BUFFER, Shader::Stage::SHADER_STAGE_FRAGMENT);
@@ -44,11 +44,14 @@ Light::Light(LightCreateInfo* pLightCreateInfo)
 	case Light::Type::POINT:
 		Point(); break;
 	case Light::Type::DIRECTIONAL:
-		Directional(); break;
+		Directional();
+		break;
 	case Light::Type::SPOT:
-		Spot(); break;
+		Spot();
+		break;
 	case Light::Type::AREA:
-		Area();  break;
+		Area();
+		break;
 	default:
 		break;
 	}
@@ -128,5 +131,4 @@ void Light::UpdateSpotAngle(float spotAngle)
 }
 void Light::UpdateLightUBO()
 {
-	m_UB->Update(m_LightID * sizeof(LightData), sizeof(LightData), &m_LightData);
 }

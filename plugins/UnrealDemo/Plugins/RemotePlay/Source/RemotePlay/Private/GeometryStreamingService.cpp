@@ -15,6 +15,12 @@
 
 #pragma optimize("",off)
 
+//Returns a standard string, because you can't use an FString for a hash.
+std::string GetLevelUniqueActorName(AActor* actor)
+{
+	return TCHAR_TO_ANSI(*FPaths::Combine(actor->GetOutermost()->GetName(), actor->GetName()));
+}
+
 FGeometryStreamingService::FGeometryStreamingService()
 {
 }
@@ -55,6 +61,25 @@ void FGeometryStreamingService::Initialise(UWorld *World, GeometrySource *geomSo
 			geometrySource->AddNode(root_node_uid, rootMesh);
 		}
 	}
+
+	//Decompose all relevant light actors into streamable geometry.
+	TArray<AActor*> lightActors;
+	UGameplayStatics::GetAllActorsOfClass(World, ALight::StaticClass(), lightActors);
+
+	for (auto actor : lightActors)
+	{
+		auto sgc = actor->GetComponentByClass(UStreamableGeometryComponent::StaticClass());
+		if (sgc)
+		{
+			TArray<UTexture2D*> shadowAndLightMaps = static_cast<UStreamableGeometryComponent*>(sgc)->GetLightAndShadowMaps();
+			ULightComponent* lc = static_cast<UStreamableGeometryComponent*>(sgc)->GetLightComponent();
+			if (lc)
+			{
+				ShadowMapData smd(lc);
+				UE_LOG(LogRemotePlay, Warning, TEXT("LightComponent Orientation: {%4.4f, %4.4f, %4.4f}, %4.4f"), smd.orientation.X, smd.orientation.Y, smd.orientation.Z, smd.orientation.W);
+			}
+		}
+	}
 }
 
 void FGeometryStreamingService::StartStreaming(FRemotePlayContext *Context)
@@ -84,6 +109,7 @@ void FGeometryStreamingService::StopStreaming()
 	RemotePlayContext = nullptr;
 
 	sentResources.clear();
+	streamedActors.clear();
 }
  
 void FGeometryStreamingService::Tick()
@@ -108,17 +134,25 @@ void FGeometryStreamingService::Reset()
 	geometrySource->clearData();
 }
 
-void FGeometryStreamingService::AddActor(AActor *newActor)
+avs::uid FGeometryStreamingService::AddActor(AActor *newActor)
 {
-	streamedActors[newActor->GetUniqueID()] = geometrySource->AddNode(geometrySource->GetRootNodeUid(), Cast<UMeshComponent>(newActor->GetComponentByClass(UMeshComponent::StaticClass())));
+	avs::uid actor_uid = geometrySource->AddNode(geometrySource->GetRootNodeUid(), Cast<UMeshComponent>(newActor->GetComponentByClass(UMeshComponent::StaticClass())));
+	streamedActors[GetLevelUniqueActorName(newActor)] = actor_uid;
+
+	return actor_uid;
 }
 
-void FGeometryStreamingService::RemoveActor(AActor *oldActor)
+avs::uid FGeometryStreamingService::RemoveActor(AActor *oldActor)
 {
-	streamedActors.erase(oldActor->GetUniqueID());
+	std::string levelUniqueName = GetLevelUniqueActorName(oldActor);
+
+	avs::uid actor_uid = streamedActors[levelUniqueName];
+	streamedActors.erase(levelUniqueName);
+
+	return actor_uid;
 }
 
-void FGeometryStreamingService::GetNodeResourceUIDs(avs::uid nodeUID, std::vector<avs::uid> &outMeshIds, std::vector<avs::uid> &outMaterialIds, std::vector<avs::uid> &outNodeIds)
+void FGeometryStreamingService::GetNodeResourceUIDs(avs::uid nodeUID, std::vector<avs::uid> &outMeshIds, std::vector<avs::uid>& outTextureIds, std::vector<avs::uid> &outMaterialIds, std::vector<avs::uid> &outNodeIds)
 {
 	//Retrieve node.
 	std::shared_ptr<avs::DataNode> thisNode;
@@ -130,6 +164,19 @@ void FGeometryStreamingService::GetNodeResourceUIDs(avs::uid nodeUID, std::vecto
 	//Add all material UIDs.
 	for(auto materialId : thisNode->materials)
 	{
+		avs::Material thisMaterial;
+		geometrySource->getMaterial(materialId, thisMaterial);
+
+		outTextureIds.insert(outTextureIds.end(),
+			{
+				thisMaterial.pbrMetallicRoughness.baseColorTexture.index,
+				thisMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index,
+				thisMaterial.normalTexture.index,
+				thisMaterial.occlusionTexture.index,
+				thisMaterial.emissiveTexture.index
+			}
+		);
+
 		outMaterialIds.push_back(materialId);
 	}
 
@@ -137,7 +184,7 @@ void FGeometryStreamingService::GetNodeResourceUIDs(avs::uid nodeUID, std::vecto
 	for(auto childNode : thisNode->childrenUids)
 	{
 		outNodeIds.push_back(childNode);
-		GetNodeResourceUIDs(childNode, outMeshIds, outMaterialIds, outNodeIds);
+		GetNodeResourceUIDs(childNode, outMeshIds, outTextureIds, outMaterialIds, outNodeIds);
 	}
 }
 
@@ -160,7 +207,7 @@ void FGeometryStreamingService::RequestResource(avs::uid resource_uid)
 	sentResources[resource_uid] = false;
 }
 
-void FGeometryStreamingService::GetResourcesClientNeeds(std::vector<avs::uid> &outMeshIds, std::vector<avs::uid> &outMaterialIds, std::vector<avs::uid> &outNodeIds)
+void FGeometryStreamingService::GetResourcesClientNeeds(std::vector<avs::uid> &outMeshIds, std::vector<avs::uid>& outTextureIds, std::vector<avs::uid> &outMaterialIds, std::vector<avs::uid> &outNodeIds)
 {
 	outMeshIds.empty();
 	outMaterialIds.empty();
@@ -169,13 +216,18 @@ void FGeometryStreamingService::GetResourcesClientNeeds(std::vector<avs::uid> &o
 	for(auto nodePair : streamedActors)
 	{
 		outNodeIds.push_back(nodePair.second);
-		GetNodeResourceUIDs(nodePair.second, outMeshIds, outMaterialIds, outNodeIds);
+		GetNodeResourceUIDs(nodePair.second, outMeshIds, outTextureIds, outMaterialIds, outNodeIds);
 	}
 
 	//Remove duplicates, and 0s, from mesh IDs.
 	std::sort(outMeshIds.begin(), outMeshIds.end());
 	outMeshIds.erase(std::unique(outMeshIds.begin(), outMeshIds.end()), outMeshIds.end());
 	outMeshIds.erase(std::remove(outMeshIds.begin(), outMeshIds.end(), 0), outMeshIds.end());
+
+	//Remove duplicates, and 0s, from texture IDs.
+	std::sort(outTextureIds.begin(), outTextureIds.end());
+	outTextureIds.erase(std::unique(outTextureIds.begin(), outTextureIds.end()), outTextureIds.end());
+	outTextureIds.erase(std::remove(outTextureIds.begin(), outTextureIds.end(), 0), outTextureIds.end());
 
 	//Remove duplicates, and 0s, from material IDs.
 	std::sort(outMaterialIds.begin(), outMaterialIds.end());

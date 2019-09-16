@@ -3,7 +3,6 @@
 
 #include "Common.h"
 
-#include "API.h"
 #include "Camera.h"
 
 #include "api/FrameBuffer.h"
@@ -23,6 +22,7 @@ namespace scr
 		};
 		struct LightCreateInfo
 		{
+			RenderPlatform* renderPlatform;
 			Type type;
 			const vec3& position;
 			const vec3& direction;
@@ -43,7 +43,8 @@ namespace scr
 			float m_Power;		 //Strength or Power of the light in Watts equilavent to Radiant Flux in Radiometry.
 			vec3 m_Direction;
 			float m_SpotAngle;
-		}m_LightData;
+		};
+		LightData m_LightData;
 
 		LightCreateInfo m_CI;
 		

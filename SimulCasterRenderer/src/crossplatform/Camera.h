@@ -5,6 +5,7 @@
 #include "api/UniformBuffer.h"
 #include "basic_linear_algebra.h"
 #include "ShaderResource.h"
+#include "api/RenderPlatform.h"
 
 namespace scr
 {
@@ -18,6 +19,7 @@ namespace scr
 		};
 		struct CameraCreateInfo
 		{
+			RenderPlatform* renderPlatform;
 			ProjectionType type;
 			quat orientation;
 			vec3 position;
@@ -53,8 +55,7 @@ namespace scr
 		void UpdateProjection(float horizontalFOV, float aspectRatio, float zNear, float zFar);
 		void UpdateProjection(float left, float right, float bottom, float top, float near, float far);
 
-		void UpdateCameraUBO();
-		inline const ShaderResource& GetDescriptorSet() const { return m_ShaderResource; }
+		inline const ShaderResource& GetShaderResource() const { return m_ShaderResource; }
 
 		inline const vec3& GetPosition() const { return m_CameraData.m_Position; }
 	};

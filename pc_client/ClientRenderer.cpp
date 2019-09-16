@@ -90,13 +90,13 @@ ClientRenderer::ClientRenderer():
 	dummyCombined(nullptr),
 	diffuseCubemapTexture(nullptr),
 	framenumber(0),
-	sessionClient(this),
 	resourceCreator(basist::transcoder_texture_format::cTFBC1),
+	sessionClient(this, resourceCreator),
 	RenderMode(0)
 {
 	avsTextures.resize(NumStreams);
 	resourceCreator.SetRenderPlatform(&PcClientRenderPlatform);
-	resourceCreator.AssociateResourceManagers(&resourceManagers.mIndexBufferManager, &resourceManagers.mShaderManager, &resourceManagers.mMaterialManager, &resourceManagers.mTextureManager, &resourceManagers.mUniformBufferManager, &resourceManagers.mVertexBufferManager);
+	resourceCreator.AssociateResourceManagers(&resourceManagers.mIndexBufferManager, &resourceManagers.mShaderManager, &resourceManagers.mMaterialManager, &resourceManagers.mTextureManager, &resourceManagers.mUniformBufferManager, &resourceManagers.mVertexBufferManager, &resourceManagers.mMeshManager);
 	resourceCreator.AssociateActorManager(&resourceManagers.mActorManager);
 
 	//Initalise time stamping for state update.
@@ -339,7 +339,6 @@ void ClientRenderer::Render(int view_id, void* context, void* renderTexture, int
 				renderPlatform->DrawTexture(deviceContext, 0, 0, hdrFramebuffer->GetWidth() / 2, hdrFramebuffer->GetHeight() / 2, ti->texture);
 			}
 		}
-		//RenderOpaqueTest(deviceContext);
 		RenderLocalActors(deviceContext);
 
 		// We must deactivate the depth buffer here, in order to use it as a texture:
@@ -347,10 +346,9 @@ void ClientRenderer::Render(int view_id, void* context, void* renderTexture, int
 
 	}
 	{
-		auto& textures = resourceCreator.GetTextureManager()->GetCache();
+		auto& textures = resourceManagers.mTextureManager.GetCache();
 		static int tw = 32;
 		int x = 0, y = 0;
-		if(sessionClient.IsConnected())
 		for (auto t : textures)
 		{
 			pc_client::PC_Texture* pct = static_cast<pc_client::PC_Texture*>(&(*t.second.resource));
@@ -418,20 +416,23 @@ void ClientRenderer::RenderLocalActors(simul::crossplatform::DeviceContext& devi
 	//camera.SetOrientationAsQuaternion((const float*)&transform.rotation);
 	deviceContext.viewStruct.view = camera.MakeViewMatrix();
 	deviceContext.viewStruct.Init();
-	for (auto& actor : resourceManagers.mActorManager.m_Actors)
+	for (const auto& actorData : resourceManagers.mActorManager.GetActorList())
 	{
-		const std::shared_ptr<scr::Transform> tr = actor.second->GetTransform();
-		if (!tr)
+		//Don't draw the actor, if they are invisible.
+		if(!actorData.second.actor->isVisible)
+		{
 			continue;
-		const std::shared_ptr<scr::Mesh> mesh = actor.second->GetMesh();
+		}
+
+		const scr::Transform &transform = actorData.second.actor->GetTransform();
+
+		const std::shared_ptr<scr::Mesh> mesh = actorData.second.actor->GetMesh();
 		if (!mesh)
 			continue;
-		const std::vector<std::shared_ptr<scr::Material>> materials = actor.second->GetMaterials();
+		const std::vector<std::shared_ptr<scr::Material>> materials = actorData.second.actor->GetMaterials();
 		if (!materials.size())
 			continue;
-		std::shared_ptr<scr::Transform> transform = actor.second->GetTransform();
-		if (!transform)
-			continue;
+
 		const auto* vb = dynamic_cast<pc_client::PC_VertexBuffer*>(mesh->GetMeshCreateInfo().vb.get());
 		const auto* ib = dynamic_cast<pc_client::PC_IndexBuffer*>(mesh->GetMeshCreateInfo().ib.get());
 
@@ -439,20 +440,23 @@ void ClientRenderer::RenderLocalActors(simul::crossplatform::DeviceContext& devi
 
 		const scr::Material::MaterialCreateInfo& m = materials[0]->GetMaterialCreateInfoConst();
 
-		simul::crossplatform::LayoutDesc desc[] =
+		if (!layout)
 		{
-			{ "POSITION", 0, crossplatform::RGB_32_FLOAT, 0, 0, false, 0 },
-			{ "NORMAL", 0, crossplatform::RGB_32_FLOAT, 0, 12, false, 0 },
-			{ "TANGENT", 0, crossplatform::RGBA_32_FLOAT, 0, 24, false, 0 },
-			{ "TEXCOORD", 0, crossplatform::RG_32_FLOAT, 0, 40, false, 0 },
-			{ "TEXCOORD", 1, crossplatform::RG_32_FLOAT, 0, 48, false, 0 },
-		};
-		simul::crossplatform::Layout* layout= renderPlatform->CreateLayout(
-												sizeof(desc)/sizeof(simul::crossplatform::LayoutDesc)
-												,desc);
+			simul::crossplatform::LayoutDesc desc[] =
+			{
+				{ "POSITION", 0, crossplatform::RGB_32_FLOAT, 0, 0, false, 0 },
+				{ "NORMAL", 0, crossplatform::RGB_32_FLOAT, 0, 12, false, 0 },
+				{ "TANGENT", 0, crossplatform::RGBA_32_FLOAT, 0, 24, false, 0 },
+				{ "TEXCOORD", 0, crossplatform::RG_32_FLOAT, 0, 40, false, 0 },
+				{ "TEXCOORD", 1, crossplatform::RG_32_FLOAT, 0, 48, false, 0 },
+			};
+			layout = renderPlatform->CreateLayout(
+				sizeof(desc) / sizeof(simul::crossplatform::LayoutDesc)
+				, desc);
+		}
 		cameraConstants.invWorldViewProj = deviceContext.viewStruct.invViewProj;
 		mat4 model;
-		model=((const float*)& (transform->GetTransformMatrix()));
+		model=((const float*)& (transform.GetTransformMatrix()));
 		mat4::mul(cameraConstants.worldViewProj ,*((mat4*)&deviceContext.viewStruct.viewProj), model);
 		cameraConstants.world = model;
 		cameraConstants.viewPosition = vec3(0,0,0);
@@ -480,17 +484,19 @@ void ClientRenderer::RenderLocalActors(simul::crossplatform::DeviceContext& devi
 		renderPlatform->SetVertexBuffers(deviceContext, 0, 1, v, layout);
 		renderPlatform->SetIndexBuffer(deviceContext, ib->GetSimulIndexBuffer());
 		renderPlatform->DrawIndexed(deviceContext, (int)ib->GetIndexBufferCreateInfo().indexCount, 0, 0);
+		layout->Unapply(deviceContext);
 		pbrEffect->Unapply(deviceContext);
 
 		float heightOffset = -80.0F;
 		scr::mat4 inv_ue4ViewMatrix = scr::mat4::Translation(scr::vec3(-480.0F, -80.0F, -142.0F + heightOffset));
 		scr::mat4 changeOfBasis = scr::mat4(scr::vec4(0.0F, 1.0F, 0.0F, 0.0F), scr::vec4(0.0F, 0.0F, 1.0F, 0.0F), scr::vec4(-1.0F, 0.0F, 0.0F, 0.0F), scr::vec4(0.0F, 0.0F, 0.0F, 1.0F));
 		scr::mat4 scr_Transform = changeOfBasis * inv_ue4ViewMatrix;// *ic_mmm.pTransform->GetTransformMatrix();
-		delete layout;
 	}
 }
 void ClientRenderer::InvalidateDeviceObjects()
 {
+	delete layout;
+	layout = nullptr;
 	for (auto i : avsTextures)
 	{
 		AVSTextureImpl *ti = (AVSTextureImpl*)i.get();
@@ -555,7 +561,6 @@ void ClientRenderer::Update()
 	uint32_t timestamp = (uint32_t)avs::PlatformWindows::getTimeElapsed(platformStartTimestamp, avs::PlatformWindows::getTimestamp());
 	uint32_t timeElapsed = (timestamp - previousTimestamp);
 
-	// disabled because it deletes objects that are in use!
 	resourceManagers.Update(timeElapsed);
 
 	previousTimestamp = timestamp;
@@ -648,8 +653,20 @@ void ClientRenderer::OnVideoStreamClosed()
 	pipeline.deconfigure();
 	//const ovrJava* java = app->GetJava();
 	//java->Env->CallVoidMethod(java->ActivityObject, jni.closeVideoStreamMethod);
+
+	//GGMP: Temporary measure, so I can test if resources are being removed, or not.
+	resourceManagers.Clear();
 }
 
+bool ClientRenderer::OnActorEnteredBounds(avs::uid actor_uid)
+{
+	return resourceManagers.mActorManager.ShowActor(actor_uid);
+}
+
+bool ClientRenderer::OnActorLeftBounds(avs::uid actor_uid)
+{
+	return resourceManagers.mActorManager.HideActor(actor_uid);
+}
 
 void ClientRenderer::OnFrameMove(double fTime,float time_step)
 {

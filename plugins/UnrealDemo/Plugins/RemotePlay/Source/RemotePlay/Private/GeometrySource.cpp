@@ -301,8 +301,8 @@ avs::uid GeometrySource::AddStreamableMeshComponent(UMeshComponent *MeshComponen
 avs::uid GeometrySource::AddNode(avs::uid parent_uid, UMeshComponent *component)
 {
 	avs::uid node_uid;
-	int32 unrealUniqueID = component->GetUniqueID(); //These get reused on object deletion.
-	std::unordered_map<int32, avs::uid>::iterator nodeIt = decomposedNodes.find(unrealUniqueID);
+	std::string levelUniqueNodeName = TCHAR_TO_ANSI(*FPaths::Combine(component->GetOutermost()->GetName(), component->GetOuter()->GetName(), component->GetName()));
+	std::unordered_map<std::string, avs::uid>::iterator nodeIt = decomposedNodes.find(levelUniqueNodeName);
 
 	if(nodeIt != decomposedNodes.end())
 	{
@@ -315,19 +315,19 @@ avs::uid GeometrySource::AddNode(avs::uid parent_uid, UMeshComponent *component)
 
 		avs::uid mesh_uid = AddStreamableMeshComponent(component);
 		// the material/s that this particular instance of the mesh has applied to its slots...
-		TArray<UMaterialInterface *> materials = component->GetMaterials();
+		TArray<UMaterialInterface *> mats = component->GetMaterials();
 
 		std::vector<avs::uid> mat_uids;
 		//Add material, and textures, for streaming to clients.
-		int32 num_mats = materials.Num();
+		int32 num_mats = mats.Num();
 		for(int32 i = 0; i < num_mats; i++)
 		{
-			UMaterialInterface *materialInterface = materials[i];
+			UMaterialInterface *materialInterface = mats[i];
 			mat_uids.push_back(AddMaterial(materialInterface));
 		}
 
 		node_uid = CreateNode(component->GetComponentTransform(), mesh_uid, avs::NodeDataType::Mesh, mat_uids);
-		decomposedNodes[unrealUniqueID] = node_uid;
+		decomposedNodes[levelUniqueNodeName] = node_uid;
 
 		parent->childrenUids.push_back(node_uid);
 
@@ -446,6 +446,11 @@ avs::uid GeometrySource::AddMaterial(UMaterialInterface *materialInterface)
 
 		materials[mat_uid] = newMaterial;
 		decomposedMaterials[materialInterface] = mat_uid;
+
+		if(newMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index != newMaterial.occlusionTexture.index)
+		{
+			UE_LOG(LogRemotePlay, Warning, TEXT("Occlusion texture on material <%s> is not combined with metallic-roughness texture."), ANSI_TO_TCHAR(newMaterial.name.data()));
+		}
 	}
 
 	return mat_uid;
@@ -961,6 +966,7 @@ bool GeometrySource::getNode(avs::uid node_uid, std::shared_ptr<avs::DataNode> &
 	}
 	catch(std::out_of_range oor)
 	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Failed to find node with UID: %d"), node_uid)
 		return false;
 	}
 }
@@ -1069,6 +1075,7 @@ bool GeometrySource::getTexture(avs::uid texture_uid, avs::Texture & outTexture)
 	}
 	catch(std::out_of_range oor)
 	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Failed to find texture with UID: %d"), texture_uid)
 		return false;
 	}
 }
@@ -1097,6 +1104,7 @@ bool GeometrySource::getMaterial(avs::uid material_uid, avs::Material & outMater
 	}
 	catch(std::out_of_range oor)
 	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Failed to find material with UID: %d"), material_uid)
 		return false;
 	}
 }

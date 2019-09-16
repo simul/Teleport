@@ -415,8 +415,8 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 		for (uint8 j = 0; j < expectedLag; ++j)
 		{
 			Encoders[i].setCameraTransform(Transform);
-		}
 	}
+}
 }
 	
 void FEncodePipelineMonoscopic::Release_RenderThread(FRHICommandListImmediate& RHICmdList)
@@ -469,16 +469,17 @@ void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediat
 {
 	check(Pipeline.IsValid());
 	// The transform of the capture component needs to be sent with the image
-	FVector t = CameraTransform.GetTranslation()*0.01;
+	avs::Transform CamTransform;
+	FVector t = CameraTransform.GetTranslation()*0.01f;
 	FQuat r = CameraTransform.GetRotation();
 	const FVector s = CameraTransform.GetScale3D();
 	avs::Transform CamTransform = { t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z };
 	avs::ConvertTransform(avs::AxesStandard::UnrealStyle, RemotePlayContext->axesStandard, CamTransform);
 	for (auto& Encoder : Encoders)
-	{	
+	{
 		Encoder.setCameraTransform(CamTransform);
 	}
-	
+
 	if (!Pipeline->process())
 	{
 		UE_LOG(LogRemotePlay, Warning, TEXT("Encode pipeline processing encountered an error"));
@@ -542,4 +543,4 @@ void FEncodePipelineMonoscopic::DispatchDecomposeCubemapShader(FRHICommandListIm
 	
 
 }
-  
+
