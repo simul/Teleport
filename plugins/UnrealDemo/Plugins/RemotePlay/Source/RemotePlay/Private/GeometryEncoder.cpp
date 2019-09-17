@@ -70,7 +70,7 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp, avs::GeometrySourceBacke
 	{
 		encodeNodes(src, req, nodeUIDs);
 	}
-	
+	// GALU to end.
 	buffer.push_back(GALU_code[0]);
 	buffer.push_back(GALU_code[1]);
 	buffer.push_back(GALU_code[2]);
@@ -94,18 +94,11 @@ avs::Result GeometryEncoder::unmapOutputBuffer()
 
 avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req, std::vector<avs::uid> missingUIDs)
 {
-	buffer.push_back(GALU_code[0]);
-	buffer.push_back(GALU_code[1]);
-	buffer.push_back(GALU_code[2]);
-	buffer.push_back(GALU_code[3]);
-
-	put(avs::GeometryPayloadType::Mesh);
-
-	put(missingUIDs.size());
-
 	std::vector<avs::uid> accessors;
 	for(size_t i = 0; i < missingUIDs.size(); i++)
 	{
+		putPayload(avs::GeometryPayloadType::Mesh);
+		put((size_t)1);
 		avs::uid uid = missingUIDs[i];
 		put(uid);
 		// Requester doesn't have this mesh, and needs it, so we will encode the mesh for transport.
@@ -171,12 +164,8 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 
 avs::Result GeometryEncoder::encodeNodes(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface *req, std::vector<avs::uid> missingUIDs)
 {
-	buffer.push_back(GALU_code[0]);
-	buffer.push_back(GALU_code[1]);
-	buffer.push_back(GALU_code[2]);
-	buffer.push_back(GALU_code[3]);
-
-	put(avs::GeometryPayloadType::Node);
+	//Place payload type onto the buffer.
+	putPayload(avs::GeometryPayloadType::Node);
 
 	put(missingUIDs.size());
 	for (const avs::uid &uid : missingUIDs) 
@@ -208,7 +197,7 @@ avs::Result GeometryEncoder::encodeNodes(avs::GeometrySourceBackendInterface * s
 	return avs::Result::OK;
 }
 
-avs::Result GeometryEncoder::encodeTextures(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req, std::vector<avs::uid> missingUIDs)
+void GeometryEncoder::putPayload(avs::GeometryPayloadType t)
 {
 	buffer.push_back(GALU_code[0]);
 	buffer.push_back(GALU_code[1]);
@@ -216,35 +205,26 @@ avs::Result GeometryEncoder::encodeTextures(avs::GeometrySourceBackendInterface 
 	buffer.push_back(GALU_code[3]);
 
 	//Place payload type onto the buffer.
-	put(avs::GeometryPayloadType::Texture);
+	put(t);
+}
 
-	//Push amount of textures we are sending.
-	put(missingUIDs.size());
-
+avs::Result GeometryEncoder::encodeTextures(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req, std::vector<avs::uid> missingUIDs)
+{
 	encodeTexturesBackend(src, req, missingUIDs);
-
 	return avs::Result::OK;
 }
 
 avs::Result GeometryEncoder::encodeMaterials(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req, std::vector<avs::uid> missingUIDs)
 {
-	buffer.push_back(GALU_code[0]);
-	buffer.push_back(GALU_code[1]);
-	buffer.push_back(GALU_code[2]);
-	buffer.push_back(GALU_code[3]);
-
-	//Place payload type onto the buffer.
-	put(avs::GeometryPayloadType::Material);
-
 	//Push amount of materials.
-	put(missingUIDs.size());
 	for(avs::uid uid : missingUIDs)
 	{
 		avs::Material outMaterial;
 
 		if(src->getMaterial(uid, outMaterial))
 		{
-			//Push identifier.
+			putPayload(avs::GeometryPayloadType::Material);
+			put((size_t)1);
 			put(uid);
 
 			size_t nameLength = outMaterial.name.length();
@@ -348,6 +328,10 @@ avs::Result GeometryEncoder::encodeTexturesBackend(avs::GeometrySourceBackendInt
 
 		if(src->getTexture(uid, outTexture))
 		{
+			//Place payload type onto the buffer.
+			putPayload(avs::GeometryPayloadType::Texture);
+			//Push amount of textures we are sending.
+			put((size_t)1);
 			//Push identifier.
 			put(uid);
 

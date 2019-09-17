@@ -51,7 +51,8 @@ private:
 	void Release_RenderThread(FRHICommandListImmediate& RHICmdList);
 	void UpdateReflections_RenderThread(FRHICommandListImmediate& RHICmdList, FScene *Scene, UTextureRenderTargetCube *InSourceTexture, ERHIFeatureLevel::Type FeatureLevel);
 	void WriteReflections_RenderThread(FRHICommandListImmediate& RHICmdList, FScene *Scene, struct FSurfaceTexture *, ERHIFeatureLevel::Type FeatureLevel);
-
+	void Init(FRHICommandListImmediate& RHICmdList,FCubeTexture &t,int size);
+	void Release(FCubeTexture &t);
 	struct FShaderDirectionalLight
 	{
 		FLinearColor Color;
@@ -59,5 +60,7 @@ private:
 	};
 
 	FCubeTexture ReflectionCubeTexture;
+	FCubeTexture DiffuseCubeTexture;
+	FCubeTexture LightingCubeTexture;
 };
 

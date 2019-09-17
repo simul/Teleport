@@ -236,24 +236,20 @@ float URemotePlayReflectionCaptureComponent::GetInfluenceBoundingRadius() const
 	return (GetComponentTransform().GetScale3D() + FVector(BoxTransitionDistance)).Size();
 }
 
-void URemotePlayReflectionCaptureComponent::Initialize_RenderThread(FRHICommandListImmediate& RHICmdList)
+void URemotePlayReflectionCaptureComponent::Init(FRHICommandListImmediate& RHICmdList,FCubeTexture &t,int size)
 {
 	FRHIResourceCreateInfo CreateInfo;
 	const int32 NumMips = FMath::CeilLogTwo(128) + 1;
-	
-	ReflectionCubeTexture.TextureCubeRHIRef = RHICmdList.CreateTextureCube(128, PF_FloatRGBA, NumMips, TexCreate_UAV, CreateInfo);
-	//RHICmdList.GetResourceInfo(ReflectionCubeTexture.TextureCubeRHIRef, CreateInfo);
+	t.TextureCubeRHIRef = RHICmdList.CreateTextureCube(size, PF_FloatRGBA, NumMips, TexCreate_UAV, CreateInfo);
 	for (int i = 0; i < NumMips; i++)
 	{
-		ReflectionCubeTexture.UnorderedAccessViewRHIRefs[i]
-			= RHICmdList.CreateUnorderedAccessView(ReflectionCubeTexture.TextureCubeRHIRef, i);
+		t.UnorderedAccessViewRHIRefs[i]= RHICmdList.CreateUnorderedAccessView(t.TextureCubeRHIRef, i);
 	}
-	
-	
 }
-void URemotePlayReflectionCaptureComponent::Release_RenderThread(FRHICommandListImmediate& RHICmdList)
+
+void URemotePlayReflectionCaptureComponent::Release(FCubeTexture &t)
 {
-	if(ReflectionCubeTexture.TextureCubeRHIRef)
+	if (ReflectionCubeTexture.TextureCubeRHIRef)
 		ReflectionCubeTexture.TextureCubeRHIRef->Release();
 	const int32 NumMips = FMath::CeilLogTwo(128) + 1;
 	for (int i = 0; i < NumMips; i++)
@@ -261,6 +257,20 @@ void URemotePlayReflectionCaptureComponent::Release_RenderThread(FRHICommandList
 		if (ReflectionCubeTexture.UnorderedAccessViewRHIRefs[i])
 			ReflectionCubeTexture.UnorderedAccessViewRHIRefs[i]->Release();
 	}
+}
+
+
+void URemotePlayReflectionCaptureComponent::Initialize_RenderThread(FRHICommandListImmediate& RHICmdList)
+{
+	Init(RHICmdList,ReflectionCubeTexture,128);
+	Init(RHICmdList,DiffuseCubeTexture,128);
+	Init(RHICmdList,LightingCubeTexture,128);
+}
+void URemotePlayReflectionCaptureComponent::Release_RenderThread(FRHICommandListImmediate& RHICmdList)
+{
+	Release(ReflectionCubeTexture);
+	Release(DiffuseCubeTexture);
+	Release(LightingCubeTexture);
 }
 
 
