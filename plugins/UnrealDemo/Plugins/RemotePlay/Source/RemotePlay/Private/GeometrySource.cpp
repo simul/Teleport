@@ -75,10 +75,18 @@ GeometrySource::~GeometrySource()
 
 void GeometrySource::Initialize(class ARemotePlayMonitor *monitor)
 {
+	Monitor = monitor;
+
+	if (Monitor)
+	{
+		if (Monitor->ResetCache)
+		{
+			clearData();
+		}
+	}
 	//0 == No item. First generated UID will be 1.
 	rootNodeUid = CreateNode(FTransform::Identity, 0, avs::NodeDataType::Scene,std::vector<avs::uid>());
 
-	Monitor = monitor;
 }
 
 avs::AttributeSemantic IndexToSemantic(int index)
@@ -144,12 +152,15 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 	avs::uid normals_uid = avs::GenerateUid();
 	avs::uid tangents_uid = avs::GenerateUid();
 	avs::uid texcoords_uid = avs::GenerateUid();
+	std::vector<FVector2D>& uvData = processedUVs[texcoords_uid];
 	avs::uid indices_uid = avs::GenerateUid();
 	avs::uid positions_view_uid = avs::GenerateUid();
 	avs::uid normals_view_uid = avs::GenerateUid();
 	avs::uid tangents_view_uid = avs::GenerateUid();
-	avs::uid texcoords_view_uid = avs::GenerateUid();
+	avs::uid texcoords_view_uid[8];
 	size_t attributeCount = 2 + (vb.GetTangentData() ? 1 : 0) + (vb.GetTexCoordData() ? vb.GetNumTexCoords() : 0);
+
+	uvData.reserve(vb.GetNumVertices()*vb.GetNumTexCoords());
 
 	// First create the Buffers:
 	// Position:
@@ -185,16 +196,20 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 		AddBufferView(m, tangents_uid, tangents_view_uid, 0, pb.GetNumVertices(), tangent_stride);
 	}
 	// TexCoords:
+	size_t texcoords_stride = sizeof(FVector2D);
 	for (size_t j = 0; j < vb.GetNumTexCoords(); j++)
 	{
 		//bool IsFP32 = vb.GetUseFullPrecisionUVs(); //Not need vb.GetVertexUV() returns FP32 regardless. 
-		std::vector<FVector2D>& uvData = processedUVs[texcoords_uid];
-		uvData.reserve(vb.GetNumVertices());
+
 		for (uint32_t k = 0; k < vb.GetNumVertices(); k++)
 			uvData.push_back(vb.GetVertexUV(k, j));
-		size_t texcoords_stride = sizeof(FVector2D);
-		AddBuffer(m, texcoords_uid, vb.GetNumVertices(), texcoords_stride, uvData.data());
-		AddBufferView(m, texcoords_uid, texcoords_view_uid, 0, pb.GetNumVertices(), texcoords_stride);
+	}
+	AddBuffer(m, texcoords_uid, vb.GetNumVertices()*vb.GetNumTexCoords(), texcoords_stride, uvData.data());
+	for (size_t j = 0; j < vb.GetNumTexCoords(); j++)
+	{
+		//bool IsFP32 = vb.GetUseFullPrecisionUVs(); //Not need vb.GetVertexUV() returns FP32 regardless. 
+		texcoords_view_uid[j] = avs::GenerateUid();
+		AddBufferView(m, texcoords_uid, texcoords_view_uid[j], j*pb.GetNumVertices(), pb.GetNumVertices(), texcoords_stride);
 	}
 	FRawStaticIndexBuffer &ib = lod.IndexBuffer;
 	FIndexArrayView arr = ib.GetArrayView();
@@ -262,11 +277,12 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 			attr.accessor = avs::GenerateUid();
 			attr.semantic = j == 0 ? avs::AttributeSemantic::TEXCOORD_0 : avs::AttributeSemantic::TEXCOORD_1;
 			avs::Accessor &a = accessors[attr.accessor];
+			// Offset into the global texcoord views
 			a.byteOffset = 0;
 			a.type = avs::Accessor::DataType::VEC2;
 			a.componentType = avs::Accessor::ComponentType::FLOAT;
 			a.count = vb.GetNumVertices();// same as pb???
-			a.bufferView = texcoords_view_uid;
+			a.bufferView = texcoords_view_uid[j];
 		}
 		pa.indices_accessor = avs::GenerateUid();
 
@@ -290,11 +306,14 @@ void GeometrySource::clearData()
 	accessors.clear();
 	bufferViews.clear();
 	geometryBuffers.clear();
+	scaledPositionBuffers.clear();
+	processedUVs.clear();
 
 	nodes.clear();
 
 	decomposedTextures.clear();
 	decomposedMaterials.clear();
+	decomposedNodes.clear();
 
 	textures.clear();
 	materials.clear();

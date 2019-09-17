@@ -91,9 +91,10 @@ void DecomposeDepthCS(uint3 ThreadID : SV_DispatchThreadID)
 	uint InputW, InputH, InputD;
 	RWInputCubeAsArray.GetDimensions(InputW, InputH, InputD);
 	int3 pos = int3(ThreadID);
+	pos.xy *= 2;
 	int2 FaceOffsets[] = { {0,0},{1,0},{2,0},{0,1},{1,1},{2,1} };
 	float4 SceneColor = RWInputCubeAsArray[pos];
-	float DepthValue = SceneColor.a / 100.0 / 50.0;
+	float DepthValue =  SceneColor.a / 100.0 / 50.0;
 	float4 d4 = float4(DepthValue, DepthValue, DepthValue, DepthValue);
 
 	RWOutputColorTexture[int2(ThreadID.x, ThreadID.y) + Offset + InputW * FaceOffsets[pos.z]/2] = d4;

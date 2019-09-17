@@ -51,6 +51,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
 	uint32 Checksums : 1;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
+	uint32 ResetCache : 1;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Compression)
 	bool UseCompressedTextures;
 	

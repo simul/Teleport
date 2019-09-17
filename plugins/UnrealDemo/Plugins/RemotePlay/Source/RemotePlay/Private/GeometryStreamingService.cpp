@@ -124,14 +124,15 @@ void FGeometryStreamingService::Tick()
 
 	// For this client's POSITION and OTHER PROPERTIES,
 	// Use the Geometry Source to determine which Node uid's are relevant.
-	//geometrySource->
+	
 	if(avsPipeline)
 		avsPipeline->process();
 }
 
 void FGeometryStreamingService::Reset()
 {
-	geometrySource->clearData();
+	sentResources.clear();
+	streamedActors.clear();
 }
 
 avs::uid FGeometryStreamingService::AddActor(AActor *newActor)

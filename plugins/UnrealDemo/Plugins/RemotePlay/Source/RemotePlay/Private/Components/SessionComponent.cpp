@@ -235,6 +235,8 @@ void URemotePlaySessionComponent::StartSession(int32 ListenPort, int32 Discovery
 {
 	if (!PlayerController.IsValid() || !PlayerController->IsLocalController())
 		return;
+	if(Monitor->ResetCache)
+		GeometryStreamingService.Reset();
 	ENetAddress ListenAddress;
 	ListenAddress.host = ENET_HOST_ANY;
 	//enet_address_set_host(&ListenAddress, "192.168.3.6");
@@ -259,7 +261,6 @@ void URemotePlaySessionComponent::StopSession()
 {
 	ReleasePlayerPawn();
 	DiscoveryService.Shutdown();
-	//GeometryStreamingService.Reset();
 
 	if (ClientPeer)
 	{

@@ -28,6 +28,7 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 
 	DebugStream = 0;
 	Checksums = false;
+	ResetCache = false;
 
 	UseCompressedTextures = true;
 	QualityLevel = 1;
