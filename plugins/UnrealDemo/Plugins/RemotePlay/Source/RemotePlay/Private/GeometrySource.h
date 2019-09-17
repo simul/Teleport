@@ -68,7 +68,7 @@ protected:
 
 	std::unordered_map<UTexture*, avs::uid> decomposedTextures; //Textures we have already stored in the GeometrySource; the pointer points to the uid of the stored texture information.
 	std::unordered_map<UMaterialInterface*, avs::uid> decomposedMaterials; //Materials we have already stored in the GeometrySource; the pointer points to the uid of the stored material information.
-	std::unordered_map<int32, avs::uid> decomposedNodes; //Nodes we have already stored in the GeometrySource; uses GetUniqueID() on the MeshComponent that represents the node.
+	std::unordered_map<std::string, avs::uid> decomposedNodes; //Nodes we have already stored in the GeometrySource; <Level Unique Node Name, Node Identifier>.
 
 	std::map<avs::uid, avs::Texture> textures;
 	std::map<avs::uid, avs::Material> materials;

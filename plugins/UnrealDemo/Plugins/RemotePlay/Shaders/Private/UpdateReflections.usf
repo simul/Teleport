@@ -7,62 +7,65 @@ struct DirectionalLight
 {
 	float4 Color;
 	float3 Direction;
-	float Intensity;
 };
 
 RWTexture2DArray<float4> RWOutputTexture;
 TextureCube InputCubeMap;
 SamplerState DefaultSampler;
-uint CubeFace;
 uint DirLightCount;
 StructuredBuffer<DirectionalLight> DirLights;
 
 RWTexture2D<float4> RWStreamOutputTexture;
 
+int2 Offset;
+uint Divisor;
+
 [numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
-void NoSourceCS(uint2 ThreadID : SV_DispatchThreadID)
+void NoSourceCS(uint3 ThreadID : SV_DispatchThreadID)
 {
 	uint OutputW, OutputH, OutputD;
 	RWOutputTexture.GetDimensions(OutputW, OutputH, OutputD);
-	float3 view = CubeFaceIndexToView(uint3(ThreadID.xy,CubeFace), uint2(OutputW,OutputH));
+	float3 view = CubeFaceIndexToView(ThreadID, uint2(OutputW,OutputH));
 	float4 SceneColour = InputCubeMap.SampleLevel(DefaultSampler, view, 0);
 	SceneColour = float4(saturate(view), 1.0) + 0.0001*SceneColour;
-	RWOutputTexture[int3(ThreadID.x, ThreadID.y,CubeFace)] = SceneColour;
+	RWOutputTexture[ThreadID] = SceneColour;
 }
 
 [numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
-void FromCubemapCS(uint2 ThreadID : SV_DispatchThreadID)
+void FromCubemapCS(uint3 ThreadID : SV_DispatchThreadID)
 {
 	uint OutputW, OutputH, OutputD;
 	RWOutputTexture.GetDimensions(OutputW, OutputH, OutputD);
-	float3 view = CubeFaceIndexToView(uint3(ThreadID.xy, CubeFace), uint2(OutputW, OutputH));
+	float3 view = CubeFaceIndexToView(ThreadID, uint2(OutputW, OutputH));
 	float4 Radiance = float4(0, 0, 0, 0);
 	for (uint i = 0; i < DirLightCount; ++i)
 	{
 		float factor = dot(DirLights[i].Direction, view); 
 		Radiance += (DirLights[i].Color * factor);
 	}
-	RWOutputTexture[int3(ThreadID.x, ThreadID.y, CubeFace)] = saturate(Radiance);
+	RWOutputTexture[ThreadID] = saturate(Radiance);
 }
 
 [numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
-void FromMipCS(uint2 ThreadID : SV_DispatchThreadID)
+void FromMipCS(uint3 ThreadID : SV_DispatchThreadID)
 {
 	uint OutputW, OutputH, OutputD;
 	RWOutputTexture.GetDimensions(OutputW, OutputH, OutputD);
-	float3 view = CubeFaceIndexToView(uint3(ThreadID.xy, CubeFace), uint2(OutputW, OutputH));
+	float3 view = CubeFaceIndexToView(ThreadID, uint2(OutputW, OutputH));
 	float4 SceneColour = InputCubeMap.SampleLevel(DefaultSampler, view, 0);
 	SceneColour = float4(saturate(view), 1.0) + 0.0001*SceneColour;
-	RWOutputTexture[int3(ThreadID.x, ThreadID.y, CubeFace)] = SceneColour;
+	RWOutputTexture[ThreadID] = SceneColour;
 }
 
 [numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
 void WriteToStreamCS(uint3 ThreadID : SV_DispatchThreadID)
 {
-	uint OutputW, OutputH;
-	RWStreamOutputTexture.GetDimensions(OutputW, OutputH);
-	float4 SceneColour = RWOutputTexture[int3(ThreadID.x, ThreadID.y,ThreadID.z)];
-	RWStreamOutputTexture[int2(ThreadID.x, ThreadID.y)] = SceneColour;
+	uint InputW, InputH, InputD;
+	RWOutputTexture.GetDimensions(InputW, InputH, InputD);
+	int3 pos = int3(ThreadID);
+	int2 FaceOffsets[] = { {0,0},{1,0},{2,0},{0,1},{1,1},{2,1} };
+	float4 radiance = RWOutputTexture[pos];
+	RWStreamOutputTexture[int2(ThreadID.x , ThreadID.y ) + Offset + InputW * FaceOffsets[pos.z]/Divisor] = radiance;
 }
 
 uint MipIndex;
