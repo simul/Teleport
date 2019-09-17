@@ -469,7 +469,6 @@ void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediat
 {
 	check(Pipeline.IsValid());
 	// The transform of the capture component needs to be sent with the image
-	avs::Transform CamTransform;
 	FVector t = CameraTransform.GetTranslation()*0.01f;
 	FQuat r = CameraTransform.GetRotation();
 	const FVector s = CameraTransform.GetScale3D();
