@@ -412,7 +412,8 @@ void URemotePlayReflectionCaptureComponent::WriteReflections_RenderThread(FRHICo
 
 	FShader *Shader = ComputeShader.operator*();
 	int W = TargetSurfaceTexture->Texture->GetSizeX() / 3;
-	uint32 xOffset = (W / 2) * 3 + 255;
+	// Add EffectiveTopMipSize because we put to the right of specular cubemap
+	uint32 xOffset = (W / 2) * 3 + EffectiveTopMipSize;
 	// 2 * W for the colour cube two face height 
 	uint32 yOffset = W * 2;
 	uint32_t Divisor;
