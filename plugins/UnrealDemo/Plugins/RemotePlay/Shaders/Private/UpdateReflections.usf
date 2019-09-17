@@ -65,7 +65,7 @@ void WriteToStreamCS(uint3 ThreadID : SV_DispatchThreadID)
 	int3 pos = int3(ThreadID);
 	int2 FaceOffsets[] = { {0,0},{1,0},{2,0},{0,1},{1,1},{2,1} };
 	float4 radiance = RWOutputTexture[pos];
-	RWStreamOutputTexture[int2(ThreadID.x , ThreadID.y ) + Offset + InputW * FaceOffsets[pos.z]/Divisor] = radiance;
+	RWStreamOutputTexture[int2(ThreadID.x , ThreadID.y ) + Offset + InputW * FaceOffsets[pos.z]] = radiance;
 }
 
 uint MipIndex;
