@@ -58,6 +58,8 @@ private:
 		FVector Direction;
 	};
 
-	FCubeTexture ReflectionCubeTexture;
+	FCubeTexture SpecularCubeTexture;
+	FCubeTexture DiffuseCubeTexture;
+	FCubeTexture LightingCubeTexture;
 };
 
