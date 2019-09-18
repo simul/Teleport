@@ -33,6 +33,7 @@ protected:
 		memcpy(buffer.data() + pos, &data, sizeof(T));
 	}
 private:
+	void putPayload(avs::GeometryPayloadType t);
 	static unsigned char GALU_code[];
 
 	//Following functions push the data from the source onto the buffer, depending on what the requester needs.

@@ -15,10 +15,9 @@
 
 #pragma optimize("",off)
 
-//Returns a standard string, because you can't use an FString for a hash.
-std::string GetLevelUniqueActorName(AActor* actor)
+FName GetLevelUniqueActorName(AActor* actor)
 {
-	return TCHAR_TO_ANSI(*FPaths::Combine(actor->GetOutermost()->GetName(), actor->GetName()));
+	return *FPaths::Combine(actor->GetOutermost()->GetName(), actor->GetName());
 }
 
 FGeometryStreamingService::FGeometryStreamingService()
@@ -145,7 +144,7 @@ avs::uid FGeometryStreamingService::AddActor(AActor *newActor)
 
 avs::uid FGeometryStreamingService::RemoveActor(AActor *oldActor)
 {
-	std::string levelUniqueName = GetLevelUniqueActorName(oldActor);
+	FName levelUniqueName = GetLevelUniqueActorName(oldActor);
 
 	avs::uid actor_uid = streamedActors[levelUniqueName];
 	streamedActors.erase(levelUniqueName);

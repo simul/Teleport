@@ -72,7 +72,7 @@ private:
 
 	bool bStreamingContinuously = false;
 	std::unordered_map<avs::uid, bool> sentResources; //Tracks the resources sent to the user; <resource identifier, doesClientHave>.
-	std::unordered_map<std::string, avs::uid> streamedActors; //Actors that the client needs to draw, and should be sent to them; <Level Unique Name, Node UID of root mesh>.
+	std::map<FName, avs::uid> streamedActors; //Actors that the client needs to draw, and should be sent to them; <Level Unique Name, Node UID of root mesh>.
 
 	//Recursive function to retrieve the resource UIDs from a node, and its child nodes.
 	void GetNodeResourceUIDs(avs::uid nodeUID, std::vector<avs::uid>& outMeshIds, std::vector<avs::uid>& outTextureIds, std::vector<avs::uid>& outMaterialIds, std::vector<avs::uid>& outNodeIds);

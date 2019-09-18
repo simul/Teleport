@@ -366,8 +366,8 @@ avs::uid GeometrySource::AddStreamableMeshComponent(UMeshComponent *MeshComponen
 avs::uid GeometrySource::AddNode(avs::uid parent_uid, UMeshComponent *component)
 {
 	avs::uid node_uid;
-	std::string levelUniqueNodeName = TCHAR_TO_ANSI(*FPaths::Combine(component->GetOutermost()->GetName(), component->GetOuter()->GetName(), component->GetName()));
-	std::unordered_map<std::string, avs::uid>::iterator nodeIt = decomposedNodes.find(levelUniqueNodeName);
+	FName levelUniqueNodeName = *FPaths::Combine(component->GetOutermost()->GetName(), component->GetOuter()->GetName(), component->GetName());
+	std::map<FName, avs::uid>::iterator nodeIt = decomposedNodes.find(levelUniqueNodeName);
 
 	if(nodeIt != decomposedNodes.end())
 	{

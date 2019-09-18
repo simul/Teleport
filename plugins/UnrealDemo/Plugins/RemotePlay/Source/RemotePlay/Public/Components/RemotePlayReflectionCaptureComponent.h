@@ -52,6 +52,11 @@ private:
 	void UpdateReflections_RenderThread(FRHICommandListImmediate& RHICmdList, FScene *Scene, UTextureRenderTargetCube *InSourceTexture, ERHIFeatureLevel::Type FeatureLevel);
 	void WriteReflections_RenderThread(FRHICommandListImmediate& RHICmdList, FScene *Scene, struct FSurfaceTexture *, ERHIFeatureLevel::Type FeatureLevel);
 
+	void Decompose_RenderThread(FRHICommandListImmediate& RHICmdList
+		, FCubeTexture &CubeTexture
+		, FSurfaceTexture *TargetSurfaceTexture, FShader *Shader, FIntPoint TargetOffset);
+	void Init(FRHICommandListImmediate& RHICmdList,FCubeTexture &t,int size);
+	void Release(FCubeTexture &t);
 	struct FShaderDirectionalLight
 	{
 		FLinearColor Color;
