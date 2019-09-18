@@ -32,7 +32,27 @@ void NoSourceCS(uint3 ThreadID : SV_DispatchThreadID)
 }
 
 [numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
-void FromCubemapCS(uint3 ThreadID : SV_DispatchThreadID)
+void UpdateSpecularCS(uint3 ThreadID : SV_DispatchThreadID)
+{
+	uint OutputW, OutputH, OutputD;
+	RWOutputTexture.GetDimensions(OutputW, OutputH, OutputD);
+	float3 view = CubeFaceIndexToView(ThreadID, uint2(OutputW, OutputH));
+	float4 SceneColour = InputCubeMap.SampleLevel(DefaultSampler, view, 0);
+	RWOutputTexture[int3(ThreadID)] = SceneColour;
+}
+
+[numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
+void UpdateDiffuseCS(uint3 ThreadID : SV_DispatchThreadID)
+{
+	uint OutputW, OutputH, OutputD;
+	RWOutputTexture.GetDimensions(OutputW, OutputH, OutputD);
+	float3 view = CubeFaceIndexToView(ThreadID, uint2(OutputW, OutputH));
+	float4 SceneColour = InputCubeMap.SampleLevel(DefaultSampler, view, 0);
+	RWOutputTexture[int3(ThreadID)] = SceneColour;
+}
+
+[numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
+void UpdateLightingCS(uint3 ThreadID : SV_DispatchThreadID)
 {
 	uint OutputW, OutputH, OutputD;
 	RWOutputTexture.GetDimensions(OutputW, OutputH, OutputD);
@@ -43,7 +63,7 @@ void FromCubemapCS(uint3 ThreadID : SV_DispatchThreadID)
 		float factor = dot(DirLights[i].Direction, view); 
 		Radiance += (DirLights[i].Color * factor);
 	}
-	RWOutputTexture[ThreadID] = saturate(Radiance);
+	RWOutputTexture[int3(ThreadID)] = saturate(Radiance);
 }
 
 [numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]

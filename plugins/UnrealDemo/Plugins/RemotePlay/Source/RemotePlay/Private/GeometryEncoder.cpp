@@ -94,12 +94,12 @@ avs::Result GeometryEncoder::unmapOutputBuffer()
 
 avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req, std::vector<avs::uid> missingUIDs)
 {
-	for(size_t i = 0; i < missingUIDs.size(); i++)
+	for(size_t h = 0; h < missingUIDs.size(); h++)
 	{
 		std::vector<avs::uid> accessors;
 		putPayload(avs::GeometryPayloadType::Mesh);
 		put((size_t)1);
-		avs::uid uid = missingUIDs[i];
+		avs::uid uid = missingUIDs[h];
 		put(uid);
 		// Requester doesn't have this mesh, and needs it, so we will encode the mesh for transport.
 		size_t prims = src->getMeshPrimitiveArrayCount(uid);

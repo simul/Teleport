@@ -22,7 +22,9 @@
 enum class EUpdateReflectionsVariant
 {
 	NoSource,
-	FromOriginal,
+	UpdateSpecular,
+	UpdateDiffuse,
+	UpdateLighting,
 	FromPreviousMip,
 	WriteToStream
 };
@@ -73,8 +75,11 @@ public:
 			SetTextureParameter(RHICmdList, ShaderRHI, InputCubeMap, DefaultSampler, TStaticSamplerState<SF_Bilinear>::GetRHI(), InputCubeMapTextureRef);
 		RWOutputTexture.SetTexture(RHICmdList, ShaderRHI, OutputColorTextureRef, OutputColorTextureUAVRef);
 
+		if (DirLightsShaderResourceViewRef)
+		{
 		SetShaderValue(RHICmdList, ShaderRHI, DirLightCount, InDirLightCount);
 		SetSRVParameter(RHICmdList, ShaderRHI, DirLightStructBuffer, DirLightsShaderResourceViewRef);
+	}
 	}
 
 	void SetStreamParameters(
@@ -83,14 +88,12 @@ public:
 		FUnorderedAccessViewRHIRef InputColorTextureUAVRef,
 		FTexture2DRHIRef OutputColorTextureRef,
 		FUnorderedAccessViewRHIRef OutputColorTextureUAVRef,
-		const FIntPoint& InOffset,
-		uint32_t InDivisor = 1)
+		const FIntPoint& InOffset)
 	{
 		FComputeShaderRHIParamRef ShaderRHI = GetComputeShader();
 		RWOutputTexture.SetTexture(RHICmdList, ShaderRHI, InputColorTextureRef, InputColorTextureUAVRef);
 		RWStreamOutputTexture.SetTexture(RHICmdList, ShaderRHI, OutputColorTextureRef, OutputColorTextureUAVRef);
 		SetShaderValue(RHICmdList, ShaderRHI, Offset, InOffset);
-		SetShaderValue(RHICmdList, ShaderRHI, Divisor, InDivisor);
 	}
 
 	void UnsetParameters(FRHICommandList& RHICmdList)
@@ -170,7 +173,9 @@ public:
 };
 */
 IMPLEMENT_SHADER_TYPE(, FUpdateReflectionsCS<EUpdateReflectionsVariant::NoSource>, TEXT("/Plugin/RemotePlay/Private/UpdateReflections.usf"), TEXT("NoSourceCS"), SF_Compute)
-IMPLEMENT_SHADER_TYPE(, FUpdateReflectionsCS<EUpdateReflectionsVariant::FromOriginal>, TEXT("/Plugin/RemotePlay/Private/UpdateReflections.usf"), TEXT("FromCubemapCS"), SF_Compute)
+IMPLEMENT_SHADER_TYPE(, FUpdateReflectionsCS<EUpdateReflectionsVariant::UpdateSpecular>, TEXT("/Plugin/RemotePlay/Private/UpdateReflections.usf"), TEXT("UpdateSpecularCS"), SF_Compute)
+IMPLEMENT_SHADER_TYPE(, FUpdateReflectionsCS<EUpdateReflectionsVariant::UpdateDiffuse>, TEXT("/Plugin/RemotePlay/Private/UpdateReflections.usf"), TEXT("UpdateDiffuseCS"), SF_Compute)
+IMPLEMENT_SHADER_TYPE(, FUpdateReflectionsCS<EUpdateReflectionsVariant::UpdateLighting>, TEXT("/Plugin/RemotePlay/Private/UpdateReflections.usf"), TEXT("UpdateLightingCS"), SF_Compute)
 IMPLEMENT_SHADER_TYPE(, FUpdateReflectionsCS<EUpdateReflectionsVariant::FromPreviousMip>, TEXT("/Plugin/RemotePlay/Private/UpdateReflections.usf"), TEXT("FromMipCS"), SF_Compute)
 IMPLEMENT_SHADER_TYPE(, FUpdateReflectionsCS<EUpdateReflectionsVariant::WriteToStream>, TEXT("/Plugin/RemotePlay/Private/UpdateReflections.usf"), TEXT("WriteToStreamCS"), SF_Compute)
 
@@ -249,26 +254,34 @@ void URemotePlayReflectionCaptureComponent::Init(FRHICommandListImmediate& RHICm
 
 void URemotePlayReflectionCaptureComponent::Release(FCubeTexture &t)
 {
-	if (ReflectionCubeTexture.TextureCubeRHIRef)
-		ReflectionCubeTexture.TextureCubeRHIRef->Release();
+	if(SpecularCubeTexture.TextureCubeRHIRef)
+		SpecularCubeTexture.TextureCubeRHIRef->Release();
+	if (DiffuseCubeTexture.TextureCubeRHIRef)
+		DiffuseCubeTexture.TextureCubeRHIRef->Release();
+	if (LightingCubeTexture.TextureCubeRHIRef)
+		LightingCubeTexture.TextureCubeRHIRef->Release();
 	const int32 NumMips = FMath::CeilLogTwo(128) + 1;
 	for (int i = 0; i < NumMips; i++)
 	{
-		if (ReflectionCubeTexture.UnorderedAccessViewRHIRefs[i])
-			ReflectionCubeTexture.UnorderedAccessViewRHIRefs[i]->Release();
+		if (SpecularCubeTexture.UnorderedAccessViewRHIRefs[i])
+			SpecularCubeTexture.UnorderedAccessViewRHIRefs[i]->Release();
+		if (DiffuseCubeTexture.UnorderedAccessViewRHIRefs[i])
+			DiffuseCubeTexture.UnorderedAccessViewRHIRefs[i]->Release();
+		if (LightingCubeTexture.UnorderedAccessViewRHIRefs[i])
+			LightingCubeTexture.UnorderedAccessViewRHIRefs[i]->Release();
 	}
 }
 
 
 void URemotePlayReflectionCaptureComponent::Initialize_RenderThread(FRHICommandListImmediate& RHICmdList)
 {
-	Init(RHICmdList,ReflectionCubeTexture,128);
+	Init(RHICmdList, SpecularCubeTexture,128);
 	Init(RHICmdList,DiffuseCubeTexture,128);
 	Init(RHICmdList,LightingCubeTexture,128);
 }
 void URemotePlayReflectionCaptureComponent::Release_RenderThread(FRHICommandListImmediate& RHICmdList)
 {
-	Release(ReflectionCubeTexture);
+	Release(SpecularCubeTexture);
 	Release(DiffuseCubeTexture);
 	Release(LightingCubeTexture);
 }
@@ -279,18 +292,17 @@ void URemotePlayReflectionCaptureComponent::UpdateReflections_RenderThread(
 	UTextureRenderTargetCube *InSourceTexture,
 	ERHIFeatureLevel::Type FeatureLevel)
 {
-	if (!ReflectionCubeTexture.TextureCubeRHIRef)
+	if (!SpecularCubeTexture.TextureCubeRHIRef || !DiffuseCubeTexture.TextureCubeRHIRef || !LightingCubeTexture.TextureCubeRHIRef)
 		Initialize_RenderThread(RHICmdList);
 	FTextureRenderTargetCubeResource* SourceCubeResource = nullptr;
 	if(InSourceTexture)
 		SourceCubeResource =static_cast<FTextureRenderTargetCubeResource*>(InSourceTexture->GetRenderTargetResource());
-		//SourceCubeResource->G
+
 	const int32 EffectiveTopMipSize = 128;
 
 	const int32 NumMips =  FMath::CeilLogTwo(EffectiveTopMipSize) + 1;
 
 	const int32 CaptureIndex = FindOrAllocateCubemapIndex(Scene, this);
-//	FTextureRHIParamRef CubemapArray;
 	FTextureRHIRef TargetResource;
 	if (OverrideTexture)
 	{
@@ -329,83 +341,151 @@ void URemotePlayReflectionCaptureComponent::UpdateReflections_RenderThread(
 	GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
 	GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
 
-	TResourceArray<FShaderDirectionalLight> ShaderDirLights;
-
-	for (auto& LightInfo : Scene->Lights)
+	// Specular Reflections
 	{
-		if (LightInfo.LightType == LightType_Directional && LightInfo.LightSceneInfo->bVisible)
+		typedef FUpdateReflectionsCS<EUpdateReflectionsVariant::UpdateSpecular> ShaderType;
+		FGlobalShader *Shader = nullptr;
+		TShaderMapRef<FUpdateReflectionsCS<EUpdateReflectionsVariant::UpdateSpecular>> ComputeShader(ShaderMap);
+		Shader = ComputeShader.operator*();
+		for (int32 MipIndex = 0; MipIndex < NumMips; MipIndex++)
 		{
-			// We could update this later to only send dynamic lights if we want
-			FShaderDirectionalLight ShaderDirLight;
-			// The color includes the intensity. Divide by max intensity of 20
-			ShaderDirLight.Color = LightInfo.Color * 0.05f; 
-			ShaderDirLight.Direction = LightInfo.LightSceneInfo->Proxy->GetDirection();
-			ShaderDirLights.Emplace(MoveTemp(ShaderDirLight));
+			const int32 MipSize = 1 << (NumMips - MipIndex - 1);
+
+			//RHICmdList.CopyToResolveTarget(InSourceTexture->Resource->TextureRHI, DestCube.ShaderResourceTexture, FResolveParams(FResolveRect(), (ECubeFace)CubeFace, MipIndex, 0, CaptureIndex));
+
+			//RHICmdList.TransitionResources(EResourceTransitionAccess::EWritable, SpecularCubeTexture.TextureCubeRHIRef.GetReference(), 1);
+			ComputeShader->SetParameters(RHICmdList, SourceCubeResource ? SourceCubeResource->GetTextureRHI() : nullptr,
+				SpecularCubeTexture.TextureCubeRHIRef,
+				SpecularCubeTexture.UnorderedAccessViewRHIRefs[MipIndex],
+				0,
+				nullptr);
+			SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(Shader));
+			uint32 NumThreadGroupsXY = MipSize > ShaderType::kThreadGroupSize ? MipSize / ShaderType::kThreadGroupSize : 1;
+			DispatchComputeShader(RHICmdList, Shader, NumThreadGroupsXY, NumThreadGroupsXY, CubeFace_MAX);
+			ComputeShader->UnsetParameters(RHICmdList);
 		}
 	}
 
-	FRHIResourceCreateInfo CreateInfo;
-	CreateInfo.ResourceArray = &ShaderDirLights;
-
-	FStructuredBufferRHIRef DirLightSB = RHICreateStructuredBuffer(
-		sizeof(FShaderDirectionalLight),
-		ShaderDirLights.Num() * sizeof(FShaderDirectionalLight),
-		BUF_ShaderResource,
-		CreateInfo
-	);
-
-	FShaderResourceViewRHIRef DirLightSRV = RHICreateShaderResourceView(DirLightSB);
-
-	// Downsample all the mips, each one reads from the mip above it
-	typedef FUpdateReflectionsCS<EUpdateReflectionsVariant::FromOriginal> ShaderType;
-
-	FGlobalShader *Shader = nullptr;
-	TShaderMapRef<FUpdateReflectionsCS<EUpdateReflectionsVariant::FromOriginal>> ComputeShader(ShaderMap);
-	Shader = ComputeShader.operator*();
-	for (int32 MipIndex = 0; MipIndex < NumMips; MipIndex++)
+	// Diffuse Reflections
 	{
-		const int32 MipSize = 1 << (NumMips - MipIndex - 1);
-		
-		//RHICmdList.CopyToResolveTarget(InSourceTexture->Resource->TextureRHI, DestCube.ShaderResourceTexture, FResolveParams(FResolveRect(), (ECubeFace)CubeFace, MipIndex, 0, CaptureIndex));
-
-		//RHICmdList.TransitionResources(EResourceTransitionAccess::EWritable, ReflectionCubeTexture.TextureCubeRHIRef.GetReference(), 1);
-		ComputeShader->SetParameters(RHICmdList, SourceCubeResource ? SourceCubeResource->GetTextureRHI() : nullptr,
-			ReflectionCubeTexture.TextureCubeRHIRef,
-			ReflectionCubeTexture.UnorderedAccessViewRHIRefs[MipIndex],
-			ShaderDirLights.Num(),
-			DirLightSRV);
-		SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(Shader));
-		uint32 NumThreadGroupsXY = MipSize > ShaderType::kThreadGroupSize ? MipSize / ShaderType::kThreadGroupSize : 1;
-		DispatchComputeShader(RHICmdList, Shader, NumThreadGroupsXY, NumThreadGroupsXY, CubeFace_MAX);
-		ComputeShader->UnsetParameters(RHICmdList);
-		// Now copy this face of this cube into the cubemap array.
-		
-	}
-	if (TargetResource)
-	{
-		for (int32 MipIndex = 0; MipIndex < std::min(NumMips, (int32)TargetResource->GetNumMips()); MipIndex++)
+		typedef FUpdateReflectionsCS<EUpdateReflectionsVariant::UpdateDiffuse> ShaderType;
+		FGlobalShader *Shader = nullptr;
+		TShaderMapRef<FUpdateReflectionsCS<EUpdateReflectionsVariant::UpdateDiffuse>> ComputeShader(ShaderMap);
+		Shader = ComputeShader.operator*();
+		for (int32 MipIndex = 0; MipIndex < NumMips; MipIndex++)
 		{
-			for (int32 CubeFace = 0; CubeFace < CubeFace_MAX; CubeFace++)
+			const int32 MipSize = 1 << (NumMips - MipIndex - 1);
+			ComputeShader->SetParameters(RHICmdList, SourceCubeResource ? SourceCubeResource->GetTextureRHI() : nullptr,
+				DiffuseCubeTexture.TextureCubeRHIRef,
+				DiffuseCubeTexture.UnorderedAccessViewRHIRefs[MipIndex],
+				0,
+				nullptr);
+			SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(Shader));
+			uint32 NumThreadGroupsXY = MipSize > ShaderType::kThreadGroupSize ? MipSize / ShaderType::kThreadGroupSize : 1;
+			DispatchComputeShader(RHICmdList, Shader, NumThreadGroupsXY, NumThreadGroupsXY, CubeFace_MAX);
+			ComputeShader->UnsetParameters(RHICmdList);
+		}
+		if (TargetResource)
+		{
+			for (int32 MipIndex = 0; MipIndex < std::min(NumMips, (int32)TargetResource->GetNumMips()); MipIndex++)
 			{
-				FResolveParams ResolveParams;
-				ResolveParams.Rect = FResolveRect();
-				ResolveParams.SourceArrayIndex = 0;
-				ResolveParams.DestArrayIndex = CaptureIndex >= 0 ? CaptureIndex : 0;
-				ResolveParams.CubeFace = (ECubeFace)CubeFace;
-				ResolveParams.MipIndex = MipIndex;
-				RHICmdList.CopyToResolveTarget(ReflectionCubeTexture.TextureCubeRHIRef
-					, TargetResource, ResolveParams);
+				for (int32 CubeFace = 0; CubeFace < CubeFace_MAX; CubeFace++)
+				{
+					FResolveParams ResolveParams;
+					ResolveParams.Rect = FResolveRect();
+					ResolveParams.SourceArrayIndex = 0;
+					ResolveParams.DestArrayIndex = CaptureIndex >= 0 ? CaptureIndex : 0;
+					ResolveParams.CubeFace = (ECubeFace)CubeFace;
+					ResolveParams.MipIndex = MipIndex;
+					RHICmdList.CopyToResolveTarget(DiffuseCubeTexture.TextureCubeRHIRef
+						, TargetResource, ResolveParams);
+				}
 			}
 		}
 	}
-	//if(CubemapArray&&CubemapArray->IsValid())
-//		RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, &CubemapArray, 1);
 
-	//Release the resources
-	DirLightSRV->Release();
-	DirLightSB->Release();
+	// Lighting
+	{
+		TResourceArray<FShaderDirectionalLight> ShaderDirLights;
+
+		for (auto& LightInfo : Scene->Lights)
+		{
+			if (LightInfo.LightType == LightType_Directional && LightInfo.LightSceneInfo->bVisible)
+			{
+				// We could update this later to only send dynamic lights if we want
+				FShaderDirectionalLight ShaderDirLight;
+				// The color includes the intensity. Divide by max intensity of 20
+				ShaderDirLight.Color = LightInfo.Color * 0.05f; 
+				ShaderDirLight.Direction = LightInfo.LightSceneInfo->Proxy->GetDirection();
+				ShaderDirLights.Emplace(MoveTemp(ShaderDirLight));
+			}
+		}
+
+		FRHIResourceCreateInfo CreateInfo;
+		CreateInfo.ResourceArray = &ShaderDirLights;
+
+		FStructuredBufferRHIRef DirLightSB = RHICreateStructuredBuffer(
+			sizeof(FShaderDirectionalLight),
+			ShaderDirLights.Num() * sizeof(FShaderDirectionalLight),
+			BUF_ShaderResource,
+			CreateInfo
+		);
+
+		FShaderResourceViewRHIRef DirLightSRV = RHICreateShaderResourceView(DirLightSB);
+
+			typedef FUpdateReflectionsCS<EUpdateReflectionsVariant::UpdateLighting> ShaderType;
+		FGlobalShader *Shader = nullptr;
+			TShaderMapRef<FUpdateReflectionsCS<EUpdateReflectionsVariant::UpdateLighting>> ComputeShader(ShaderMap);
+		Shader = ComputeShader.operator*();
+		for (int32 MipIndex = 0; MipIndex < NumMips; MipIndex++)
+		{
+			const int32 MipSize = 1 << (NumMips - MipIndex - 1);
+		
+			ComputeShader->SetParameters(RHICmdList, SourceCubeResource ? SourceCubeResource->GetTextureRHI() : nullptr,
+					LightingCubeTexture.TextureCubeRHIRef,
+					LightingCubeTexture.UnorderedAccessViewRHIRefs[MipIndex],
+				ShaderDirLights.Num(),
+				DirLightSRV);
+			SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(Shader));
+			uint32 NumThreadGroupsXY = MipSize > ShaderType::kThreadGroupSize ? MipSize / ShaderType::kThreadGroupSize : 1;
+			DispatchComputeShader(RHICmdList, Shader, NumThreadGroupsXY, NumThreadGroupsXY, CubeFace_MAX);
+			ComputeShader->UnsetParameters(RHICmdList);
+		}
+
+		//Release the resources
+		DirLightSRV->Release();
+		DirLightSB->Release();
+	}
 }
 
+// write the reflections to the UAV of the output video stream.
+void URemotePlayReflectionCaptureComponent::Decompose_RenderThread(FRHICommandListImmediate& RHICmdList
+	, FCubeTexture &CubeTexture
+	, FSurfaceTexture *TargetSurfaceTexture,  FShader *Shader, FIntPoint TargetOffset)
+{
+	auto* ComputeShader=(FUpdateReflectionsCS<EUpdateReflectionsVariant::WriteToStream> *)Shader;
+	const int32 EffectiveTopMipSize = CubeTexture.TextureCubeRHIRef->GetSizeXYZ().X;
+	const int32 NumMips = FMath::CeilLogTwo(EffectiveTopMipSize) + 1;
+	SCOPED_DRAW_EVENT(RHICmdList, WriteReflections);
+
+	// 2 * W for the colour cube two face height 
+	for (int32 MipIndex = 0; MipIndex < NumMips; MipIndex++)
+	{
+		const int32 MipSize = 1 << (NumMips - MipIndex - 1);
+
+		ComputeShader->SetStreamParameters(RHICmdList,
+			CubeTexture.TextureCubeRHIRef,
+			CubeTexture.UnorderedAccessViewRHIRefs[MipIndex],
+			TargetSurfaceTexture->Texture,
+			TargetSurfaceTexture->UAV,
+			TargetOffset);
+		SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(Shader));
+		uint32 NumThreadGroupsXY = MipSize > ComputeShader->kThreadGroupSize ? MipSize / ComputeShader->kThreadGroupSize : 1;
+		DispatchComputeShader(RHICmdList, Shader, NumThreadGroupsXY, NumThreadGroupsXY, CubeFace_MAX);
+		ComputeShader->UnsetParameters(RHICmdList);
+		TargetOffset.Y += (MipSize * 2);
+	}
+}
 // write the reflections to the UAV of the output video stream.
 void URemotePlayReflectionCaptureComponent::WriteReflections_RenderThread(FRHICommandListImmediate& RHICmdList, FScene *Scene, FSurfaceTexture *TargetSurfaceTexture, ERHIFeatureLevel::Type FeatureLevel)
 {
@@ -421,30 +501,15 @@ void URemotePlayReflectionCaptureComponent::WriteReflections_RenderThread(FRHICo
 	SCOPED_DRAW_EVENT(RHICmdList, WriteReflections);
 
 	FShader *Shader = ComputeShader.operator*();
-	int W = TargetSurfaceTexture->Texture->GetSizeX() / 3;
+	int W = TargetSurfaceTexture->Texture->GetSizeX()/3;
 	// Add EffectiveTopMipSize because we put to the right of specular cubemap
-	uint32 xOffset = (W / 2) * 3 + EffectiveTopMipSize;
-	// 2 * W for the colour cube two face height 
+	uint32 xOffset = (W / 2) * 3;
 	uint32 yOffset = W * 2;
-	uint32_t Divisor;
-	for (int32 MipIndex = 0; MipIndex < NumMips; MipIndex++)
-	{
-		const int32 MipSize = 1 << (NumMips - MipIndex - 1);
-	
-		Divisor = W / MipSize;
-		ComputeShader->SetStreamParameters(RHICmdList,
-			ReflectionCubeTexture.TextureCubeRHIRef,
-			ReflectionCubeTexture.UnorderedAccessViewRHIRefs[MipIndex],
-			TargetSurfaceTexture->Texture,
-			TargetSurfaceTexture->UAV,
-			FIntPoint(xOffset, yOffset),
-			Divisor);
-		SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(Shader));
-		uint32 NumThreadGroupsXY = MipSize > ShaderType::kThreadGroupSize ? MipSize / ShaderType::kThreadGroupSize : 1;
-		DispatchComputeShader(RHICmdList, Shader, NumThreadGroupsXY, NumThreadGroupsXY, CubeFace_MAX);
-		ComputeShader->UnsetParameters(RHICmdList);
-		yOffset += (MipSize * 2);
-	}
+	Decompose_RenderThread(RHICmdList, SpecularCubeTexture, TargetSurfaceTexture, Shader, FIntPoint(xOffset, yOffset));
+	xOffset += EffectiveTopMipSize*3;
+	Decompose_RenderThread(RHICmdList, DiffuseCubeTexture, TargetSurfaceTexture, Shader, FIntPoint(xOffset, yOffset));
+	xOffset += EffectiveTopMipSize*3;
+	Decompose_RenderThread(RHICmdList, LightingCubeTexture, TargetSurfaceTexture, Shader, FIntPoint(xOffset, yOffset));
 }
 
 void URemotePlayReflectionCaptureComponent::Initialize()
