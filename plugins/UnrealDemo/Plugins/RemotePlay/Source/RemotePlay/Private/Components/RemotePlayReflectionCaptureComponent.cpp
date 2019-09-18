@@ -338,7 +338,7 @@ void URemotePlayReflectionCaptureComponent::UpdateReflections_RenderThread(
 			// We could update this later to only send dynamic lights if we want
 			FShaderDirectionalLight ShaderDirLight;
 			// The color includes the intensity. Divide by max intensity of 20
-			ShaderDirLight.Color = LightInfo.Color * 0.05f;
+			ShaderDirLight.Color = LightInfo.Color * 0.05f; 
 			ShaderDirLight.Direction = LightInfo.LightSceneInfo->Proxy->GetDirection();
 			ShaderDirLights.Emplace(MoveTemp(ShaderDirLight));
 		}
@@ -422,7 +422,8 @@ void URemotePlayReflectionCaptureComponent::WriteReflections_RenderThread(FRHICo
 
 	FShader *Shader = ComputeShader.operator*();
 	int W = TargetSurfaceTexture->Texture->GetSizeX() / 3;
-	uint32 xOffset = (W / 2) * 3;
+	// Add EffectiveTopMipSize because we put to the right of specular cubemap
+	uint32 xOffset = (W / 2) * 3 + EffectiveTopMipSize;
 	// 2 * W for the colour cube two face height 
 	uint32 yOffset = W * 2;
 	uint32_t Divisor;

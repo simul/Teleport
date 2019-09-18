@@ -94,9 +94,9 @@ avs::Result GeometryEncoder::unmapOutputBuffer()
 
 avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req, std::vector<avs::uid> missingUIDs)
 {
-	std::vector<avs::uid> accessors;
 	for(size_t i = 0; i < missingUIDs.size(); i++)
 	{
+		std::vector<avs::uid> accessors;
 		putPayload(avs::GeometryPayloadType::Mesh);
 		put((size_t)1);
 		avs::uid uid = missingUIDs[i];
@@ -119,46 +119,45 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 				accessors.push_back(primitiveArray.attributes[k].accessor);
 			}
 		}
-
 		req->EncodedResource(uid);
-	}
-	put(accessors.size());
-	std::vector<avs::uid> bufferViews;
-	for(size_t i = 0; i < accessors.size(); i++)
-	{
-		avs::Accessor accessor;
-		src->getAccessor(accessors[i], accessor);
-		put(accessors[i]);
-		put(accessor.type);
-		put(accessor.componentType);
-		put(accessor.count);
-		put(accessor.bufferView);
-		bufferViews.push_back(accessor.bufferView);
-		put(accessor.byteOffset);
-	}
-	put(bufferViews.size());
-	std::vector<avs::uid> buffers;
-	for(size_t i = 0; i < bufferViews.size(); i++)
-	{
-		avs::BufferView bufferView;
-		src->getBufferView(bufferViews[i], bufferView);
-		put(bufferViews[i]);
-		put(bufferView.buffer);
-		put(bufferView.byteOffset);
-		put(bufferView.byteLength);
-		put(bufferView.byteStride);
-		buffers.push_back(bufferView.buffer);
-	}
-	put(buffers.size());
-	for(size_t i = 0; i < buffers.size(); i++)
-	{
-		avs::GeometryBuffer b;
-		src->getBuffer(buffers[i], b);
-		put(buffers[i]);
-		put(b.byteLength);
-		put(b.data, b.byteLength);
-	}
+		put(accessors.size());
+		std::vector<avs::uid> bufferViews;
+		for(size_t i = 0; i < accessors.size(); i++)
+		{
+			avs::Accessor accessor;
+			src->getAccessor(accessors[i], accessor);
+			put(accessors[i]);
+			put(accessor.type);
+			put(accessor.componentType);
+			put(accessor.count);
+			put(accessor.bufferView);
+			bufferViews.push_back(accessor.bufferView);
+			put(accessor.byteOffset);
+		}
+		put(bufferViews.size());
+		std::vector<avs::uid> buffers;
+		for(size_t i = 0; i < bufferViews.size(); i++)
+		{
+			avs::BufferView bufferView;
+			src->getBufferView(bufferViews[i], bufferView);
+			put(bufferViews[i]);
+			put(bufferView.buffer);
+			put(bufferView.byteOffset);
+			put(bufferView.byteLength);
+			put(bufferView.byteStride);
+			buffers.push_back(bufferView.buffer);
+		}
+		put(buffers.size());
+		for(size_t i = 0; i < buffers.size(); i++)
+		{
+			avs::GeometryBuffer b;
+			src->getBuffer(buffers[i], b);
+			put(buffers[i]);
+			put(b.byteLength);
+			put(b.data, b.byteLength);
+		}
 
+	}
 	return avs::Result::OK;
 }
 

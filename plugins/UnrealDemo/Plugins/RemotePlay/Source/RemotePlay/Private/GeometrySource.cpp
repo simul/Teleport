@@ -574,7 +574,7 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 
 		//Assuming the first running platform is the desired running platform.
 		FTexture2DMipMap baseMip = texture->GetRunningPlatformData()[0]->Mips[0];
-		FTextureSource &textureSource = texture->Source;
+		FTextureSource& textureSource = texture->Source;
 		ETextureSourceFormat unrealFormat = textureSource.GetFormat();
 
 		uint32_t width = baseMip.SizeX;
@@ -618,10 +618,7 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 				format = avs::TextureFormat::INVALID;
 				UE_LOG(LogRemotePlay, Warning, TEXT("Invalid texture format"));
 				break;
-		}
-
-		TArray<uint8> mipData;
-		textureSource.GetMipData(mipData, 0);		
+		}		
 		
 		uint32_t dataSize=0;
 		unsigned char* data = nullptr;
@@ -666,6 +663,9 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 			//Otherwise, compress the file.
 			else
 			{
+				TArray<uint8> mipData;
+				textureSource.GetMipData(mipData, 0);
+
 				basisu::image image(width, height);
 				basisu::color_rgba_vec& imageData = image.get_pixels();
 				memcpy(imageData.data(), mipData.GetData(), texSize);
@@ -678,6 +678,9 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 
 				basisCompressorParams.m_quality_level = Monitor->QualityLevel;
 				basisCompressorParams.m_compression_level = Monitor->CompressionLevel;
+
+				basisCompressorParams.m_mip_gen = true;
+				basisCompressorParams.m_mip_smallest_dimension = 4; //Appears to be the smallest texture size that SimulFX handles.
 
 				basisu::basis_compressor basisCompressor;
 
@@ -700,6 +703,9 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 		//We send over the uncompressed texture data, if we can't get the compressed data.
 		if(!data)
 		{
+			TArray<uint8> mipData;
+			textureSource.GetMipData(mipData, 0);
+
 			dataSize = texSize;
 			data = new unsigned char[dataSize];
 			memcpy(data, mipData.GetData(), dataSize);
