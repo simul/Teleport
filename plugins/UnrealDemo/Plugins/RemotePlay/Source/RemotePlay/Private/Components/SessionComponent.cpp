@@ -479,7 +479,7 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 	avs::Handshake handshake;
 	FPlatformMemory::Memcpy(&handshake, Packet->data, Packet->dataLength);
 	if (handshake.isReadyToReceivePayloads != true)
-	{
+	{ 
 		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Handshake not ready to receive."));
 		return;
 	}
@@ -501,6 +501,8 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 		NetworkParams.RemoteIP = Client_GetIPAddress();
 		NetworkParams.LocalPort = StreamingPort;
 		NetworkParams.RemotePort = NetworkParams.LocalPort + 1;
+		NetworkParams.ClientBandwidthLimit = handshake.maxBandwidth;
+		NetworkParams.ClientBufferSize = handshake.udpBufferSize;
 
 		RemotePlayContext->NetworkPipeline.Reset(new FNetworkPipeline);
 		RemotePlayContext->NetworkPipeline->Initialize(Monitor, NetworkParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get(), RemotePlayContext->GeometryQueue.Get());

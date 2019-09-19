@@ -28,7 +28,7 @@ void NoSourceCS(uint3 ThreadID : SV_DispatchThreadID)
 	float3 view = CubeFaceIndexToView(ThreadID, uint2(OutputW,OutputH));
 	float4 SceneColour = InputCubeMap.SampleLevel(DefaultSampler, view, 0);
 	SceneColour = float4(saturate(view), 1.0) + 0.0001*SceneColour;
-	RWOutputTexture[ThreadID] = SceneColour;
+	RWOutputTexture[int3(ThreadID)] = SceneColour;
 }
 
 [numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
@@ -60,7 +60,7 @@ void UpdateLightingCS(uint3 ThreadID : SV_DispatchThreadID)
 	float4 Radiance = float4(0, 0, 0, 0);
 	for (uint i = 0; i < DirLightCount; ++i)
 	{
-		float factor = dot(DirLights[i].Direction, view); 
+		float factor = dot(DirLights[i].Direction, -view); 
 		Radiance += (DirLights[i].Color * factor);
 	}
 	RWOutputTexture[int3(ThreadID)] = saturate(Radiance);
@@ -74,7 +74,7 @@ void FromMipCS(uint3 ThreadID : SV_DispatchThreadID)
 	float3 view = CubeFaceIndexToView(ThreadID, uint2(OutputW, OutputH));
 	float4 SceneColour = InputCubeMap.SampleLevel(DefaultSampler, view, 0);
 	SceneColour = float4(saturate(view), 1.0) + 0.0001*SceneColour;
-	RWOutputTexture[ThreadID] = SceneColour;
+	RWOutputTexture[int3(ThreadID)] = SceneColour;
 }
 
 [numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
