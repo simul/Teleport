@@ -101,6 +101,13 @@ protected:
 	void DecomposeMaterialProperty(UMaterialInterface *materialInterface, EMaterialProperty propertyChain, avs::TextureAccessor &outTexture, avs::vec3 &outFactor);
 	void DecomposeMaterialProperty(UMaterialInterface *materialInterface, EMaterialProperty propertyChain, avs::TextureAccessor &outTexture, avs::vec4 &outFactor);
 
+	//Decomposes UMaterialExpressionTextureSample; extracting the texture, and tiling data.
+	//	materialInterface : The base class of the material we are decomposing.
+	//	textureSample : The expression we want to extract/decompose the data from.
+	//	outTexture : Texture related to the chain to output into.
+	//Returns the amount of expressions that were handled in the chain.
+	size_t DecomposeTextureSampleExpression(UMaterialInterface* materialInterface, UMaterialExpressionTextureSample* textureSample, avs::TextureAccessor& outTexture);
+
 	class ARemotePlayMonitor* Monitor;
 };
 

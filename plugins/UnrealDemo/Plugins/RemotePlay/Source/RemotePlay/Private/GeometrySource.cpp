@@ -25,6 +25,7 @@
 #include "Engine/Classes/Materials/MaterialExpressionScalarParameter.h"
 #include "Engine/Classes/Materials/MaterialExpressionVectorParameter.h"
 #include "Engine/Classes/Materials/MaterialExpressionTextureCoordinate.h"
+#include "Engine/Classes/Materials/MaterialExpressionMultiply.h"
 
 #include "RemotePlayMonitor.h"
 
@@ -512,10 +513,7 @@ avs::uid GeometrySource::AddMaterial(UMaterialInterface *materialInterface)
 		materials[mat_uid] = newMaterial;
 		decomposedMaterials[materialInterface] = mat_uid;
 
-		if(newMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index != newMaterial.occlusionTexture.index)
-		{
-			UE_LOG(LogRemotePlay, Warning, TEXT("Occlusion texture on material <%s> is not combined with metallic-roughness texture."), ANSI_TO_TCHAR(newMaterial.name.data()));
-		}
+		UE_CLOG(newMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index != newMaterial.occlusionTexture.index, LogRemotePlay, Warning, TEXT("Occlusion texture on material <%s> is not combined with metallic-roughness texture."), *materialInterface->GetName());
 	}
 
 	return mat_uid;
@@ -739,171 +737,105 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 	TArray<UMaterialExpression*> outExpressions;
 	materialInterface->GetMaterial()->GetExpressionsInPropertyChain(propertyChain, outExpressions, nullptr);
 
-	std::function<void(size_t)> handleExpression = [&](size_t expressionIndex)
+	if(outExpressions.Num() != 0)
 	{
-		FString name = outExpressions[expressionIndex]->GetName();
-
-		if(name.Contains("TextureSample"))
+		std::function<size_t(size_t)> expressionDecomposer = [&](size_t expressionIndex)
 		{
-			UMaterialExpressionTextureSample *texExp = Cast<UMaterialExpressionTextureSample>(outExpressions[expressionIndex]);
-			outTexture = {StoreTexture(texExp->Texture), DUMMY_TEX_COORD};
-
-			if(texExp->Coordinates.Expression)
-			{
-				FString coordName = texExp->Coordinates.Expression->GetName();
-
-				if(coordName.Contains("TextureCoordinate"))
-				{
-					UMaterialExpressionTextureCoordinate *texCoordExp = Cast<UMaterialExpressionTextureCoordinate>(texExp->Coordinates.Expression);
-					outTexture.tiling = {texCoordExp->UTiling, texCoordExp->VTiling};
-				}
-			}
-		}
-		else if(name.Contains("ConstantBiasScale"))
-		{
-			LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
-
-			if(outTexture.index == 0)
-			{
-				GetDefaultTexture(materialInterface, propertyChain, outTexture);
-			}
-		}
-		else if(name.Contains("Constant"))
-		{
-			outFactor = Cast<UMaterialExpressionConstant>(outExpressions[expressionIndex])->R;
-		}
-		else if(name.Contains("ScalarParameter"))
-		{
-			///INFO: Just using the parameter's name won't work for layered materials.
-			materialInterface->GetScalarParameterValue(outExpressions[expressionIndex]->GetParameterName(), outFactor);
-		}
-		else
-		{
-			LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
-
-			if(outTexture.index == 0)
-			{
-				GetDefaultTexture(materialInterface, propertyChain, outTexture);
-			}
-		}
-	};
-
-	switch(outExpressions.Num())
-	{
-		case 0:
-			//There is no property chain, so everything should be left as default.
-			break;
-		case 1:
-		case 2:
-			handleExpression(0);
-
-			break;
-		case 3:
-		{
-			FString name = outExpressions[0]->GetName();
+			size_t expressionsHandled = 1;
+			FString name = outExpressions[expressionIndex]->GetName();
 
 			if(name.Contains("Multiply"))
 			{
-				handleExpression(1);
-				handleExpression(2);
+				expressionsHandled += expressionDecomposer(expressionIndex + expressionsHandled);
+				expressionsHandled += expressionDecomposer(expressionIndex + expressionsHandled);
+			}
+			else if(name.Contains("TextureSample"))
+			{
+				expressionsHandled += DecomposeTextureSampleExpression(materialInterface, Cast<UMaterialExpressionTextureSample>(outExpressions[expressionIndex]), outTexture);
+			}
+			else if(name.Contains("ConstantBiasScale"))
+			{
+				LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
+
+				if(outTexture.index == 0)
+				{
+					GetDefaultTexture(materialInterface, propertyChain, outTexture);
+				}
+			}
+			else if(name.Contains("Constant"))
+			{
+				outFactor = Cast<UMaterialExpressionConstant>(outExpressions[expressionIndex])->R;
+			}
+			else if(name.Contains("ScalarParameter"))
+			{
+				///INFO: Just using the parameter's name won't work for layered materials.
+				materialInterface->GetScalarParameterValue(outExpressions[expressionIndex]->GetParameterName(), outFactor);
 			}
 			else
 			{
 				LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
-				GetDefaultTexture(materialInterface, propertyChain, outTexture);
+
+				if(outTexture.index == 0)
+				{
+					GetDefaultTexture(materialInterface, propertyChain, outTexture);
+				}
 			}
-		}
 
-			break;
-		default:
-			LOG_UNSUPPORTED_MATERIAL_CHAIN_LENGTH(materialInterface, FString::FromInt(outExpressions.Num()));
-			GetDefaultTexture(materialInterface, propertyChain, outTexture);
+			return expressionsHandled;
+		};
 
-			break;
+		expressionDecomposer(0);
 	}
 }
 
 void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInterface, EMaterialProperty propertyChain, avs::TextureAccessor &outTexture, avs::vec3 &outFactor)
 {
-	TArray<UMaterialExpression *> outExpressions;
+	TArray<UMaterialExpression*> outExpressions;
 	materialInterface->GetMaterial()->GetExpressionsInPropertyChain(propertyChain, outExpressions, nullptr);
 
-	std::function<void(size_t)> handleExpression = [&](size_t expressionIndex)
+	if(outExpressions.Num() != 0)
 	{
-		FString name = outExpressions[expressionIndex]->GetName();
-
-		if(name.Contains("TextureSample"))
+		std::function<size_t(size_t)> expressionDecomposer = [&](size_t expressionIndex)
 		{
-			UMaterialExpressionTextureSample *texExp = Cast<UMaterialExpressionTextureSample>(outExpressions[expressionIndex]);
-			outTexture = {StoreTexture(texExp->Texture), DUMMY_TEX_COORD};
-
-			if(texExp->Coordinates.Expression)
-			{
-				FString coordName = texExp->Coordinates.Expression->GetName();
-
-				if(coordName.Contains("TextureCoordinate"))
-				{
-					UMaterialExpressionTextureCoordinate *texCoordExp = Cast<UMaterialExpressionTextureCoordinate>(texExp->Coordinates.Expression);
-					outTexture.tiling = {texCoordExp->UTiling, texCoordExp->VTiling};
-				}
-			}
-		}
-		else if(name.Contains("Constant3Vector"))
-		{
-			FLinearColor colour = Cast<UMaterialExpressionConstant3Vector>(outExpressions[expressionIndex])->Constant;
-			outFactor = {colour.R, colour.G, colour.B};
-		}
-		else if(name.Contains("VectorParameter"))
-		{
-			FLinearColor colour;
-			///INFO: Just using the parameter's name won't work for layered materials.
-			materialInterface->GetVectorParameterValue(outExpressions[expressionIndex]->GetParameterName(), colour);
-
-			outFactor = {colour.R, colour.G, colour.B};
-		}
-		else
-		{
-			LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
-
-			if(outTexture.index == 0)
-			{
-				GetDefaultTexture(materialInterface, propertyChain, outTexture);
-			}
-		}
-	};
-
-	switch(outExpressions.Num())
-	{
-		case 0:
-			//There is no property chain, so everything should be left as default.
-			break;
-		case 1:
-		case 2:
-			handleExpression(0);
-
-			break;
-		case 3:
-		{
-			FString name = outExpressions[0]->GetName();
+			size_t expressionsHandled = 1;
+			FString name = outExpressions[expressionIndex]->GetName();
 
 			if(name.Contains("Multiply"))
 			{
-				handleExpression(1);
-				handleExpression(2);
+				expressionsHandled += expressionDecomposer(expressionIndex + expressionsHandled);
+				expressionsHandled += expressionDecomposer(expressionIndex + expressionsHandled);
+			}
+			else if(name.Contains("TextureSample"))
+			{
+				expressionsHandled += DecomposeTextureSampleExpression(materialInterface, Cast<UMaterialExpressionTextureSample>(outExpressions[expressionIndex]), outTexture);
+			}
+			else if(name.Contains("Constant3Vector"))
+			{
+				FLinearColor colour = Cast<UMaterialExpressionConstant3Vector>(outExpressions[expressionIndex])->Constant;
+				outFactor = {colour.R, colour.G, colour.B};
+			}
+			else if(name.Contains("VectorParameter"))
+			{
+				FLinearColor colour;
+				///INFO: Just using the parameter's name won't work for layered materials.
+				materialInterface->GetVectorParameterValue(outExpressions[expressionIndex]->GetParameterName(), colour);
+
+				outFactor = {colour.R, colour.G, colour.B};
 			}
 			else
 			{
 				LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
-				GetDefaultTexture(materialInterface, propertyChain, outTexture);
+
+				if(outTexture.index == 0)
+				{
+					GetDefaultTexture(materialInterface, propertyChain, outTexture);
+				}
 			}
-		}
 
-		break;
-		default:
-			LOG_UNSUPPORTED_MATERIAL_CHAIN_LENGTH(materialInterface, FString::FromInt(outExpressions.Num()));
-			GetDefaultTexture(materialInterface, propertyChain, outTexture);
+			return expressionsHandled;
+		};
 
-		break;
+		expressionDecomposer(0);
 	}
 }
 
@@ -912,105 +844,132 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 	TArray<UMaterialExpression*> outExpressions;
 	materialInterface->GetMaterial()->GetExpressionsInPropertyChain(propertyChain, outExpressions, nullptr);
 
-	std::function<void(size_t)> handleExpression = [&](size_t expressionIndex)
+	if(outExpressions.Num() != 0)
 	{
-		FString name = outExpressions[expressionIndex]->GetName();
-
-		if(name.Contains("TextureSample"))
+		std::function<size_t(size_t)> expressionDecomposer = [&](size_t expressionIndex)
 		{
-			UMaterialExpressionTextureSample *texExp = Cast<UMaterialExpressionTextureSample>(outExpressions[expressionIndex]);
-			outTexture = {StoreTexture(texExp->Texture), DUMMY_TEX_COORD};
-
-			if(texExp->Coordinates.Expression)
-			{
-				FString coordName = texExp->Coordinates.Expression->GetName();
-				
-				if(coordName.Contains("TextureCoordinate"))
-				{
-					UMaterialExpressionTextureCoordinate *texCoordExp = Cast<UMaterialExpressionTextureCoordinate>(texExp->Coordinates.Expression);
-					outTexture.tiling = {texCoordExp->UTiling, texCoordExp->VTiling};
-				}
-			}
-		}
-		else if(name.Contains("Constant3Vector"))
-		{
-			FLinearColor colour = Cast<UMaterialExpressionConstant3Vector>(outExpressions[expressionIndex])->Constant;
-			outFactor = {colour.R, colour.G, colour.B, colour.A};
-		}
-		else if(name.Contains("Constant4Vector"))
-		{
-			FLinearColor colour = Cast<UMaterialExpressionConstant4Vector>(outExpressions[expressionIndex])->Constant;
-			outFactor = {colour.R, colour.G, colour.B, colour.A};
-		}
-		else if(name.Contains("VectorParameter"))
-		{
-			FLinearColor colour;
-			///INFO: Just using the parameter's name won't work for layered materials.
-			materialInterface->GetVectorParameterValue(outExpressions[expressionIndex]->GetParameterName(), colour);
-
-			outFactor = {colour.R, colour.G, colour.B, colour.A};
-		}
-		else
-		{
-			LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
-
-			if(outTexture.index == 0)
-			{
-				GetDefaultTexture(materialInterface, propertyChain, outTexture);
-			}
-		}
-	};
-
-	switch(outExpressions.Num())
-	{
-		case 0:
-			//There is no property chain, so everything should be left as default.
-			break;
-		case 1:
-		case 2:
-			handleExpression(0);
-
-			break;
-		case 3:
-		{
-			FString name = outExpressions[0]->GetName();
+			size_t expressionsHandled = 1;
+			FString name = outExpressions[expressionIndex]->GetName();
 
 			if(name.Contains("Multiply"))
 			{
-				handleExpression(1);
-				handleExpression(2);
+				expressionsHandled += expressionDecomposer(expressionIndex + expressionsHandled);
+				expressionsHandled += expressionDecomposer(expressionIndex + expressionsHandled);
+			}
+			else if(name.Contains("TextureSample"))
+			{
+				expressionsHandled += DecomposeTextureSampleExpression(materialInterface, Cast<UMaterialExpressionTextureSample>(outExpressions[expressionIndex]), outTexture);
+			}
+			else if(name.Contains("Constant3Vector"))
+			{
+				FLinearColor colour = Cast<UMaterialExpressionConstant3Vector>(outExpressions[expressionIndex])->Constant;
+				outFactor = {colour.R, colour.G, colour.B, colour.A};
+			}
+			else if(name.Contains("Constant4Vector"))
+			{
+				FLinearColor colour = Cast<UMaterialExpressionConstant4Vector>(outExpressions[expressionIndex])->Constant;
+				outFactor = {colour.R, colour.G, colour.B, colour.A};
+			}
+			else if(name.Contains("VectorParameter"))
+			{
+				FLinearColor colour;
+				///INFO: Just using the parameter's name won't work for layered materials.
+				materialInterface->GetVectorParameterValue(outExpressions[expressionIndex]->GetParameterName(), colour);
+
+				outFactor = {colour.R, colour.G, colour.B, colour.A};
 			}
 			else
 			{
 				LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
-				GetDefaultTexture(materialInterface, propertyChain, outTexture);
-			}
-		}
 
-			break;
-		case 4:
-		{
-			FString name = outExpressions[0]->GetName();
-
-			if(name.Contains("Multiply"))
-			{
-				///ASSUMPTION: Texture = A, Factor = B
-
-				//1 = Texture, 2 = Coordinate
-				handleExpression(1);
-				handleExpression(3);
+				if(outTexture.index == 0)
+				{
+					GetDefaultTexture(materialInterface, propertyChain, outTexture);
+				}
 			}
 
-			break;
-		}
+			return expressionsHandled;
+		};
 
-			break;
-		default:
-			LOG_UNSUPPORTED_MATERIAL_CHAIN_LENGTH(materialInterface, FString::FromInt(outExpressions.Num()));
-			GetDefaultTexture(materialInterface, propertyChain, outTexture);
-
-			break;
+		expressionDecomposer(0);
 	}
+}
+
+size_t GeometrySource::DecomposeTextureSampleExpression(UMaterialInterface* materialInterface, UMaterialExpressionTextureSample* textureSample, avs::TextureAccessor& outTexture)
+{
+	size_t subExpressionsHandled = 0;
+	outTexture = {StoreTexture(textureSample->Texture), DUMMY_TEX_COORD};
+
+	//Extract tiling data for this texture.
+	if(textureSample->Coordinates.Expression)
+	{
+		//Name of the coordinate expression.
+		FString coordExpName = textureSample->Coordinates.Expression->GetName();
+
+		if(coordExpName.Contains("Multiply"))
+		{
+			UMaterialExpressionMultiply* mulExp = Cast<UMaterialExpressionMultiply>(textureSample->Coordinates.Expression);
+			UMaterialExpression* inputA = mulExp->A.Expression, * inputB = mulExp->B.Expression;
+
+			if(inputA && inputB)
+			{
+				FString inputAName = mulExp->A.Expression->GetName(), inputBName = mulExp->B.Expression->GetName();
+
+				//Swap, so A is texture coordinate, if B is texture coordinate.
+				if(inputBName.Contains("TextureCoordinate"))
+				{
+					std::swap(inputA, inputB);
+					std::swap(inputAName, inputBName);
+				}
+
+				if(inputAName.Contains("TextureCoordinate"))
+				{
+					bool isBSupported = true;
+					float scalarValue = 0;
+
+					if(inputBName.Contains("Constant"))
+					{
+						scalarValue = Cast<UMaterialExpressionConstant>(inputB)->R;
+					}
+					else if(inputBName.Contains("ScalarParameter"))
+					{
+						///INFO: Just using the parameter's name won't work for layered materials.
+						materialInterface->GetScalarParameterValue(inputB->GetParameterName(), scalarValue);
+					}
+					else
+					{
+						isBSupported = false;
+						LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, inputBName)
+					}
+
+					if(isBSupported)
+					{
+						UMaterialExpressionTextureCoordinate* texCoordExp = Cast<UMaterialExpressionTextureCoordinate>(inputA);
+						outTexture.tiling = {texCoordExp->UTiling * scalarValue, texCoordExp->VTiling * scalarValue};
+					}
+				}
+				else
+				{
+					UE_LOG(LogRemotePlay, Warning, TEXT("Material <%s> contains multiply expression <%s> with missing inputs."), *materialInterface->GetName(), *coordExpName)
+				}
+			}
+
+			subExpressionsHandled += (inputA ? 1 : 0) + (inputB ? 1 : 0); //Handled multiplication inputs.
+		}
+		else if(coordExpName.Contains("TextureCoordinate"))
+		{
+			UMaterialExpressionTextureCoordinate* texCoordExp = Cast<UMaterialExpressionTextureCoordinate>(textureSample->Coordinates.Expression);
+			outTexture.tiling = {texCoordExp->UTiling, texCoordExp->VTiling};
+		}
+		else
+		{
+			LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, coordExpName)
+		}
+
+		++subExpressionsHandled; //Handled UV expression.
+	}
+
+	return subExpressionsHandled;
 }
 
 std::vector<avs::uid> GeometrySource::getNodeUIDs() const
