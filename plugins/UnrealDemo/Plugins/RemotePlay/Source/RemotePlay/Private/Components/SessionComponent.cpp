@@ -12,6 +12,7 @@
 #include "GameFramework/Pawn.h"
  
 #include "enet/enet.h"
+#include "libavstream/common.hpp"
 DECLARE_STATS_GROUP(TEXT("RemotePlay_Game"), STATGROUP_RemotePlay, STATCAT_Advanced);
 
 #include "Engine/Classes/Components/SphereComponent.h"
@@ -91,6 +92,7 @@ enum ERemotePlaySessionChannel
 	RPCH_HANDSHAKE = 0,
 	RPCH_Control = 1,
 	RPCH_HeadPose = 2,
+	RPCH_Request = 3,
 	RPCH_NumChannels,
 };
 
@@ -233,6 +235,8 @@ void URemotePlaySessionComponent::StartSession(int32 ListenPort, int32 Discovery
 {
 	if (!PlayerController.IsValid() || !PlayerController->IsLocalController())
 		return;
+	if(Monitor->ResetCache)
+		GeometryStreamingService.Reset();
 	ENetAddress ListenAddress;
 	ListenAddress.host = ENET_HOST_ANY;
 	//enet_address_set_host(&ListenAddress, "192.168.3.6");
@@ -257,7 +261,6 @@ void URemotePlaySessionComponent::StopSession()
 {
 	ReleasePlayerPawn();
 	DiscoveryService.Shutdown();
-	//GeometryStreamingService.Reset();
 
 	if (ClientPeer)
 	{
@@ -371,6 +374,7 @@ void URemotePlaySessionComponent::StartStreaming()
 	setupCommand.colour_cubemap_size = EncodeParams.FrameWidth / 3;
 	setupCommand.compose_cube	= EncodeParams.bDecomposeCube;
 	setupCommand.port = StreamingPort;
+	setupCommand.debug_stream=Monitor->DebugStream;
 	Client_SendCommand(setupCommand);
 	//Client_SendCommand(FString::Printf(TEXT("v %d %d %d"), StreamingPort, EncodeParams.FrameWidth, EncodeParams.FrameHeight));
 }
@@ -421,14 +425,32 @@ void URemotePlaySessionComponent::StopStreaming()
 
 void URemotePlaySessionComponent::OnInnerSphereBeginOverlap(UPrimitiveComponent *OverlappedComponent, AActor *OtherActor, UPrimitiveComponent *OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult &SweepResult)
 {
+	avs::uid actor_uid = GeometryStreamingService.AddActor(OtherActor);
+
+	if(ClientPeer)
+	{
+		avs::ActorBoundsCommand command(actor_uid, true);
+
+		ENetPacket* packet = enet_packet_create(&command, sizeof(command), ENET_PACKET_FLAG_RELIABLE);
+		enet_peer_send(ClientPeer, RPCH_Control, packet);
+	}
+
 	UE_LOG(LogRemotePlay, Verbose, TEXT("%s"), *("<" + OverlappedComponent->GetName() + "> BEGAN overlap with actor <" + OtherActor->GetName() + ">"));
-	GeometryStreamingService.AddActor(OtherActor);
 }
 
 void URemotePlaySessionComponent::OnOuterSphereEndOverlap(UPrimitiveComponent * OverlappedComponent, AActor * OtherActor, UPrimitiveComponent * OtherComp, int32 OtherBodyIndex)
 {
+	avs::uid actor_uid = GeometryStreamingService.RemoveActor(OtherActor);
+
+	if(ClientPeer)
+	{
+		avs::ActorBoundsCommand command(actor_uid, false);
+
+		ENetPacket *packet = enet_packet_create(&command, sizeof(command), ENET_PACKET_FLAG_RELIABLE);
+		enet_peer_send(ClientPeer, RPCH_Control, packet);
+	}
+
 	UE_LOG(LogRemotePlay, Verbose, TEXT("%s"), *("<" + OverlappedComponent->GetName() + "> ENDED overlap with actor <" + OtherActor->GetName() + ">"));
-	GeometryStreamingService.RemoveActor(OtherActor);
 }
 
 void URemotePlaySessionComponent::ApplyPlayerInput(float DeltaTime)
@@ -501,6 +523,21 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 		break;
 	case RPCH_HeadPose:
 		RecvHeadPose(Event.packet);
+		break;
+	case RPCH_Request:
+	{
+		size_t resourceAmount;
+		memcpy(&resourceAmount, Event.packet->data, sizeof(size_t));
+
+		std::vector<avs::uid> resourceRequests(resourceAmount);
+		memcpy(resourceRequests.data(), Event.packet->data + sizeof(size_t), sizeof(avs::uid) * resourceAmount);
+
+		for(avs::uid uid : resourceRequests)
+		{
+			GeometryStreamingService.RequestResource(uid);
+		}
+	}
+		
 		break;
 	}
 	enet_packet_destroy(Event.packet);

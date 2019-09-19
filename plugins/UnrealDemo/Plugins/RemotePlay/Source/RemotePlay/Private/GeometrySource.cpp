@@ -25,6 +25,7 @@
 #include "Engine/Classes/Materials/MaterialExpressionScalarParameter.h"
 #include "Engine/Classes/Materials/MaterialExpressionVectorParameter.h"
 #include "Engine/Classes/Materials/MaterialExpressionTextureCoordinate.h"
+#include "Engine/Classes/Materials/MaterialExpressionMultiply.h"
 
 #include "RemotePlayMonitor.h"
 
@@ -75,10 +76,18 @@ GeometrySource::~GeometrySource()
 
 void GeometrySource::Initialize(class ARemotePlayMonitor *monitor)
 {
+	Monitor = monitor;
+
+	if (Monitor)
+	{
+		if (Monitor->ResetCache)
+		{
+			clearData();
+		}
+	}
 	//0 == No item. First generated UID will be 1.
 	rootNodeUid = CreateNode(FTransform::Identity, 0, avs::NodeDataType::Scene,std::vector<avs::uid>());
 
-	Monitor = monitor;
 }
 
 avs::AttributeSemantic IndexToSemantic(int index)
@@ -117,29 +126,109 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 	if (!lods.Num())
 		return false;
 
+	auto AddBuffer = [this](GeometrySource::Mesh *m, avs::uid b_uid, size_t num, size_t stride, const void *data)
+	{
+		// Data may already exist:
+		if (geometryBuffers.find(b_uid) == geometryBuffers.end())
+		{
+			avs::GeometryBuffer& b = geometryBuffers[b_uid];
+			b.byteLength = num * stride;
+			b.data = (const uint8_t *)data;			// Remember, just a pointer: we don't own this data.
+		}
+	};
+	auto AddBufferView = [this](GeometrySource::Mesh *m, avs::uid b_uid, avs::uid v_uid, size_t start_index, size_t num, size_t stride)
+	{
+		avs::BufferView &bv = bufferViews[v_uid];
+		bv.byteOffset = start_index * stride;
+		bv.byteLength = num * stride;
+		bv.byteStride = stride;
+		bv.buffer = b_uid;
+	};
+
 	auto &lod = lods[lodIndex];
-	m->primitiveArrays.resize(lod.Sections.Num());
-	for (size_t i = 0; i < m->primitiveArrays.size(); i++)
+	FPositionVertexBuffer &pb = lod.VertexBuffers.PositionVertexBuffer;
+	FStaticMeshVertexBuffer &vb = lod.VertexBuffers.StaticMeshVertexBuffer;
+
+	avs::uid positions_uid = avs::GenerateUid();
+	avs::uid normals_uid = avs::GenerateUid();
+	avs::uid tangents_uid = avs::GenerateUid();
+	avs::uid texcoords_uid = avs::GenerateUid();
+	std::vector<FVector2D>& uvData = processedUVs[texcoords_uid];
+	avs::uid indices_uid = avs::GenerateUid();
+	avs::uid positions_view_uid = avs::GenerateUid();
+	avs::uid normals_view_uid = avs::GenerateUid();
+	avs::uid tangents_view_uid = avs::GenerateUid();
+	avs::uid texcoords_view_uid[8];
+	size_t attributeCount = 2 + (vb.GetTangentData() ? 1 : 0) + (vb.GetTexCoordData() ? vb.GetNumTexCoords() : 0);
+
+	uvData.reserve(vb.GetNumVertices()*vb.GetNumTexCoords());
+
+	// First create the Buffers:
+	// Position:
+	{
+		std::vector<avs::vec3> &p = scaledPositionBuffers[positions_uid];
+		p.resize(pb.GetNumVertices());
+		const avs::vec3 *orig = (const avs::vec3 *) pb.GetVertexData();
+		for (size_t j = 0; j < pb.GetNumVertices(); j++)
+		{
+			p[j].x = orig[j].x *0.01f;
+			p[j].y = orig[j].y *0.01f;
+			p[j].z = orig[j].z *0.01f;
+		}
+		size_t stride = pb.GetStride();
+		AddBuffer(m, positions_uid, pb.GetNumVertices(), stride, (const void*)p.data());
+		size_t position_stride = pb.GetStride();
+		// Offset is zero, because the sections are just lists of indices. 
+		AddBufferView(m, positions_uid, positions_view_uid, 0, pb.GetNumVertices(), position_stride);
+	}
+	size_t tangent_stride = vb.GetTangentSize() / vb.GetNumVertices();
+	// Normal:
+	{
+		size_t stride = vb.GetTangentSize() / vb.GetNumVertices();
+		AddBuffer(m, normals_uid, vb.GetNumVertices(), stride, vb.GetTangentData());
+		AddBufferView(m, normals_uid, normals_view_uid,  0, pb.GetNumVertices(), tangent_stride);
+	}
+
+	// Tangent:
+	if (vb.GetTangentData())
+	{
+		size_t stride = vb.GetTangentSize() / vb.GetNumVertices();
+		AddBuffer(m, tangents_uid, vb.GetNumVertices(), stride, vb.GetTangentData());
+		AddBufferView(m, tangents_uid, tangents_view_uid, 0, pb.GetNumVertices(), tangent_stride);
+	}
+	// TexCoords:
+	size_t texcoords_stride = sizeof(FVector2D);
+	for (size_t j = 0; j < vb.GetNumTexCoords(); j++)
+	{
+		//bool IsFP32 = vb.GetUseFullPrecisionUVs(); //Not need vb.GetVertexUV() returns FP32 regardless. 
+
+		for (uint32_t k = 0; k < vb.GetNumVertices(); k++)
+			uvData.push_back(vb.GetVertexUV(k, j));
+	}
+	AddBuffer(m, texcoords_uid, vb.GetNumVertices()*vb.GetNumTexCoords(), texcoords_stride, uvData.data());
+	for (size_t j = 0; j < vb.GetNumTexCoords(); j++)
+	{
+		//bool IsFP32 = vb.GetUseFullPrecisionUVs(); //Not need vb.GetVertexUV() returns FP32 regardless. 
+		texcoords_view_uid[j] = avs::GenerateUid();
+		AddBufferView(m, texcoords_uid, texcoords_view_uid[j], j*pb.GetNumVertices(), pb.GetNumVertices(), texcoords_stride);
+	}
+	FRawStaticIndexBuffer &ib = lod.IndexBuffer;
+	FIndexArrayView arr = ib.GetArrayView();
+	avs::Accessor::ComponentType componentType = ib.Is32Bit() ? avs::Accessor::ComponentType::UINT : avs::Accessor::ComponentType::USHORT;
+	size_t istride = avs::GetComponentSize(componentType);
+	AddBuffer(m, indices_uid, ib.GetNumIndices(), istride, (const void*)((uint64*)&arr)[0]);
+	avs::uid indices_view_uid = avs::GenerateUid();
+	AddBufferView(m, indices_uid, indices_view_uid, 0, ib.GetNumIndices(), istride);
+	
+	// Now create the views:
+	size_t  num_elements = lod.Sections.Num();
+	m->primitiveArrays.resize(num_elements);
+	for (size_t i = 0; i < num_elements; i++)
 	{
 		auto &section = lod.Sections[i];
-		FPositionVertexBuffer &pb = lod.VertexBuffers.PositionVertexBuffer;
-		FStaticMeshVertexBuffer &vb = lod.VertexBuffers.StaticMeshVertexBuffer;
 		auto &pa = m->primitiveArrays[i];
 		pa.attributeCount = 2 + (vb.GetTangentData() ? 1 : 0) + (vb.GetTexCoordData() ? vb.GetNumTexCoords() : 0);
 		pa.attributes = new avs::Attribute[pa.attributeCount];
-		auto AddBufferAndView = [this](GeometrySource::Mesh *m, avs::uid v_uid, avs::uid b_uid, size_t num, size_t stride, const void *data)
-		{
-			avs::BufferView &bv = bufferViews[v_uid];
-			bv.byteOffset = 0;
-			bv.byteLength = num * stride;
-			bv.byteStride = stride;
-			bv.buffer = b_uid;
-			avs::GeometryBuffer& b = geometryBuffers[bv.buffer];
-			b.byteLength = bv.byteLength;
-			
-			b.data = (const uint8_t *)data;			// Remember, just a pointer: we don't own this data.
-			
-		};
 		size_t idx = 0;
 		// Position:
 		{
@@ -151,19 +240,7 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 			a.type = avs::Accessor::DataType::VEC3;
 			a.componentType = avs::Accessor::ComponentType::FLOAT;
 			a.count = pb.GetNumVertices();
-			a.bufferView = avs::GenerateUid();
-			avs::uid bufferUid = avs::GenerateUid();
-		
-			std::vector<avs::vec3> &p = scaledPositionBuffers[bufferUid];
-			p.resize(a.count);
-			const avs::vec3 *orig =(const avs::vec3 *) pb.GetVertexData();
-			for (size_t j = 0; j < a.count; j++)
-			{
-				p[j].x	 =orig[j].x *0.01f;
-				p[j].y	 =orig[j].y *0.01f;
-				p[j].z	 =orig[j].z *0.01f;
-			}
-			AddBufferAndView(m, a.bufferView, bufferUid, pb.GetNumVertices(), pb.GetStride(), (const void*)p.data());
+			a.bufferView = positions_view_uid;
 		}
 		// Normal:
 		{
@@ -179,8 +256,7 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 			else
 				a.componentType = avs::Accessor::ComponentType::USHORT;
 			a.count = vb.GetNumVertices();// same as pb???
-			a.bufferView = avs::GenerateUid();
-			AddBufferAndView(m, a.bufferView, avs::GenerateUid(), vb.GetNumVertices(), vb.GetTangentSize() / vb.GetNumVertices(), vb.GetTangentData());
+			a.bufferView = normals_view_uid;
 		}
 		// Tangent:
 		if (vb.GetTangentData())
@@ -193,8 +269,7 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 			a.type = avs::Accessor::DataType::VEC4;
 			a.componentType = avs::Accessor::ComponentType::FLOAT;
 			a.count = vb.GetTangentSize();// same as pb???
-			a.bufferView = avs::GenerateUid();
-			AddBufferAndView(m, a.bufferView, avs::GenerateUid(),vb.GetNumVertices(), vb.GetTangentSize() / vb.GetNumVertices(), vb.GetTangentData());
+			a.bufferView = tangents_view_uid;
 		}
 		// TexCoords:
 		for (size_t j = 0; j < vb.GetNumTexCoords(); j++)
@@ -203,33 +278,21 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 			attr.accessor = avs::GenerateUid();
 			attr.semantic = j == 0 ? avs::AttributeSemantic::TEXCOORD_0 : avs::AttributeSemantic::TEXCOORD_1;
 			avs::Accessor &a = accessors[attr.accessor];
+			// Offset into the global texcoord views
 			a.byteOffset = 0;
 			a.type = avs::Accessor::DataType::VEC2;
 			a.componentType = avs::Accessor::ComponentType::FLOAT;
 			a.count = vb.GetNumVertices();// same as pb???
-			a.bufferView = avs::GenerateUid();
-			avs::uid bufferUid = avs::GenerateUid();
-			
-			//bool IsFP32 = vb.GetUseFullPrecisionUVs(); //Not need vb.GetVertexUV() returns FP32 regardless. 
-			std::vector<FVector2D>& uvData = processedUVs[bufferUid];
-			uvData.reserve(a.count);
-			for (uint32_t k = 0; k < vb.GetNumVertices(); k++)
-				uvData.push_back(vb.GetVertexUV(k, j));
-
-			AddBufferAndView(m, a.bufferView, bufferUid, vb.GetNumVertices(), sizeof(FVector2D), uvData.data());
+			a.bufferView = texcoords_view_uid[j];
 		}
-		// Indices:
 		pa.indices_accessor = avs::GenerateUid();
 
-		FRawStaticIndexBuffer &ib = lod.IndexBuffer;
 		avs::Accessor &i_a = accessors[pa.indices_accessor];
-		i_a.byteOffset = 0;
+		i_a.byteOffset = section.FirstIndex*istride;
 		i_a.type = avs::Accessor::DataType::SCALAR;
-		i_a.componentType = ib.Is32Bit() ? avs::Accessor::ComponentType::UINT : avs::Accessor::ComponentType::USHORT;
-		i_a.count = ib.GetNumIndices();// same as pb???
-		i_a.bufferView = avs::GenerateUid();
-		FIndexArrayView arr = ib.GetArrayView();
-		AddBufferAndView(m, i_a.bufferView, avs::GenerateUid(), ib.GetNumIndices(), avs::GetComponentSize(i_a.componentType), (const void*)((uint64*)&arr)[0]);
+		i_a.componentType = componentType;
+		i_a.count = section.NumTriangles*3;// same as pb???
+		i_a.bufferView = indices_view_uid ;
 
 		// probably no default material in UE4?
 		pa.material = 0;
@@ -244,11 +307,14 @@ void GeometrySource::clearData()
 	accessors.clear();
 	bufferViews.clear();
 	geometryBuffers.clear();
+	scaledPositionBuffers.clear();
+	processedUVs.clear();
 
 	nodes.clear();
 
 	decomposedTextures.clear();
 	decomposedMaterials.clear();
+	decomposedNodes.clear();
 
 	textures.clear();
 	materials.clear();
@@ -301,8 +367,8 @@ avs::uid GeometrySource::AddStreamableMeshComponent(UMeshComponent *MeshComponen
 avs::uid GeometrySource::AddNode(avs::uid parent_uid, UMeshComponent *component)
 {
 	avs::uid node_uid;
-	int32 unrealUniqueID = component->GetUniqueID(); //These get reused on object deletion.
-	std::unordered_map<int32, avs::uid>::iterator nodeIt = decomposedNodes.find(unrealUniqueID);
+	FName levelUniqueNodeName = *FPaths::Combine(component->GetOutermost()->GetName(), component->GetOuter()->GetName(), component->GetName());
+	std::map<FName, avs::uid>::iterator nodeIt = decomposedNodes.find(levelUniqueNodeName);
 
 	if(nodeIt != decomposedNodes.end())
 	{
@@ -327,7 +393,7 @@ avs::uid GeometrySource::AddNode(avs::uid parent_uid, UMeshComponent *component)
 		}
 
 		node_uid = CreateNode(component->GetComponentTransform(), mesh_uid, avs::NodeDataType::Mesh, mat_uids);
-		decomposedNodes[unrealUniqueID] = node_uid;
+		decomposedNodes[levelUniqueNodeName] = node_uid;
 
 		parent->childrenUids.push_back(node_uid);
 
@@ -446,6 +512,8 @@ avs::uid GeometrySource::AddMaterial(UMaterialInterface *materialInterface)
 
 		materials[mat_uid] = newMaterial;
 		decomposedMaterials[materialInterface] = mat_uid;
+
+		UE_CLOG(newMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index != newMaterial.occlusionTexture.index, LogRemotePlay, Warning, TEXT("Occlusion texture on material <%s> is not combined with metallic-roughness texture."), *materialInterface->GetName());
 	}
 
 	return mat_uid;
@@ -504,7 +572,7 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 
 		//Assuming the first running platform is the desired running platform.
 		FTexture2DMipMap baseMip = texture->GetRunningPlatformData()[0]->Mips[0];
-		FTextureSource &textureSource = texture->Source;
+		FTextureSource& textureSource = texture->Source;
 		ETextureSourceFormat unrealFormat = textureSource.GetFormat();
 
 		uint32_t width = baseMip.SizeX;
@@ -548,10 +616,7 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 				format = avs::TextureFormat::INVALID;
 				UE_LOG(LogRemotePlay, Warning, TEXT("Invalid texture format"));
 				break;
-		}
-
-		TArray<uint8> mipData;
-		textureSource.GetMipData(mipData, 0);		
+		}		
 		
 		uint32_t dataSize=0;
 		unsigned char* data = nullptr;
@@ -596,6 +661,9 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 			//Otherwise, compress the file.
 			else
 			{
+				TArray<uint8> mipData;
+				textureSource.GetMipData(mipData, 0);
+
 				basisu::image image(width, height);
 				basisu::color_rgba_vec& imageData = image.get_pixels();
 				memcpy(imageData.data(), mipData.GetData(), texSize);
@@ -608,6 +676,9 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 
 				basisCompressorParams.m_quality_level = Monitor->QualityLevel;
 				basisCompressorParams.m_compression_level = Monitor->CompressionLevel;
+
+				basisCompressorParams.m_mip_gen = true;
+				basisCompressorParams.m_mip_smallest_dimension = 4; //Appears to be the smallest texture size that SimulFX handles.
 
 				basisu::basis_compressor basisCompressor;
 
@@ -630,6 +701,9 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 		//We send over the uncompressed texture data, if we can't get the compressed data.
 		if(!data)
 		{
+			TArray<uint8> mipData;
+			textureSource.GetMipData(mipData, 0);
+
 			dataSize = texSize;
 			data = new unsigned char[dataSize];
 			memcpy(data, mipData.GetData(), dataSize);
@@ -663,171 +737,105 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 	TArray<UMaterialExpression*> outExpressions;
 	materialInterface->GetMaterial()->GetExpressionsInPropertyChain(propertyChain, outExpressions, nullptr);
 
-	std::function<void(size_t)> handleExpression = [&](size_t expressionIndex)
+	if(outExpressions.Num() != 0)
 	{
-		FString name = outExpressions[expressionIndex]->GetName();
-
-		if(name.Contains("TextureSample"))
+		std::function<size_t(size_t)> expressionDecomposer = [&](size_t expressionIndex)
 		{
-			UMaterialExpressionTextureSample *texExp = Cast<UMaterialExpressionTextureSample>(outExpressions[expressionIndex]);
-			outTexture = {StoreTexture(texExp->Texture), DUMMY_TEX_COORD};
-
-			if(texExp->Coordinates.Expression)
-			{
-				FString coordName = texExp->Coordinates.Expression->GetName();
-
-				if(coordName.Contains("TextureCoordinate"))
-				{
-					UMaterialExpressionTextureCoordinate *texCoordExp = Cast<UMaterialExpressionTextureCoordinate>(texExp->Coordinates.Expression);
-					outTexture.tiling = {texCoordExp->UTiling, texCoordExp->VTiling};
-				}
-			}
-		}
-		else if(name.Contains("ConstantBiasScale"))
-		{
-			LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
-
-			if(outTexture.index == 0)
-			{
-				GetDefaultTexture(materialInterface, propertyChain, outTexture);
-			}
-		}
-		else if(name.Contains("Constant"))
-		{
-			outFactor = Cast<UMaterialExpressionConstant>(outExpressions[expressionIndex])->R;
-		}
-		else if(name.Contains("ScalarParameter"))
-		{
-			///INFO: Just using the parameter's name won't work for layered materials.
-			materialInterface->GetScalarParameterValue(outExpressions[expressionIndex]->GetParameterName(), outFactor);
-		}
-		else
-		{
-			LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
-
-			if(outTexture.index == 0)
-			{
-				GetDefaultTexture(materialInterface, propertyChain, outTexture);
-			}
-		}
-	};
-
-	switch(outExpressions.Num())
-	{
-		case 0:
-			//There is no property chain, so everything should be left as default.
-			break;
-		case 1:
-		case 2:
-			handleExpression(0);
-
-			break;
-		case 3:
-		{
-			FString name = outExpressions[0]->GetName();
+			size_t expressionsHandled = 1;
+			FString name = outExpressions[expressionIndex]->GetName();
 
 			if(name.Contains("Multiply"))
 			{
-				handleExpression(1);
-				handleExpression(2);
+				expressionsHandled += expressionDecomposer(expressionIndex + expressionsHandled);
+				expressionsHandled += expressionDecomposer(expressionIndex + expressionsHandled);
+			}
+			else if(name.Contains("TextureSample"))
+			{
+				expressionsHandled += DecomposeTextureSampleExpression(materialInterface, Cast<UMaterialExpressionTextureSample>(outExpressions[expressionIndex]), outTexture);
+			}
+			else if(name.Contains("ConstantBiasScale"))
+			{
+				LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
+
+				if(outTexture.index == 0)
+				{
+					GetDefaultTexture(materialInterface, propertyChain, outTexture);
+				}
+			}
+			else if(name.Contains("Constant"))
+			{
+				outFactor = Cast<UMaterialExpressionConstant>(outExpressions[expressionIndex])->R;
+			}
+			else if(name.Contains("ScalarParameter"))
+			{
+				///INFO: Just using the parameter's name won't work for layered materials.
+				materialInterface->GetScalarParameterValue(outExpressions[expressionIndex]->GetParameterName(), outFactor);
 			}
 			else
 			{
 				LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
-				GetDefaultTexture(materialInterface, propertyChain, outTexture);
+
+				if(outTexture.index == 0)
+				{
+					GetDefaultTexture(materialInterface, propertyChain, outTexture);
+				}
 			}
-		}
 
-			break;
-		default:
-			LOG_UNSUPPORTED_MATERIAL_CHAIN_LENGTH(materialInterface, FString::FromInt(outExpressions.Num()));
-			GetDefaultTexture(materialInterface, propertyChain, outTexture);
+			return expressionsHandled;
+		};
 
-			break;
+		expressionDecomposer(0);
 	}
 }
 
 void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInterface, EMaterialProperty propertyChain, avs::TextureAccessor &outTexture, avs::vec3 &outFactor)
 {
-	TArray<UMaterialExpression *> outExpressions;
+	TArray<UMaterialExpression*> outExpressions;
 	materialInterface->GetMaterial()->GetExpressionsInPropertyChain(propertyChain, outExpressions, nullptr);
 
-	std::function<void(size_t)> handleExpression = [&](size_t expressionIndex)
+	if(outExpressions.Num() != 0)
 	{
-		FString name = outExpressions[expressionIndex]->GetName();
-
-		if(name.Contains("TextureSample"))
+		std::function<size_t(size_t)> expressionDecomposer = [&](size_t expressionIndex)
 		{
-			UMaterialExpressionTextureSample *texExp = Cast<UMaterialExpressionTextureSample>(outExpressions[expressionIndex]);
-			outTexture = {StoreTexture(texExp->Texture), DUMMY_TEX_COORD};
-
-			if(texExp->Coordinates.Expression)
-			{
-				FString coordName = texExp->Coordinates.Expression->GetName();
-
-				if(coordName.Contains("TextureCoordinate"))
-				{
-					UMaterialExpressionTextureCoordinate *texCoordExp = Cast<UMaterialExpressionTextureCoordinate>(texExp->Coordinates.Expression);
-					outTexture.tiling = {texCoordExp->UTiling, texCoordExp->VTiling};
-				}
-			}
-		}
-		else if(name.Contains("Constant3Vector"))
-		{
-			FLinearColor colour = Cast<UMaterialExpressionConstant3Vector>(outExpressions[expressionIndex])->Constant;
-			outFactor = {colour.R, colour.G, colour.B};
-		}
-		else if(name.Contains("VectorParameter"))
-		{
-			FLinearColor colour;
-			///INFO: Just using the parameter's name won't work for layered materials.
-			materialInterface->GetVectorParameterValue(outExpressions[expressionIndex]->GetParameterName(), colour);
-
-			outFactor = {colour.R, colour.G, colour.B};
-		}
-		else
-		{
-			LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
-
-			if(outTexture.index == 0)
-			{
-				GetDefaultTexture(materialInterface, propertyChain, outTexture);
-			}
-		}
-	};
-
-	switch(outExpressions.Num())
-	{
-		case 0:
-			//There is no property chain, so everything should be left as default.
-			break;
-		case 1:
-		case 2:
-			handleExpression(0);
-
-			break;
-		case 3:
-		{
-			FString name = outExpressions[0]->GetName();
+			size_t expressionsHandled = 1;
+			FString name = outExpressions[expressionIndex]->GetName();
 
 			if(name.Contains("Multiply"))
 			{
-				handleExpression(1);
-				handleExpression(2);
+				expressionsHandled += expressionDecomposer(expressionIndex + expressionsHandled);
+				expressionsHandled += expressionDecomposer(expressionIndex + expressionsHandled);
+			}
+			else if(name.Contains("TextureSample"))
+			{
+				expressionsHandled += DecomposeTextureSampleExpression(materialInterface, Cast<UMaterialExpressionTextureSample>(outExpressions[expressionIndex]), outTexture);
+			}
+			else if(name.Contains("Constant3Vector"))
+			{
+				FLinearColor colour = Cast<UMaterialExpressionConstant3Vector>(outExpressions[expressionIndex])->Constant;
+				outFactor = {colour.R, colour.G, colour.B};
+			}
+			else if(name.Contains("VectorParameter"))
+			{
+				FLinearColor colour;
+				///INFO: Just using the parameter's name won't work for layered materials.
+				materialInterface->GetVectorParameterValue(outExpressions[expressionIndex]->GetParameterName(), colour);
+
+				outFactor = {colour.R, colour.G, colour.B};
 			}
 			else
 			{
 				LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
-				GetDefaultTexture(materialInterface, propertyChain, outTexture);
+
+				if(outTexture.index == 0)
+				{
+					GetDefaultTexture(materialInterface, propertyChain, outTexture);
+				}
 			}
-		}
 
-		break;
-		default:
-			LOG_UNSUPPORTED_MATERIAL_CHAIN_LENGTH(materialInterface, FString::FromInt(outExpressions.Num()));
-			GetDefaultTexture(materialInterface, propertyChain, outTexture);
+			return expressionsHandled;
+		};
 
-		break;
+		expressionDecomposer(0);
 	}
 }
 
@@ -836,105 +844,132 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 	TArray<UMaterialExpression*> outExpressions;
 	materialInterface->GetMaterial()->GetExpressionsInPropertyChain(propertyChain, outExpressions, nullptr);
 
-	std::function<void(size_t)> handleExpression = [&](size_t expressionIndex)
+	if(outExpressions.Num() != 0)
 	{
-		FString name = outExpressions[expressionIndex]->GetName();
-
-		if(name.Contains("TextureSample"))
+		std::function<size_t(size_t)> expressionDecomposer = [&](size_t expressionIndex)
 		{
-			UMaterialExpressionTextureSample *texExp = Cast<UMaterialExpressionTextureSample>(outExpressions[expressionIndex]);
-			outTexture = {StoreTexture(texExp->Texture), DUMMY_TEX_COORD};
-
-			if(texExp->Coordinates.Expression)
-			{
-				FString coordName = texExp->Coordinates.Expression->GetName();
-				
-				if(coordName.Contains("TextureCoordinate"))
-				{
-					UMaterialExpressionTextureCoordinate *texCoordExp = Cast<UMaterialExpressionTextureCoordinate>(texExp->Coordinates.Expression);
-					outTexture.tiling = {texCoordExp->UTiling, texCoordExp->VTiling};
-				}
-			}
-		}
-		else if(name.Contains("Constant3Vector"))
-		{
-			FLinearColor colour = Cast<UMaterialExpressionConstant3Vector>(outExpressions[expressionIndex])->Constant;
-			outFactor = {colour.R, colour.G, colour.B, colour.A};
-		}
-		else if(name.Contains("Constant4Vector"))
-		{
-			FLinearColor colour = Cast<UMaterialExpressionConstant4Vector>(outExpressions[expressionIndex])->Constant;
-			outFactor = {colour.R, colour.G, colour.B, colour.A};
-		}
-		else if(name.Contains("VectorParameter"))
-		{
-			FLinearColor colour;
-			///INFO: Just using the parameter's name won't work for layered materials.
-			materialInterface->GetVectorParameterValue(outExpressions[expressionIndex]->GetParameterName(), colour);
-
-			outFactor = {colour.R, colour.G, colour.B, colour.A};
-		}
-		else
-		{
-			LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
-
-			if(outTexture.index == 0)
-			{
-				GetDefaultTexture(materialInterface, propertyChain, outTexture);
-			}
-		}
-	};
-
-	switch(outExpressions.Num())
-	{
-		case 0:
-			//There is no property chain, so everything should be left as default.
-			break;
-		case 1:
-		case 2:
-			handleExpression(0);
-
-			break;
-		case 3:
-		{
-			FString name = outExpressions[0]->GetName();
+			size_t expressionsHandled = 1;
+			FString name = outExpressions[expressionIndex]->GetName();
 
 			if(name.Contains("Multiply"))
 			{
-				handleExpression(1);
-				handleExpression(2);
+				expressionsHandled += expressionDecomposer(expressionIndex + expressionsHandled);
+				expressionsHandled += expressionDecomposer(expressionIndex + expressionsHandled);
+			}
+			else if(name.Contains("TextureSample"))
+			{
+				expressionsHandled += DecomposeTextureSampleExpression(materialInterface, Cast<UMaterialExpressionTextureSample>(outExpressions[expressionIndex]), outTexture);
+			}
+			else if(name.Contains("Constant3Vector"))
+			{
+				FLinearColor colour = Cast<UMaterialExpressionConstant3Vector>(outExpressions[expressionIndex])->Constant;
+				outFactor = {colour.R, colour.G, colour.B, colour.A};
+			}
+			else if(name.Contains("Constant4Vector"))
+			{
+				FLinearColor colour = Cast<UMaterialExpressionConstant4Vector>(outExpressions[expressionIndex])->Constant;
+				outFactor = {colour.R, colour.G, colour.B, colour.A};
+			}
+			else if(name.Contains("VectorParameter"))
+			{
+				FLinearColor colour;
+				///INFO: Just using the parameter's name won't work for layered materials.
+				materialInterface->GetVectorParameterValue(outExpressions[expressionIndex]->GetParameterName(), colour);
+
+				outFactor = {colour.R, colour.G, colour.B, colour.A};
 			}
 			else
 			{
 				LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name);
-				GetDefaultTexture(materialInterface, propertyChain, outTexture);
-			}
-		}
 
-			break;
-		case 4:
-		{
-			FString name = outExpressions[0]->GetName();
-
-			if(name.Contains("Multiply"))
-			{
-				///ASSUMPTION: Texture = A, Factor = B
-
-				//1 = Texture, 2 = Coordinate
-				handleExpression(1);
-				handleExpression(3);
+				if(outTexture.index == 0)
+				{
+					GetDefaultTexture(materialInterface, propertyChain, outTexture);
+				}
 			}
 
-			break;
-		}
+			return expressionsHandled;
+		};
 
-			break;
-		default:
-			LOG_UNSUPPORTED_MATERIAL_CHAIN_LENGTH(materialInterface, FString::FromInt(outExpressions.Num()));
-			GetDefaultTexture(materialInterface, propertyChain, outTexture);
-
-			break;
+		expressionDecomposer(0);
 	}
+}
+
+size_t GeometrySource::DecomposeTextureSampleExpression(UMaterialInterface* materialInterface, UMaterialExpressionTextureSample* textureSample, avs::TextureAccessor& outTexture)
+{
+	size_t subExpressionsHandled = 0;
+	outTexture = {StoreTexture(textureSample->Texture), DUMMY_TEX_COORD};
+
+	//Extract tiling data for this texture.
+	if(textureSample->Coordinates.Expression)
+	{
+		//Name of the coordinate expression.
+		FString coordExpName = textureSample->Coordinates.Expression->GetName();
+
+		if(coordExpName.Contains("Multiply"))
+		{
+			UMaterialExpressionMultiply* mulExp = Cast<UMaterialExpressionMultiply>(textureSample->Coordinates.Expression);
+			UMaterialExpression* inputA = mulExp->A.Expression, * inputB = mulExp->B.Expression;
+
+			if(inputA && inputB)
+			{
+				FString inputAName = mulExp->A.Expression->GetName(), inputBName = mulExp->B.Expression->GetName();
+
+				//Swap, so A is texture coordinate, if B is texture coordinate.
+				if(inputBName.Contains("TextureCoordinate"))
+				{
+					std::swap(inputA, inputB);
+					std::swap(inputAName, inputBName);
+				}
+
+				if(inputAName.Contains("TextureCoordinate"))
+				{
+					bool isBSupported = true;
+					float scalarValue = 0;
+
+					if(inputBName.Contains("Constant"))
+					{
+						scalarValue = Cast<UMaterialExpressionConstant>(inputB)->R;
+					}
+					else if(inputBName.Contains("ScalarParameter"))
+					{
+						///INFO: Just using the parameter's name won't work for layered materials.
+						materialInterface->GetScalarParameterValue(inputB->GetParameterName(), scalarValue);
+					}
+					else
+					{
+						isBSupported = false;
+						LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, inputBName)
+					}
+
+					if(isBSupported)
+					{
+						UMaterialExpressionTextureCoordinate* texCoordExp = Cast<UMaterialExpressionTextureCoordinate>(inputA);
+						outTexture.tiling = {texCoordExp->UTiling * scalarValue, texCoordExp->VTiling * scalarValue};
+					}
+				}
+				else
+				{
+					UE_LOG(LogRemotePlay, Warning, TEXT("Material <%s> contains multiply expression <%s> with missing inputs."), *materialInterface->GetName(), *coordExpName)
+				}
+			}
+
+			subExpressionsHandled += (inputA ? 1 : 0) + (inputB ? 1 : 0); //Handled multiplication inputs.
+		}
+		else if(coordExpName.Contains("TextureCoordinate"))
+		{
+			UMaterialExpressionTextureCoordinate* texCoordExp = Cast<UMaterialExpressionTextureCoordinate>(textureSample->Coordinates.Expression);
+			outTexture.tiling = {texCoordExp->UTiling, texCoordExp->VTiling};
+		}
+		else
+		{
+			LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, coordExpName)
+		}
+
+		++subExpressionsHandled; //Handled UV expression.
+	}
+
+	return subExpressionsHandled;
 }
 
 std::vector<avs::uid> GeometrySource::getNodeUIDs() const
@@ -961,6 +996,7 @@ bool GeometrySource::getNode(avs::uid node_uid, std::shared_ptr<avs::DataNode> &
 	}
 	catch(std::out_of_range oor)
 	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Failed to find node with UID: %d"), node_uid)
 		return false;
 	}
 }
@@ -1069,6 +1105,7 @@ bool GeometrySource::getTexture(avs::uid texture_uid, avs::Texture & outTexture)
 	}
 	catch(std::out_of_range oor)
 	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Failed to find texture with UID: %d"), texture_uid)
 		return false;
 	}
 }
@@ -1097,6 +1134,7 @@ bool GeometrySource::getMaterial(avs::uid material_uid, avs::Material & outMater
 	}
 	catch(std::out_of_range oor)
 	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Failed to find material with UID: %d"), material_uid)
 		return false;
 	}
 }

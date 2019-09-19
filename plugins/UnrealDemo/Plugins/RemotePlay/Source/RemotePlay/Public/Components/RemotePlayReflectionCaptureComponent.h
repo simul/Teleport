@@ -9,6 +9,12 @@
 #include "Components/BoxReflectionCaptureComponent.h"
 #include "RemotePlayReflectionCaptureComponent.generated.h"
 
+struct FCubeTexture
+{
+	FTextureCubeRHIRef TextureCubeRHIRef;
+	FUnorderedAccessViewRHIRef UnorderedAccessViewRHIRefs[8];
+};
+
 UCLASS(hidecategories = (Collision, Object, Physics, SceneComponent), meta = (BlueprintSpawnableComponent))
 class URemotePlayReflectionCaptureComponent : public UReflectionCaptureComponent
 {
@@ -45,22 +51,20 @@ private:
 	void Release_RenderThread(FRHICommandListImmediate& RHICmdList);
 	void UpdateReflections_RenderThread(FRHICommandListImmediate& RHICmdList, FScene *Scene, UTextureRenderTargetCube *InSourceTexture, ERHIFeatureLevel::Type FeatureLevel);
 	void WriteReflections_RenderThread(FRHICommandListImmediate& RHICmdList, FScene *Scene, struct FSurfaceTexture *, ERHIFeatureLevel::Type FeatureLevel);
-	template<typename ShaderType> void DispatchUpdateReflectionsShader(FRHICommandListImmediate& RHICmdList, FTextureRHIRef TextureRHI,FUnorderedAccessViewRHIRef Target_UAV, ERHIFeatureLevel::Type FeatureLevel);
 
-	struct FCubeTexture
-	{
-		FTextureCubeRHIRef TextureCubeRHIRef;
-		FTexture2DArrayRHIRef Texture2DArrayRHIRef;
-		FUnorderedAccessViewRHIRef UnorderedAccessViewRHIRefs[12];
-	};
-
+	void Decompose_RenderThread(FRHICommandListImmediate& RHICmdList
+		, FCubeTexture &CubeTexture
+		, FSurfaceTexture *TargetSurfaceTexture, FShader *Shader, FIntPoint TargetOffset);
+	void Init(FRHICommandListImmediate& RHICmdList,FCubeTexture &t,int size);
+	void Release(FCubeTexture &t);
 	struct FShaderDirectionalLight
 	{
 		FLinearColor Color;
 		FVector Direction;
 	};
 
-	TQueue<TResourceArray<FShaderDirectionalLight>> ShaderDirLightsQueue;
-	FCubeTexture ReflectionCubeTexture;
+	FCubeTexture SpecularCubeTexture;
+	FCubeTexture DiffuseCubeTexture;
+	FCubeTexture LightingCubeTexture;
 };
 

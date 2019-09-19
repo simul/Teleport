@@ -86,7 +86,7 @@ const FRemotePlayEncodeParameters &URemotePlayCaptureComponent::GetEncodeParams(
 		// 3 across...
 		EncodeParams.FrameWidth = 3 * W;
 		// and 2 down... for the colour, depth, and light cubes.
-		EncodeParams.FrameHeight = 2 * (W + W / 2 + 128);
+		EncodeParams.FrameHeight = 2 * (W + W / 2);
 	}
 	else
 	{
@@ -128,6 +128,7 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 		{
 			static int u = 1;
 			u--;
+			u = std::min(Monitor->VideoEncodeFrequency, u);
 			if (!u)
 			{
 				u = Monitor->VideoEncodeFrequency;
@@ -140,16 +141,16 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 		FTransform Transform = GetComponentTransform();
 
 		RemotePlayContext->EncodePipeline->PrepareFrame(Scene, TextureTarget);
-		if (RemotePlayReflectionCaptureComponent)
+		if (RemotePlayReflectionCaptureComponent && EncodeParams.bDecomposeCube)
 		{
 			RemotePlayReflectionCaptureComponent->UpdateContents(
-				Scene->GetRenderScene()
-				, TextureTarget
-				, Scene->GetFeatureLevel());
+				Scene->GetRenderScene(),
+				TextureTarget,
+				Scene->GetFeatureLevel());
 			RemotePlayReflectionCaptureComponent->PrepareFrame(
-				Scene->GetRenderScene()
-				, RemotePlayContext->EncodePipeline->GetSurfaceTexture()
-				, Scene->GetFeatureLevel());
+				Scene->GetRenderScene(),
+				RemotePlayContext->EncodePipeline->GetSurfaceTexture(),
+				Scene->GetFeatureLevel());
 		}
 		RemotePlayContext->EncodePipeline->EncodeFrame(Scene, TextureTarget, Transform);
 	}

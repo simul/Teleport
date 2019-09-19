@@ -68,7 +68,7 @@ protected:
 
 	std::unordered_map<UTexture*, avs::uid> decomposedTextures; //Textures we have already stored in the GeometrySource; the pointer points to the uid of the stored texture information.
 	std::unordered_map<UMaterialInterface*, avs::uid> decomposedMaterials; //Materials we have already stored in the GeometrySource; the pointer points to the uid of the stored material information.
-	std::unordered_map<int32, avs::uid> decomposedNodes; //Nodes we have already stored in the GeometrySource; uses GetUniqueID() on the MeshComponent that represents the node.
+	std::map<FName, avs::uid> decomposedNodes; //Nodes we have already stored in the GeometrySource; <Level Unique Node Name, Node Identifier>.
 
 	std::map<avs::uid, avs::Texture> textures;
 	std::map<avs::uid, avs::Material> materials;
@@ -100,6 +100,13 @@ protected:
 	void DecomposeMaterialProperty(UMaterialInterface *materialInterface, EMaterialProperty propertyChain, avs::TextureAccessor &outTexture, float &outFactor);
 	void DecomposeMaterialProperty(UMaterialInterface *materialInterface, EMaterialProperty propertyChain, avs::TextureAccessor &outTexture, avs::vec3 &outFactor);
 	void DecomposeMaterialProperty(UMaterialInterface *materialInterface, EMaterialProperty propertyChain, avs::TextureAccessor &outTexture, avs::vec4 &outFactor);
+
+	//Decomposes UMaterialExpressionTextureSample; extracting the texture, and tiling data.
+	//	materialInterface : The base class of the material we are decomposing.
+	//	textureSample : The expression we want to extract/decompose the data from.
+	//	outTexture : Texture related to the chain to output into.
+	//Returns the amount of expressions that were handled in the chain.
+	size_t DecomposeTextureSampleExpression(UMaterialInterface* materialInterface, UMaterialExpressionTextureSample* textureSample, avs::TextureAccessor& outTexture);
 
 	class ARemotePlayMonitor* Monitor;
 };
