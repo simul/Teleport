@@ -373,8 +373,9 @@ void URemotePlaySessionComponent::StartStreaming()
 	setupCommand.depth_width	= EncodeParams.DepthWidth;
 	setupCommand.colour_cubemap_size = EncodeParams.FrameWidth / 3;
 	setupCommand.compose_cube	= EncodeParams.bDecomposeCube;
-	setupCommand.port = StreamingPort;
+	setupCommand.port = StreamingPort; 
 	setupCommand.debug_stream=Monitor->DebugStream;
+	setupCommand.do_checksums = Monitor->Checksums?1:0;
 	Client_SendCommand(setupCommand);
 	//Client_SendCommand(FString::Printf(TEXT("v %d %d %d"), StreamingPort, EncodeParams.FrameWidth, EncodeParams.FrameHeight));
 }
