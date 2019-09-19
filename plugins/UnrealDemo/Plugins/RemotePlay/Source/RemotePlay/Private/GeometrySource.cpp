@@ -86,7 +86,7 @@ void GeometrySource::Initialize(class ARemotePlayMonitor *monitor)
 		}
 	}
 	//0 == No item. First generated UID will be 1.
-	rootNodeUid = CreateNode(FTransform::Identity, 0, avs::NodeDataType::Scene,std::vector<avs::uid>());
+	rootNodeUid = CreateNode(nullptr, 0, avs::NodeDataType::Scene,std::vector<avs::uid>());
 
 }
 
@@ -301,6 +301,26 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 	return true;
 }
 
+void GeometrySource::UpdateNodeTransform(std::shared_ptr<avs::DataNode>& node, USceneComponent* component)
+{
+	if(component)
+	{
+		FTransform transform = component->GetComponentTransform();
+
+		// convert offset from cm to metres.
+		FVector t = transform.GetTranslation() * 0.01f;
+		// We retain Unreal axes until sending to individual clients, which might have varying standards.
+		FQuat r = transform.GetRotation();
+		const FVector s = transform.GetScale3D();
+
+		node->transform = {t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z};
+	}
+	else
+	{
+		UE_LOG(LogRemotePlay, Log, TEXT("UpdateNodeTransform used on node with nullptr component."))
+	}
+}
+
 void GeometrySource::clearData()
 {
 	Meshes.Empty();
@@ -364,7 +384,7 @@ avs::uid GeometrySource::AddStreamableMeshComponent(UMeshComponent *MeshComponen
 	return mesh_uid;
 }
 
-avs::uid GeometrySource::AddNode(avs::uid parent_uid, UMeshComponent *component)
+avs::uid GeometrySource::AddNode(avs::uid parent_uid, USceneComponent* component, bool forceTransformUpdate)
 {
 	avs::uid node_uid;
 	FName levelUniqueNodeName = *FPaths::Combine(component->GetOutermost()->GetName(), component->GetOuter()->GetName(), component->GetName());
@@ -373,15 +393,28 @@ avs::uid GeometrySource::AddNode(avs::uid parent_uid, UMeshComponent *component)
 	if(nodeIt != decomposedNodes.end())
 	{
 		node_uid = nodeIt->second;
+
+		if(forceTransformUpdate)
+		{
+			UpdateNodeTransform(nodes[node_uid], component);
+		}
 	}
 	else
 	{
+		UMeshComponent* meshComponent = Cast<UMeshComponent>(component);
+
+		if(!meshComponent)
+		{
+			UE_LOG(LogRemotePlay, Warning, TEXT("Currently only Mesh Components are supported, but a component of type <%s> was passed to the GeometrySource."), *component->GetName())
+			return 0;
+		}
+
 		std::shared_ptr<avs::DataNode> parent;
 		getNode(parent_uid, parent);
 
-		avs::uid mesh_uid = AddStreamableMeshComponent(component);
+		avs::uid mesh_uid = AddStreamableMeshComponent(meshComponent);
 		// the material/s that this particular instance of the mesh has applied to its slots...
-		TArray<UMaterialInterface *> mats = component->GetMaterials();
+		TArray<UMaterialInterface *> mats = meshComponent->GetMaterials();
 
 		std::vector<avs::uid> mat_uids;
 		//Add material, and textures, for streaming to clients.
@@ -392,7 +425,7 @@ avs::uid GeometrySource::AddNode(avs::uid parent_uid, UMeshComponent *component)
 			mat_uids.push_back(AddMaterial(materialInterface));
 		}
 
-		node_uid = CreateNode(component->GetComponentTransform(), mesh_uid, avs::NodeDataType::Mesh, mat_uids);
+		node_uid = CreateNode(component, mesh_uid, avs::NodeDataType::Mesh, mat_uids);
 		decomposedNodes[levelUniqueNodeName] = node_uid;
 
 		parent->childrenUids.push_back(node_uid);
@@ -412,16 +445,11 @@ avs::uid GeometrySource::AddNode(avs::uid parent_uid, UMeshComponent *component)
 	return node_uid;
 }
 
-avs::uid GeometrySource::CreateNode(const FTransform& transform, avs::uid data_uid, avs::NodeDataType data_type, const std::vector<avs::uid> &mat_uids)
+avs::uid GeometrySource::CreateNode(USceneComponent* component, avs::uid data_uid, avs::NodeDataType data_type, const std::vector<avs::uid>& mat_uids)
 {
 	avs::uid uid = avs::GenerateUid();
-	auto node = std::make_shared<avs::DataNode>();
-	// convert offset from cm to metres.
-	FVector t = transform.GetTranslation()*0.01f;
-	// We retain Unreal axes until sending to individual clients, which might have varying standards.
-	FQuat r = transform.GetRotation();
-	const FVector s = transform.GetScale3D();
-	node->transform = { t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z };
+	std::shared_ptr<avs::DataNode> node = std::make_shared<avs::DataNode>();
+	UpdateNodeTransform(node, component);
 	node->data_uid = data_uid;
 	node->data_type = data_type;
 	node->materials = mat_uids;

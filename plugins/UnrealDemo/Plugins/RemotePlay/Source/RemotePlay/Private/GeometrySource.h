@@ -22,8 +22,10 @@ public:
 
 	avs::uid AddMesh(class UStaticMesh *);
 	avs::uid AddStreamableMeshComponent(UMeshComponent *MeshComponent);
-	avs::uid AddNode(avs::uid parent_uid, UMeshComponent *component);
-	avs::uid CreateNode(const struct FTransform& transform, avs::uid data_uid, avs::NodeDataType data_type,const std::vector<avs::uid> &mat_uids);
+	
+	avs::uid AddNode(avs::uid parent_uid, USceneComponent* component, bool forceTransformUpdate = false);
+	avs::uid CreateNode(USceneComponent* component, avs::uid data_uid, avs::NodeDataType data_type,const std::vector<avs::uid> &mat_uids);
+
 	avs::uid GetRootNodeUid();
 	bool GetRootNode(std::shared_ptr<avs::DataNode>& node);
 	
@@ -80,6 +82,11 @@ protected:
 	void PrepareMesh(Mesh &m);
 	void SendMesh(Mesh &m);
 	bool InitMesh(Mesh *mesh, uint8 lodIndex) const;
+
+	//Updates the transform of the node.
+	//	node : Node which is to be updated.
+	//	component : Component the node corresponds to.
+	void UpdateNodeTransform(std::shared_ptr<avs::DataNode>& node, USceneComponent* component);
 
 	//Determines if the texture has already been stored, and pulls apart the texture data and stores it in a avs::Texture.
 	//	texture : UTexture to pull the texture data from.

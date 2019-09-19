@@ -57,7 +57,7 @@ void FGeometryStreamingService::Initialise(UWorld *World, GeometrySource *geomSo
 		//Decompose the meshes that would cause an overlap event to occur with the "RemotePlaySensor" profile.
 		if(rootMesh->GetGenerateOverlapEvents() && rootMesh->GetCollisionResponseToChannel(remotePlayChannel) != ECollisionResponse::ECR_Ignore)
 		{
-			geometrySource->AddNode(root_node_uid, rootMesh);
+			geometrySource->AddNode(root_node_uid, rootMesh, true);
 		}
 	}
 
