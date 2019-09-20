@@ -128,7 +128,7 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 		{
 			static int u = 1;
 			u--; 
-			u = std::min(Monitor->VideoEncodeFrequency, u);
+			u = std::min(Monitor->VideoEncodeFrequency, u); 
 			if (!u)
 			{
 				u = Monitor->VideoEncodeFrequency;
