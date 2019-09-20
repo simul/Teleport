@@ -127,8 +127,8 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 		if (Monitor&&Monitor->VideoEncodeFrequency > 1)
 		{
 			static int u = 1;
-			u--;
-			u = std::min(Monitor->VideoEncodeFrequency, u);
+			u--; 
+			u = std::min(Monitor->VideoEncodeFrequency, u); 
 			if (!u)
 			{
 				u = Monitor->VideoEncodeFrequency;
@@ -139,7 +139,7 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 			}
 		}
 		FTransform Transform = GetComponentTransform();
-
+		 
 		RemotePlayContext->EncodePipeline->PrepareFrame(Scene, TextureTarget);
 		if (RemotePlayReflectionCaptureComponent && EncodeParams.bDecomposeCube)
 		{

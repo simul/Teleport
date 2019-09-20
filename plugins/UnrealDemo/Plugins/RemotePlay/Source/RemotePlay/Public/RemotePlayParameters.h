@@ -63,4 +63,10 @@ struct FRemotePlayNetworkParameters
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
 	int32 RemotePort;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = RemotePlay)
+	int32 ClientBandwidthLimit;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = RemotePlay)
+	int32 ClientBufferSize;
 };

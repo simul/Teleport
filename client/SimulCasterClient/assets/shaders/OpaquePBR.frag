@@ -29,10 +29,10 @@ struct Light //Layout conformant to GLSL std140
     vec3 u_Direction;
     float u_SpotAngle;
 };
-layout(std140, binding = 2) uniform u_LightData
+/*layout(std140, binding = 2) uniform u_LightData
 {
     Light[MaxLights] u_Lights;
-};
+};*/
 
 //Material
 layout(std140, binding = 3) uniform u_MaterialData //Layout conformant to GLSL std140
@@ -57,6 +57,11 @@ layout(std140, binding = 3) uniform u_MaterialData //Layout conformant to GLSL s
 
     vec3 u_SpecularColour;
     float _pad;
+
+    float u_DiffuseTexCoordIndex;
+    float u_NormalTexCoordIndex;
+    float u_CombinedTexCoordIndex;
+    float _pad2;
 };
 layout(binding = 10) uniform sampler2D u_Diffuse;
 layout(binding = 11) uniform sampler2D u_Normal;
@@ -91,38 +96,35 @@ vec3 EnvironmentBRDFApprox(vec3 specularColour, float roughness, float n_v)
 }
 vec4 GetDiffuse()
 {
-    return vec4(
-    u_DiffuseOutputScalar.b * texture(u_Diffuse, v_UV0 * u_DiffuseTexCoordsScalar_B).b,
-    u_DiffuseOutputScalar.g * texture(u_Diffuse, v_UV0 * u_DiffuseTexCoordsScalar_G).g,
-    u_DiffuseOutputScalar.r * texture(u_Diffuse, v_UV0 * u_DiffuseTexCoordsScalar_R).r,
-    u_DiffuseOutputScalar.a * texture(u_Diffuse, v_UV0 * u_DiffuseTexCoordsScalar_A).a
-    );
+    vec2 texcoord= (u_DiffuseTexCoordIndex > 0.0 ? v_UV1 : v_UV0)*u_DiffuseTexCoordsScalar_B;
+    vec4 diffuseLookup=texture(u_Diffuse, texcoord).bgra;
+    return u_DiffuseOutputScalar.bgra*diffuseLookup;
 }
+
 vec3 GetNormals()
 {
-    vec3 normalMap = vec3(
-    u_NormalOutputScalar.b * texture(u_Normal, v_UV0 * u_NormalTexCoordsScalar_B).b,
-    u_NormalOutputScalar.g * texture(u_Normal, v_UV0 * u_NormalTexCoordsScalar_G).g,
-    u_NormalOutputScalar.r * texture(u_Normal, v_UV0 * u_NormalTexCoordsScalar_R).r
-    );
-    normalMap = normalize(v_TBN * (normalMap * 2.0 - 1.0));
+    vec2 texcoord= (u_NormalTexCoordIndex > 0.0 ? v_UV1 : v_UV0)*u_NormalTexCoordsScalar_R;
+    vec3 normalLookup=texture(u_Normal, texcoord).bgr;
+    vec3 tangetSpaceNormalMap = normalLookup*u_NormalOutputScalar.bgr;
+    vec3 normalMap = normalize( tangetSpaceNormalMap *v_TBN);
     return normalMap;
 }
+
 float GetRoughness()
 {
-    return u_CombinedOutputScalar.b * texture(u_Combined, v_UV0 * u_CombinedTexCoordsScalar_B).b;
+    return u_CombinedOutputScalar.b * texture(u_Combined, (u_CombinedTexCoordIndex > 0.0 ? v_UV1 : v_UV0) * u_CombinedTexCoordsScalar_B).b;
 }
 float GetMetallic()
 {
-    return u_CombinedOutputScalar.g * texture(u_Combined, v_UV0 * u_CombinedTexCoordsScalar_G).g;
+    return u_CombinedOutputScalar.g * texture(u_Combined, (u_CombinedTexCoordIndex > 0.0 ? v_UV1 : v_UV0) * u_CombinedTexCoordsScalar_G).g;
 }
 float GetAO()
 {
-    return u_CombinedOutputScalar.r * texture(u_Combined, v_UV0 * u_CombinedTexCoordsScalar_R).r;
+    return u_CombinedOutputScalar.r * texture(u_Combined, (u_CombinedTexCoordIndex > 0.0 ? v_UV1 : v_UV0) * u_CombinedTexCoordsScalar_R).r;
 }
 float GetSpecular()
 {
-    return u_CombinedOutputScalar.a * texture(u_Combined, v_UV0 * u_CombinedTexCoordsScalar_A).a;
+    return u_CombinedOutputScalar.a * texture(u_Combined, (u_CombinedTexCoordIndex > 0.0 ? v_UV1 : v_UV0) * u_CombinedTexCoordsScalar_A).a;
 }
 
 //BRDF Reflection Model to add from UE4:
@@ -213,7 +215,7 @@ void main()
 	Light d_Light;
 	d_Light.u_Colour = vec4(1, 1, 1 ,1);
 	d_Light.u_Position = vec3(1.3, 1.8, -7.6);
-	d_Light.u_Power = 120.0;		
+	d_Light.u_Power = 120.0;
 	d_Light.u_Direction = vec3(0.0, -0.391, -0.921);
 	d_Light.u_SpotAngle = 2.0 * PI;
 	
@@ -240,10 +242,13 @@ void main()
         vec3 irradiance = SPD / (4.0 * PI * pow(distanceToLight, 2.0));
 
         //Because the radiance is only non-zero in the direction Wi,
-        //We can replace radiance with irradinace;
+        //We can replace radiance with irradiance;
         vec3 radiance = irradiance;
 
         Lo += Le + BRDF(N, Wo, Wi, H, radiance);
     }
-    gl_FragColor = vec4(pow(Lo, vec3(1.0/2.2)), 1.0); //Gamma Correction!
+    vec3 R = reflect(Wo, N);
+    vec4 l=vec4(0,0,0,0);
+    vec4 h=vec4(1.0,1.0,1.0,1.0);
+    gl_FragColor = clamp(0.0001*vec4(pow(Lo, vec3(1.0/2.2)), 1.0) + vec4(v_UV0,0.0,1.0),l,h);
 }

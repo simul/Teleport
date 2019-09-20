@@ -190,7 +190,7 @@ avs::Result GeometryEncoder::encodeNodes(avs::GeometrySourceBackendInterface * s
 			put(id);
 		}
 
-		req->EncodedResource(uid);
+		req->EncodedResource(uid); 
 	}
 
 	return avs::Result::OK;
@@ -202,7 +202,6 @@ void GeometryEncoder::putPayload(avs::GeometryPayloadType t)
 	buffer.push_back(GALU_code[1]);
 	buffer.push_back(GALU_code[2]);
 	buffer.push_back(GALU_code[3]);
-
 	//Place payload type onto the buffer.
 	put(t);
 }

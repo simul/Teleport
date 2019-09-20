@@ -88,7 +88,7 @@ bool SessionClient::Discover(uint16_t discoveryPort, ENetAddress& remote)
     if(!mServiceDiscoverySocket) {
         mServiceDiscoverySocket = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
         if(mServiceDiscoverySocket <= 0) {
-            FAIL("Failed to create service discovery UDP socket");
+            OVR_FAIL("Failed to create service discovery UDP socket");
             return false;
         }
 
@@ -98,7 +98,7 @@ bool SessionClient::Discover(uint16_t discoveryPort, ENetAddress& remote)
 
         struct sockaddr_in bindAddress = { AF_INET, htons(discoveryPort) };
         if(bind(mServiceDiscoverySocket, (struct sockaddr*)&bindAddress, sizeof(bindAddress)) == -1) {
-            FAIL("Failed to bind to service discovery UDP socket");
+            OVR_FAIL("Failed to bind to service discovery UDP socket");
             close(mServiceDiscoverySocket);
             mServiceDiscoverySocket = 0;
             return false;
@@ -130,7 +130,7 @@ bool SessionClient::Discover(uint16_t discoveryPort, ENetAddress& remote)
     if(serverDiscovered) {
         char remoteIP[20];
         enet_address_get_host_ip(&remote, remoteIP, sizeof(remoteIP));
-        WARN("Discovered session server: %s:%d", remoteIP, remote.port);
+        OVR_WARN("Discovered session server: %s:%d", remoteIP, remote.port);
 
         close(mServiceDiscoverySocket);
         mServiceDiscoverySocket = 0;
@@ -151,29 +151,30 @@ bool SessionClient::Connect(const ENetAddress& remote, uint timeout)
 {
     mClientHost = enet_host_create(nullptr, 1, RPCH_NumChannels, 0, 0);
     if(!mClientHost) {
-        FAIL("Failed to create ENET client host");
+        OVR_FAIL("Failed to create ENET client host");
         return false;
     }
 
     mServerPeer = enet_host_connect(mClientHost, &remote, RPCH_NumChannels, 0);
     if(!mServerPeer) {
-        WARN("Failed to initiate connection to the server");
+        OVR_WARN("Failed to initiate connection to the server");
         enet_host_destroy(mClientHost);
         mClientHost = nullptr;
         return false;
     }
 
     ENetEvent event;
-    if(enet_host_service(mClientHost, &event, timeout) > 0 && event.type == ENET_EVENT_TYPE_CONNECT) {
+    if(enet_host_service(mClientHost, &event, timeout) > 0 && event.type == ENET_EVENT_TYPE_CONNECT)
+    {
         mServerEndpoint = remote;
 
         char remoteIP[20];
         enet_address_get_host_ip(&mServerEndpoint, remoteIP, sizeof(remoteIP));
-        LOG("Connected to session server: %s:%d", remoteIP, remote.port);
+        OVR_LOG("Connected to session server: %s:%d", remoteIP, remote.port);
         return true;
     }
 
-    WARN("Failed to connect to remote session server");
+    OVR_WARN("Failed to connect to remote session server");
 
     enet_host_destroy(mClientHost);
     mClientHost = nullptr;
@@ -282,7 +283,7 @@ void SessionClient::DispatchEvent(const ENetEvent& event)
             ParseCommandPacket(event.packet);
             break;
         default:
-            WARN("Received packet on output-only channel: %d", event.channelID);
+            OVR_WARN("Received packet on output-only channel: %d", event.channelID);
             break;
     }
 
@@ -305,8 +306,12 @@ void SessionClient::ParseCommandPacket(ENetPacket* packet)
 		case avs::CommandPayloadType::Setup:
 		{
 			const avs::SetupCommand &setupCommand = *((const avs::SetupCommand*)packet->data);
-			mCommandInterface->OnVideoStreamChanged(setupCommand);
-			SendHandshake();
+            avs::Handshake handshake;
+            handshake.isReadyToReceivePayloads=true;
+            handshake.axesStandard = avs::AxesStandard::GlStyle;
+            handshake.MetresPerUnit = 1.0f;
+			mCommandInterface->OnVideoStreamChanged(setupCommand,handshake);
+			SendHandshake(handshake);
 		}
 		break;
 		case avs::CommandPayloadType::ActorBounds:
@@ -335,7 +340,7 @@ void SessionClient::ParseCommandPacket(ENetPacket* packet)
 
 void SessionClient::ParseTextCommand(const char *txt_utf8)
 {
-	WARN("CMD: %s", txt_utf8);
+	OVR_WARN("CMD: %s", txt_utf8);
 	if (txt_utf8[0] == 'v')
     {
         int port, width, height;
@@ -344,21 +349,10 @@ void SessionClient::ParseTextCommand(const char *txt_utf8)
 		{
             mCommandInterface->OnVideoStreamClosed();
         }
-        else
-		{
-            avs::SetupCommand setupCommand;
-            setupCommand.port=port;
-            setupCommand.video_width=width;
-			setupCommand.video_height = height/2;
-            setupCommand.depth_width=width;
-			setupCommand.depth_height = height/2;
-            mCommandInterface->OnVideoStreamChanged(setupCommand);
-            SendHandshake();
-        }
     }
     else
     {
-		WARN("Invalid text command: %c", txt_utf8[0]);
+		OVR_WARN("Invalid text command: %c", txt_utf8[0]);
     }
 }
 
@@ -444,12 +438,8 @@ void SessionClient::SendResourceRequests()
     }
 }
 
-void SessionClient::SendHandshake()
+void SessionClient::SendHandshake(const avs::Handshake &handshake)
 {
-    avs::Handshake handshake;
-    handshake.isReadyToReceivePayloads=true;
-    handshake.axesStandard = avs::AxesStandard::GlStyle;
-    handshake.MetresPerUnit = 1.0f;
     ENetPacket *packet = enet_packet_create(&handshake, sizeof(avs::Handshake), 0);
     enet_peer_send(mServerPeer, RPCH_HANDSHAKE, packet);
 }

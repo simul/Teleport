@@ -94,18 +94,18 @@ avs::Result ResourceCreator::Assemble(avs::MeshCreate * meshCreate)
 		std::unique_ptr<uint8_t[]> _indices = std::make_unique<uint8_t[]>(indicesSize);
 		memcpy(_indices.get(), meshElementCreate->m_Indices, indicesSize);
 		
-		for (size_t i = 0; i < meshElementCreate->m_VertexCount; i++)
+		for (size_t j = 0; j < meshElementCreate->m_VertexCount; j++)
 		{
 			size_t intraStrideOffset = 0;
 			if (meshElementCreate->m_Vertices)
 			{
-				memcpy(interleavedVB.get() + (layout->m_Stride / 4 * i) + intraStrideOffset, meshElementCreate->m_Vertices + i, sizeof(avs::vec3)); intraStrideOffset += 3;
+				memcpy(interleavedVB.get() + (layout->m_Stride / 4 * j) + intraStrideOffset, meshElementCreate->m_Vertices + j, sizeof(avs::vec3)); intraStrideOffset += 3;
 			}
 			if (meshElementCreate->m_TangentNormals)
 			{
 				avs::vec3 normal;
 				avs::vec4 tangent;
-				char* nt = (char*)(meshElementCreate->m_TangentNormals + (meshElementCreate->m_TangentNormalSize * i));
+				char* nt = (char*)(meshElementCreate->m_TangentNormals + (meshElementCreate->m_TangentNormalSize * j));
 				// tangentx tangentz
 				if (meshElementCreate->m_TangentNormalSize == 8)
 				{
@@ -131,29 +131,59 @@ avs::Result ResourceCreator::Assemble(avs::MeshCreate * meshCreate)
 					normal.y = n8.y / 32767.0f;
 					normal.z = n8.z / 32767.0f;
 				}
-				memcpy(interleavedVB.get() + (layout->m_Stride / 4 * i) + intraStrideOffset, &normal, sizeof(avs::vec3));
+				memcpy(interleavedVB.get() + (layout->m_Stride / 4 * j) + intraStrideOffset, &normal, sizeof(avs::vec3));
 				intraStrideOffset += 3;
-				memcpy(interleavedVB.get() + (layout->m_Stride / 4 * i) + intraStrideOffset, &tangent, sizeof(avs::vec4));
+				memcpy(interleavedVB.get() + (layout->m_Stride / 4 * j) + intraStrideOffset, &tangent, sizeof(avs::vec4));
 				intraStrideOffset += 4;
 			}
 			else
 			{
 				if (meshElementCreate->m_Normals)
 				{
-					memcpy(interleavedVB.get() + (layout->m_Stride / 4 * i) + intraStrideOffset, meshElementCreate->m_Normals + i, sizeof(avs::vec3));
+					memcpy(interleavedVB.get() + (layout->m_Stride / 4 * j) + intraStrideOffset, meshElementCreate->m_Normals + j, sizeof(avs::vec3));
 					intraStrideOffset += 3;
 				}
 				if (meshElementCreate->m_Tangents)
 				{
-					memcpy(interleavedVB.get() + (layout->m_Stride / 4 * i) + intraStrideOffset, meshElementCreate->m_Tangents + i, sizeof(avs::vec4));
+					memcpy(interleavedVB.get() + (layout->m_Stride / 4 * j) + intraStrideOffset, meshElementCreate->m_Tangents + j, sizeof(avs::vec4));
 					intraStrideOffset += 4;
 				}
 			}
-			if (meshElementCreate->m_UV0s) { memcpy(interleavedVB.get() + (layout->m_Stride / 4 * i) + intraStrideOffset, meshElementCreate->m_UV0s + i, sizeof(avs::vec2));			intraStrideOffset += 2; }
-			if (meshElementCreate->m_UV1s) { memcpy(interleavedVB.get() + (layout->m_Stride / 4 * i) + intraStrideOffset, meshElementCreate->m_UV1s + i, sizeof(avs::vec2));			intraStrideOffset += 2; }
-			if (meshElementCreate->m_Colors) { memcpy(interleavedVB.get() + (layout->m_Stride / 4 * i) + intraStrideOffset, meshElementCreate->m_Colors + i, sizeof(avs::vec4));			intraStrideOffset += 4; }
-			if (meshElementCreate->m_Joints) { memcpy(interleavedVB.get() + (layout->m_Stride / 4 * i) + intraStrideOffset, meshElementCreate->m_Joints + i, sizeof(avs::vec4));			intraStrideOffset += 4; }
-			if (meshElementCreate->m_Weights) { memcpy(interleavedVB.get() + (layout->m_Stride / 4 * i) + intraStrideOffset, meshElementCreate->m_Weights + i, sizeof(avs::vec4));		intraStrideOffset += 4; }
+			if (meshElementCreate->m_UV0s)
+			{
+				memcpy(
+						interleavedVB.get() + (layout->m_Stride / 4 * j) + intraStrideOffset,
+						meshElementCreate->m_UV0s + j, sizeof(avs::vec2));
+				intraStrideOffset += 2;
+			}
+			if (meshElementCreate->m_UV1s)
+			{
+				memcpy(
+						interleavedVB.get() + (layout->m_Stride / 4 * j) + intraStrideOffset,
+						meshElementCreate->m_UV1s + j, sizeof(avs::vec2));
+				intraStrideOffset += 2;
+			}
+			if (meshElementCreate->m_Colors)
+			{
+				memcpy(
+						interleavedVB.get() + (layout->m_Stride / 4 * j) + intraStrideOffset,
+						meshElementCreate->m_Colors + j, sizeof(avs::vec4));
+				intraStrideOffset += 4;
+			}
+			if (meshElementCreate->m_Joints)
+			{
+				memcpy(
+						interleavedVB.get() + (layout->m_Stride / 4 * j) + intraStrideOffset,
+						meshElementCreate->m_Joints + j, sizeof(avs::vec4));
+				intraStrideOffset += 4;
+			}
+			if (meshElementCreate->m_Weights)
+			{
+				memcpy(
+						interleavedVB.get() + (layout->m_Stride / 4 * j) + intraStrideOffset,
+						meshElementCreate->m_Weights + j, sizeof(avs::vec4));
+				intraStrideOffset += 4;
+			}
 		}
 
 		if (interleavedVBSize == 0 || interleavedVB == nullptr || meshElementCreate->m_IndexCount == 0 || meshElementCreate->m_Indices == nullptr)
@@ -292,6 +322,34 @@ void ResourceCreator::passTexture(avs::uid texture_uid, const avs::Texture& text
 ///Most of these sets need actual values, rather than default initalisers.
 void ResourceCreator::passMaterial(avs::uid material_uid, const avs::Material & material)
 {
+	//Setup Dummy textures once.
+	if(!m_DummyDiffuse || !m_DummyNormal || !m_DummyCombined)
+	{
+		m_DummyDiffuse = m_pRenderPlatform->InstantiateTexture();
+		m_DummyNormal = m_pRenderPlatform->InstantiateTexture();
+		m_DummyCombined = m_pRenderPlatform->InstantiateTexture();
+
+		scr::Texture::TextureCreateInfo tci =
+				{
+						1, 1, 1, 4, 1, 1,
+						scr::Texture::Slot::UNKNOWN,
+						scr::Texture::Type::TEXTURE_2D,
+						scr::Texture::Format::BGRA8,
+						scr::Texture::SampleCountBit::SAMPLE_COUNT_1_BIT,
+						{4},
+						{0x00000000},
+						scr::Texture::CompressionFormat::UNCOMPRESSED,
+						false
+				};
+
+		tci.mips[0] = (const uint8_t *) &diffuseBGRA;
+		m_DummyDiffuse->Create(tci);
+		tci.mips[0] = (const uint8_t *) &normalBGRA;
+		m_DummyNormal->Create(tci);
+		tci.mips[0] = (const uint8_t *) &combinedBGRA;
+		m_DummyCombined->Create(tci);
+	}
+
 	std::shared_ptr<IncompleteMaterial> newMaterial = std::make_shared<IncompleteMaterial>();
 	std::vector<avs::uid> missingResources;
 
@@ -300,11 +358,11 @@ void ResourceCreator::passMaterial(avs::uid material_uid, const avs::Material & 
 	newMaterial->materialInfo.normal.texture = nullptr;
 	newMaterial->materialInfo.combined.texture = nullptr;
 
-	if(material.pbrMetallicRoughness.baseColorTexture.index != 0)
+	if (material.pbrMetallicRoughness.baseColorTexture.index != 0)
 	{
 		const std::shared_ptr<scr::Texture> diffuseTexture = m_TextureManager->Get(material.pbrMetallicRoughness.baseColorTexture.index);
 
-		if(diffuseTexture)
+		if (diffuseTexture)
 		{
 			newMaterial->materialInfo.diffuse.texture = diffuseTexture;
 		}
@@ -314,7 +372,7 @@ void ResourceCreator::passMaterial(avs::uid material_uid, const avs::Material & 
 			newMaterial->textureSlots.emplace(material.pbrMetallicRoughness.baseColorTexture.index, newMaterial->materialInfo.diffuse.texture);
 		}
 
-			scr::vec2 tiling = {material.pbrMetallicRoughness.baseColorTexture.tiling.x, material.pbrMetallicRoughness.baseColorTexture.tiling.y};
+		scr::vec2 tiling = { material.pbrMetallicRoughness.baseColorTexture.tiling.x, material.pbrMetallicRoughness.baseColorTexture.tiling.y };
 
 		newMaterial->materialInfo.diffuse.texCoordsScalar[0] = tiling;
 		newMaterial->materialInfo.diffuse.texCoordsScalar[1] = tiling;
@@ -322,7 +380,19 @@ void ResourceCreator::passMaterial(avs::uid material_uid, const avs::Material & 
 		newMaterial->materialInfo.diffuse.texCoordsScalar[3] = tiling;
 
 		newMaterial->materialInfo.diffuse.textureOutputScalar = material.pbrMetallicRoughness.baseColorFactor;
-		}
+
+		newMaterial->materialInfo.diffuse.texCoordIndex = (float)material.pbrMetallicRoughness.baseColorTexture.texCoord;
+	}
+	else
+	{
+		newMaterial->materialInfo.diffuse.texture = m_DummyDiffuse; 
+		newMaterial->materialInfo.diffuse.texCoordsScalar[0] = scr::vec2(1.0f, 1.0f);
+		newMaterial->materialInfo.diffuse.texCoordsScalar[1] = scr::vec2(1.0f, 1.0f);
+		newMaterial->materialInfo.diffuse.texCoordsScalar[2] = scr::vec2(1.0f, 1.0f);
+		newMaterial->materialInfo.diffuse.texCoordsScalar[3] = scr::vec2(1.0f, 1.0f);
+		newMaterial->materialInfo.diffuse.textureOutputScalar = scr::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+		newMaterial->materialInfo.diffuse.texCoordIndex = 0.0f;
+	}
 
 	if(material.normalTexture.index != 0)
 	{
@@ -346,7 +416,18 @@ void ResourceCreator::passMaterial(avs::uid material_uid, const avs::Material & 
 		newMaterial->materialInfo.normal.texCoordsScalar[3] = tiling;
 
 		newMaterial->materialInfo.normal.textureOutputScalar = scr::vec4{1, 1, 1, 1};
-		}
+		newMaterial->materialInfo.normal.texCoordIndex = (float)material.normalTexture.texCoord;
+	}
+	else
+	{
+		newMaterial->materialInfo.normal.texture = m_DummyNormal;
+		newMaterial->materialInfo.normal.texCoordsScalar[0] = scr::vec2(1.0f, 1.0f);
+		newMaterial->materialInfo.normal.texCoordsScalar[1] = scr::vec2(1.0f, 1.0f);
+		newMaterial->materialInfo.normal.texCoordsScalar[2] = scr::vec2(1.0f, 1.0f);
+		newMaterial->materialInfo.normal.texCoordsScalar[3] = scr::vec2(1.0f, 1.0f);
+		newMaterial->materialInfo.normal.textureOutputScalar = scr::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+		newMaterial->materialInfo.normal.texCoordIndex = 0.0f;
+	}
 
 	if(material.pbrMetallicRoughness.metallicRoughnessTexture.index != 0)
 	{
@@ -362,7 +443,7 @@ void ResourceCreator::passMaterial(avs::uid material_uid, const avs::Material & 
 			newMaterial->textureSlots.emplace(material.pbrMetallicRoughness.metallicRoughnessTexture.index, newMaterial->materialInfo.combined.texture);
 		}
 
-			scr::vec2 tiling = {material.pbrMetallicRoughness.metallicRoughnessTexture.tiling.x, material.pbrMetallicRoughness.metallicRoughnessTexture.tiling.y};
+		scr::vec2 tiling = {material.pbrMetallicRoughness.metallicRoughnessTexture.tiling.x, material.pbrMetallicRoughness.metallicRoughnessTexture.tiling.y};
 
 		newMaterial->materialInfo.combined.texCoordsScalar[0] = tiling;
 		newMaterial->materialInfo.combined.texCoordsScalar[1] = tiling;
@@ -370,13 +451,25 @@ void ResourceCreator::passMaterial(avs::uid material_uid, const avs::Material & 
 		newMaterial->materialInfo.combined.texCoordsScalar[3] = tiling;
 
 		newMaterial->materialInfo.combined.textureOutputScalar = scr::vec4{1, 1, 1, 1};
-		}
+
+		newMaterial->materialInfo.combined.texCoordIndex = (float)material.pbrMetallicRoughness.metallicRoughnessTexture.texCoord;
+	}
+	else
+	{
+		newMaterial->materialInfo.combined.texture = m_DummyCombined;
+		newMaterial->materialInfo.combined.texCoordsScalar[0] = scr::vec2(1.0f, 1.0f);
+		newMaterial->materialInfo.combined.texCoordsScalar[1] = scr::vec2(1.0f, 1.0f);
+		newMaterial->materialInfo.combined.texCoordsScalar[2] = scr::vec2(1.0f, 1.0f);
+		newMaterial->materialInfo.combined.texCoordsScalar[3] = scr::vec2(1.0f, 1.0f);
+		newMaterial->materialInfo.combined.textureOutputScalar = scr::vec4(1.0f, 1.0f, 1.0f, 1.0f);
+		newMaterial->materialInfo.combined.texCoordIndex = 0.0f;
+	}
 
 	///This needs an actual value.
 	newMaterial->materialInfo.effect = nullptr;
 
 	if(missingResources.size() == 0)
-{
+	{
 		CompleteMaterial(material_uid, newMaterial->materialInfo);
 	}
 	else

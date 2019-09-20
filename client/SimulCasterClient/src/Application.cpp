@@ -9,7 +9,8 @@
 #include "OVR_Locale.h"
 #include "OVR_LogUtils.h"
 #include "OVR_FileSys.h"
-
+#include "OVR_GlUtils.h"
+#include "GLESDebug.h"
 
 #include <enet/enet.h>
 #include <sstream>
@@ -52,6 +53,7 @@ Application::Application()
 	, mDeviceContext(dynamic_cast<scr::RenderPlatform*>(&renderPlatform))
 	, mEffect(dynamic_cast<scr::RenderPlatform*>(&renderPlatform))
 {
+	pthread_setname_np(pthread_self(), "SimulCaster_Application");
 	memset(&renderConstants,0,sizeof(RenderConstants));
 	renderConstants.colourOffsetScale={0.0f,0.0f,1.0f,0.6667f};
 	renderConstants.depthOffsetScale={0.0f,0.6667f,0.5f,0.3333f};
@@ -72,9 +74,9 @@ Application::Application()
 
 	//Default Sampler
 	scr::Sampler::SamplerCreateInfo sci  = {};
-	sci.wrapU = scr::Sampler::Wrap::CLAMP_TO_EDGE;
-	sci.wrapV = scr::Sampler::Wrap::CLAMP_TO_EDGE;
-	sci.wrapW = scr::Sampler::Wrap::CLAMP_TO_EDGE;
+	sci.wrapU = scr::Sampler::Wrap::REPEAT;
+	sci.wrapV = scr::Sampler::Wrap::REPEAT;
+	sci.wrapW = scr::Sampler::Wrap::REPEAT;
 	sci.minFilter = scr::Sampler::Filter::LINEAR;
 	sci.magFilter = scr::Sampler::Filter::LINEAR;
 	mSampler->Create(&sci);
@@ -123,6 +125,9 @@ void Application::EnteredVrMode(const ovrIntentType intentType, const char* inte
 		glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &maxFragTextureSlots);
 		glGetIntegerv(GL_MAX_FRAGMENT_UNIFORM_BLOCKS, &maxFragUniformBlocks);
 		OVR_LOG("Fragment Texture Slots: %d, Fragment Uniform Blocks: %d", maxFragTextureSlots, maxFragUniformBlocks);
+
+        //Setup Debug
+        scc::SetupGLESDebug();
 
 		mOvrMobile = app->GetOvrMobile();
 
@@ -262,7 +267,6 @@ void Application::EnteredVrMode(const ovrIntentType intentType, const char* inte
 		scr::ShaderResourceLayout vertLayout;
 		vertLayout.AddBinding(0, scr::ShaderResourceLayout::ShaderResourceType::UNIFORM_BUFFER, scr::Shader::Stage::SHADER_STAGE_VERTEX);
 		scr::ShaderResourceLayout fragLayout;
-		fragLayout.AddBinding(2, scr::ShaderResourceLayout::ShaderResourceType::UNIFORM_BUFFER, scr::Shader::Stage::SHADER_STAGE_FRAGMENT);
 		fragLayout.AddBinding(3, scr::ShaderResourceLayout::ShaderResourceType::UNIFORM_BUFFER, scr::Shader::Stage::SHADER_STAGE_FRAGMENT);
 		fragLayout.AddBinding(10, scr::ShaderResourceLayout::ShaderResourceType::COMBINED_IMAGE_SAMPLER, scr::Shader::Stage::SHADER_STAGE_FRAGMENT);
 		fragLayout.AddBinding(11, scr::ShaderResourceLayout::ShaderResourceType::COMBINED_IMAGE_SAMPLER, scr::Shader::Stage::SHADER_STAGE_FRAGMENT);
@@ -272,7 +276,6 @@ void Application::EnteredVrMode(const ovrIntentType intentType, const char* inte
 
 		scr::ShaderResource pbrShaderResource({vertLayout, fragLayout});
 		pbrShaderResource.AddBuffer(0, scr::ShaderResourceLayout::ShaderResourceType::UNIFORM_BUFFER, 0, "u_CameraData", {});
-		pbrShaderResource.AddBuffer(1, scr::ShaderResourceLayout::ShaderResourceType::UNIFORM_BUFFER, 2, "u_LightData", {});
 		pbrShaderResource.AddBuffer(1, scr::ShaderResourceLayout::ShaderResourceType::UNIFORM_BUFFER, 3, "u_MaterialData", {});
 		pbrShaderResource.AddImage(1, scr::ShaderResourceLayout::ShaderResourceType::COMBINED_IMAGE_SAMPLER, 10, "u_Diffuse", {});
 		pbrShaderResource.AddImage(1, scr::ShaderResourceLayout::ShaderResourceType::COMBINED_IMAGE_SAMPLER, 11, "u_Normal", {});
@@ -314,6 +317,7 @@ bool Application::OnKeyEvent(const int keyCode, const int repeatCount, const Key
 
 ovrFrameResult Application::Frame(const ovrFrameInput& vrFrame)
 {
+    GL_CheckErrors("Frame: Start");
 	// process input events first because this mirrors the behavior when OnKeyEvent was
 	// a virtual function on VrAppInterface and was called by VrAppFramework.
 	for(int i = 0; i < vrFrame.Input.NumKeyEvents; i++)
@@ -408,7 +412,7 @@ ovrFrameResult Application::Frame(const ovrFrameInput& vrFrame)
 	ovrQuatf headPose = vrFrame.Tracking.HeadPose.Pose.Orientation;
 	ovrVector3f headPos=vrFrame.Tracking.HeadPose.Pose.Position;
 	auto ctr=mNetworkSource.getCounterValues();
-	mGuiSys->ShowInfoText( 1.0f,"Packets Dropped: Network %d | Decoder %d\n Framerate: %4.4f Bandwidth(kbps): %4.4f\n Actors: SCR %d | OVR %d\n Capture Position: %1.3f, %1.3f, %1.3f\n"
+	mGuiSys->ShowInfoText( 0.017f,"Packets Dropped: Network %d | Decoder %d\n Framerate: %4.4f Bandwidth(kbps): %4.4f\n Actors: SCR %d | OVR %d\n Capture Position: %1.3f, %1.3f, %1.3f\n"
 							 "Orient: %1.3f, {%1.3f, %1.3f, %1.3f}\nPos: %3.3f %3.3f %3.3f \nTrackpad: %3.1f %3.1f\n Orphans: %d\n"
 			, ctr.networkPacketsDropped, ctr.decoderPacketsDropped,
 			frameRate, ctr.bandwidthKPS,
@@ -418,6 +422,7 @@ ovrFrameResult Application::Frame(const ovrFrameInput& vrFrame)
 			headPos.x,headPos.y,headPos.z,
 			controllerState.mTrackpadX,controllerState.mTrackpadY,
 			ctr.m_packetMapOrphans);
+
 #endif
 	res.FrameIndex   = vrFrame.FrameNumber;
 	res.DisplayTime  = vrFrame.PredictedDisplayTimeInSeconds;
@@ -492,7 +497,7 @@ bool Application::InitializeController()
 	return false;
 }
 
-void Application::OnVideoStreamChanged(const avs::SetupCommand &setupCommand)
+void Application::OnVideoStreamChanged(const avs::SetupCommand &setupCommand,avs::Handshake &handshake)
 {
 	if(mPipelineConfigured) {
 		// TODO: Fix!
@@ -502,7 +507,7 @@ void Application::OnVideoStreamChanged(const avs::SetupCommand &setupCommand)
 	OVR_WARN("VIDEO STREAM CHANGED: %d %d %d", setupCommand.port, setupCommand.video_width, setupCommand.video_height);
 
 	avs::NetworkSourceParams sourceParams = {};
-	sourceParams.socketBufferSize = 4*64 * 1024 * 1024; // 4* 64MiB socket buffer size
+	sourceParams.socketBufferSize = 3 * 1024 * 1024; // 4* 64MiB socket buffer size
 	//sourceParams.gcTTL = (1000/60) * 4; // TTL = 4 * expected frame time
 	sourceParams.maxJitterBufferLength = 0;
 
@@ -512,6 +517,7 @@ void Application::OnVideoStreamChanged(const avs::SetupCommand &setupCommand)
 		return;
 	}
 	mNetworkSource.setDebugStream(setupCommand.debug_stream);
+	mNetworkSource.setDoChecksums(setupCommand.do_checksums);
 	avs::DecoderParams decoderParams = {};
 	decoderParams.codec = avs::VideoCodec::HEVC;
 	decoderParams.decodeFrequency = avs::DecodeFrequency::NALUnit;
@@ -546,6 +552,7 @@ void Application::OnVideoStreamChanged(const avs::SetupCommand &setupCommand)
 		avsGeometryTarget.configure(&resourceCreator);
 		mPipeline.link({ &mNetworkSource, &avsGeometryDecoder, &avsGeometryTarget });
    }
+    //GL_CheckErrors("Pre-Build Cubemap");
    //Build Video Cubemap
    {
 	   scr::Texture::TextureCreateInfo textureCreateInfo =
@@ -567,14 +574,15 @@ void Application::OnVideoStreamChanged(const avs::SetupCommand &setupCommand)
 	   mCubemapTexture->Create(textureCreateInfo);
 	   mCubemapTexture->UseSampler(mSampler);
    }
+    //GL_CheckErrors("Built Video Cubemap");
    //Build Lighting Cubemap
 	{
 		scr::Texture::TextureCreateInfo textureCreateInfo //TODO: Check this against the incoming texture from the video stream
 				{
-						setupCommand.colour_cubemap_size / 8, //Should be 128?
+						setupCommand.colour_cubemap_size / 8,
 						setupCommand.colour_cubemap_size / 8,
 						1,
-						4, //Assume 4BPP and RGBA format
+						4,
 						1,
 						1,
 						scr::Texture::Slot::UNKNOWN,
@@ -588,8 +596,13 @@ void Application::OnVideoStreamChanged(const avs::SetupCommand &setupCommand)
 		mCubemapLightingTexture->Create(textureCreateInfo);
 		mCubemapLightingTexture->UseSampler(mSampler);
 	}
+    //GL_CheckErrors("Built Lighting Cubemap");
 
-   mPipelineConfigured = true;
+	mPipelineConfigured = true;
+
+	handshake.framerate=60;
+	handshake.udpBufferSize=mNetworkSource.getSystemBufferSize();
+	handshake.maxBandwidth=handshake.udpBufferSize*(size_t)handshake.framerate;
 }
 
 void Application::OnVideoStreamClosed()
@@ -745,12 +758,12 @@ void Application::RenderLocalActors(ovrFrameResult& res)
 				materialCI.effect = dynamic_cast<scr::Effect *>(&mEffect);
 				const auto                            gl_effect = &mEffect;
 				const auto gl_effectPass = gl_effect->GetEffectPassCreateInfo("OpaquePBR");
-				if(materialCI.diffuse.texture || materialCI.normal.texture || materialCI.combined.texture)
-				{
-				materialCI.diffuse.texture->UseSampler(mSampler);
-				materialCI.normal.texture->UseSampler(mSampler);
-				materialCI.combined.texture->UseSampler(mSampler);
-                }
+				if(materialCI.diffuse.texture)
+					materialCI.diffuse.texture->UseSampler(mSampler);
+				if(materialCI.normal.texture)
+					materialCI.normal.texture->UseSampler(mSampler);
+				if(materialCI.combined.texture)
+					materialCI.combined.texture->UseSampler(mSampler);
 
 				//----Set OVR Actor----//
 				//Construct Mesh
@@ -781,11 +794,12 @@ void Application::RenderLocalActors(ovrFrameResult& res)
 				ovr_surface_def->graphicsCommand.GpuState.blendSrcAlpha = scc::GL_Effect::ToGLBlendFactor(gl_effectPass.colourBlendingState.srcAlphaBlendFactor);
 				ovr_surface_def->graphicsCommand.GpuState.blendDstAlpha = scc::GL_Effect::ToGLBlendFactor(gl_effectPass.colourBlendingState.dstAlphaBlendFactor);
 				ovr_surface_def->graphicsCommand.GpuState.depthFunc = scc::GL_Effect::ToGLCompareOp(gl_effectPass.depthStencilingState.depthCompareOp);
+
 				ovr_surface_def->graphicsCommand.GpuState.frontFace = gl_effectPass.rasterizationState.frontFace == scr::Effect::FrontFace::COUNTER_CLOCKWISE ? GL_CCW : GL_CW;
 				ovr_surface_def->graphicsCommand.GpuState.polygonMode = scc::GL_Effect::ToGLPolygonMode(gl_effectPass.rasterizationState.polygonMode);
 				ovr_surface_def->graphicsCommand.GpuState.blendEnable = gl_effectPass.colourBlendingState.blendEnable ? OVR::ovrGpuState::ovrBlendEnable::BLEND_ENABLE: OVR::ovrGpuState::ovrBlendEnable::BLEND_DISABLE;
 				ovr_surface_def->graphicsCommand.GpuState.depthEnable     = gl_effectPass.depthStencilingState.depthTestEnable;
-				ovr_surface_def->graphicsCommand.GpuState.depthMaskEnable = false;
+				ovr_surface_def->graphicsCommand.GpuState.depthMaskEnable = true;
 				ovr_surface_def->graphicsCommand.GpuState.colorMaskEnable[0] = true;
 				ovr_surface_def->graphicsCommand.GpuState.colorMaskEnable[1] = true;
 				ovr_surface_def->graphicsCommand.GpuState.colorMaskEnable[2] = true;
@@ -805,8 +819,7 @@ void Application::RenderLocalActors(ovrFrameResult& res)
 					for (auto &resource : sr.GetWriteShaderResources())
 					{
 						scr::ShaderResourceLayout::ShaderResourceType type = resource.shaderResourceType;
-						if (type ==
-							scr::ShaderResourceLayout::ShaderResourceType::COMBINED_IMAGE_SAMPLER)
+						if (type == scr::ShaderResourceLayout::ShaderResourceType::COMBINED_IMAGE_SAMPLER)
 						{
 							if (resource.imageInfo.texture.get())
 							{
@@ -815,8 +828,7 @@ void Application::RenderLocalActors(ovrFrameResult& res)
 								textureCount++;
 							}
 						}
-						else if (type ==
-								 scr::ShaderResourceLayout::ShaderResourceType::UNIFORM_BUFFER)
+						else if (type == scr::ShaderResourceLayout::ShaderResourceType::UNIFORM_BUFFER)
 						{
 							if (resource.bufferInfo.buffer)
 							{
@@ -833,8 +845,8 @@ void Application::RenderLocalActors(ovrFrameResult& res)
 						j++;
 						resourceCount++;
 						assert(resourceCount <= OVR::ovrUniform::MAX_UNIFORMS);
-						assert(textureCount <= (size_t)maxFragTextureSlots);
-						assert(uniformCount <= (size_t)maxFragUniformBlocks);
+						assert(textureCount <= maxFragTextureSlots);
+						assert(uniformCount <= maxFragUniformBlocks);
 					}
 				}
 				pOvrActor->ovrSurfaceDefs.push_back(ovr_surface_def);
@@ -859,7 +871,6 @@ void Application::RenderLocalActors(ovrFrameResult& res)
 
 			OVR::Matrix4f transform;
 			memcpy(&transform.M[0][0], &scr_Transform.a, 16 * sizeof(float));
-
 			res.Surfaces.emplace_back(transform, pOvrActor->ovrSurfaceDefs[i].get());
 		}
 	}
@@ -911,7 +922,7 @@ const scr::Effect::EffectPassCreateInfo& Application::BuildEffectPass(const char
 	scos.compareOp = scr::Effect::CompareOp::NEVER;
 	scr::Effect::DepthStencilingState dss = {};
 	dss.depthTestEnable = true;
-	dss.depthWriteEnable = false;
+	dss.depthWriteEnable = true;
 	dss.depthCompareOp = scr::Effect::CompareOp::LESS;
 	dss.stencilTestEnable = false;
 	dss.frontCompareOp = scos;

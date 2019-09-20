@@ -373,8 +373,9 @@ void URemotePlaySessionComponent::StartStreaming()
 	setupCommand.depth_width	= EncodeParams.DepthWidth;
 	setupCommand.colour_cubemap_size = EncodeParams.FrameWidth / 3;
 	setupCommand.compose_cube	= EncodeParams.bDecomposeCube;
-	setupCommand.port = StreamingPort;
+	setupCommand.port = StreamingPort; 
 	setupCommand.debug_stream=Monitor->DebugStream;
+	setupCommand.do_checksums = Monitor->Checksums?1:0;
 	Client_SendCommand(setupCommand);
 	//Client_SendCommand(FString::Printf(TEXT("v %d %d %d"), StreamingPort, EncodeParams.FrameWidth, EncodeParams.FrameHeight));
 }
@@ -478,7 +479,7 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 	avs::Handshake handshake;
 	FPlatformMemory::Memcpy(&handshake, Packet->data, Packet->dataLength);
 	if (handshake.isReadyToReceivePayloads != true)
-	{
+	{ 
 		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Handshake not ready to receive."));
 		return;
 	}
@@ -500,6 +501,8 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 		NetworkParams.RemoteIP = Client_GetIPAddress();
 		NetworkParams.LocalPort = StreamingPort;
 		NetworkParams.RemotePort = NetworkParams.LocalPort + 1;
+		NetworkParams.ClientBandwidthLimit = handshake.maxBandwidth;
+		NetworkParams.ClientBufferSize = handshake.udpBufferSize;
 
 		RemotePlayContext->NetworkPipeline.Reset(new FNetworkPipeline);
 		RemotePlayContext->NetworkPipeline->Initialize(Monitor, NetworkParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get(), RemotePlayContext->GeometryQueue.Get());

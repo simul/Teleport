@@ -126,6 +126,7 @@ void ClientRenderer::Init(simul::crossplatform::RenderPlatform *r)
 	vec3 look(0.f,1.f,0.f),up(0.f,0.f,1.f);
 	camera.LookInDirection(look,up);
 	camera.SetHorizontalFieldOfViewDegrees(90.f);
+
 	// Automatic vertical fov - depends on window shape:
 	camera.SetVerticalFieldOfViewDegrees(0.f);
 
@@ -595,13 +596,14 @@ void ClientRenderer::Update()
 	previousTimestamp = timestamp;
 }
 
-void ClientRenderer::OnVideoStreamChanged(const avs::SetupCommand &setupCommand)
+void ClientRenderer::OnVideoStreamChanged(const avs::SetupCommand &setupCommand,avs::Handshake &handshake)
 {
 	WARN("VIDEO STREAM CHANGED: port %d clr %d x %d dpth %d x %d", setupCommand.port, setupCommand.video_width, setupCommand.video_height
 																	,setupCommand.depth_width,setupCommand.depth_height	);
 
 	sourceParams.nominalJitterBufferLength = NominalJitterBufferLength;
 	sourceParams.maxJitterBufferLength = MaxJitterBufferLength;
+	sourceParams.socketBufferSize = 2000000;	//200k like Oculus Quest
 	// Configure for num video streams + 1 geometry stream
 	if (!source.configure(NumStreams+(GeoStream?1:0), setupCommand.port +1, "127.0.0.1", setupCommand.port, sourceParams))
 	{
@@ -678,6 +680,12 @@ void ClientRenderer::OnVideoStreamChanged(const avs::SetupCommand &setupCommand)
 		avsGeometryTarget.configure(&resourceCreator);
 		pipeline.link({ &source, &avsGeometryDecoder, &avsGeometryTarget });
 	}
+	handshake.isReadyToReceivePayloads = true;
+	handshake.axesStandard = avs::AxesStandard::EngineeringStyle;
+	handshake.MetresPerUnit = 1.0f;
+	handshake.framerate = 60;
+	handshake.udpBufferSize = (uint32_t)source.getSystemBufferSize();
+	handshake.maxBandwidth = handshake.framerate*handshake.udpBufferSize;
 	//java->Env->CallVoidMethod(java->ActivityObject, jni.initializeVideoStreamMethod, port, width, height, mVideoSurfaceTexture->GetJavaObject());
 }
 
