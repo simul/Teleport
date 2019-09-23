@@ -352,6 +352,7 @@ avs::Result GeometryEncoder::encodeTexturesBackend(avs::GeometrySourceBackendInt
 
 			//Push format.
 			put(outTexture.format);
+			put(outTexture.compression);
 
 			//Push size, and data.
 			put(outTexture.dataSize);

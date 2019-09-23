@@ -117,7 +117,10 @@ public:
 		{
 			SetShaderValue(RHICmdList, ShaderRHI, WorldZToDeviceZTransform, InWorldZToDeviceZTransform);
 		}
-		SetShaderValue(RHICmdList, ShaderRHI, DepthPos, InDepthPos);
+		if (bWriteStacked)
+		{
+			SetShaderValue(RHICmdList, ShaderRHI, DepthPos, InDepthPos);
+		}
 	}
 
 	void UnsetParameters(FRHICommandList& RHICmdList)

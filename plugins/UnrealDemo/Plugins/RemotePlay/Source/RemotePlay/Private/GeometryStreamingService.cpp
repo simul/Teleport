@@ -44,7 +44,8 @@ void FGeometryStreamingService::Initialise(UWorld *World, GeometrySource *geomSo
 	TArray<AActor*> staticMeshActors;
 	UGameplayStatics::GetAllActorsOfClass(World, AStaticMeshActor::StaticClass(), staticMeshActors);
 
-	ECollisionChannel remotePlayChannel; FCollisionResponseParams profileResponses;
+	ECollisionChannel remotePlayChannel;
+	FCollisionResponseParams profileResponses;
 	//Returns the collision channel used by RemotePlay; uses the object type of the profile to determine the channel.
 	UCollisionProfile::GetChannelAndResponseParams("RemotePlaySensor", remotePlayChannel, profileResponses);
 
@@ -137,6 +138,8 @@ void FGeometryStreamingService::Reset()
 avs::uid FGeometryStreamingService::AddActor(AActor *newActor)
 {
 	avs::uid actor_uid = geometrySource->AddNode(geometrySource->GetRootNodeUid(), Cast<UMeshComponent>(newActor->GetComponentByClass(UMeshComponent::StaticClass())));
+	if (!actor_uid)
+		return actor_uid;
 	streamedActors[GetLevelUniqueActorName(newActor)] = actor_uid;
 
 	return actor_uid;
@@ -145,7 +148,8 @@ avs::uid FGeometryStreamingService::AddActor(AActor *newActor)
 avs::uid FGeometryStreamingService::RemoveActor(AActor *oldActor)
 {
 	FName levelUniqueName = GetLevelUniqueActorName(oldActor);
-
+	if (streamedActors.find(levelUniqueName) == streamedActors.end())
+		return 0;
 	avs::uid actor_uid = streamedActors[levelUniqueName];
 	streamedActors.erase(levelUniqueName);
 
