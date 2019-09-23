@@ -648,10 +648,11 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 		
 		uint32_t dataSize=0;
 		unsigned char* data = nullptr;
-
+		avs::TextureCompression compression = avs::TextureCompression::UNCOMPRESSED;
 		//Compress the texture with Basis Universal if the flag is set.
 		if(Monitor->UseCompressedTextures)
 		{
+			compression = avs::TextureCompression::BASIS_COMPRESSED;
 			bool validBasisFileExists = false;
 
 			FString GameSavedDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir());
@@ -740,7 +741,7 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 		//We're using a single sampler for now.
 		avs::uid sampler_uid = 0;
 
-		textures[texture_uid] = {textureName, width, height, depth, bytesPerPixel, arrayCount, mipCount, format, dataSize, data, sampler_uid};
+		textures[texture_uid] = {textureName, width, height, depth, bytesPerPixel, arrayCount, mipCount, format, compression, dataSize, data, sampler_uid};
 		decomposedTextures[texture] = texture_uid;
 	}
 

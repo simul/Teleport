@@ -13,6 +13,7 @@ struct FCubeTexture
 {
 	FTextureCubeRHIRef TextureCubeRHIRef;
 	FUnorderedAccessViewRHIRef UnorderedAccessViewRHIRefs[8];
+	FShaderResourceViewRHIRef TextureCubeMipRHIRefs[8];
 };
 
 UCLASS(hidecategories = (Collision, Object, Physics, SceneComponent), meta = (BlueprintSpawnableComponent))
@@ -55,7 +56,7 @@ private:
 	void Decompose_RenderThread(FRHICommandListImmediate& RHICmdList
 		, FCubeTexture &CubeTexture
 		, FSurfaceTexture *TargetSurfaceTexture, FShader *Shader, FIntPoint TargetOffset);
-	void Init(FRHICommandListImmediate& RHICmdList,FCubeTexture &t,int size);
+	void Init(FRHICommandListImmediate& RHICmdList,FCubeTexture &t, int32 size, int32 mips);
 	void Release(FCubeTexture &t);
 	struct FShaderDirectionalLight
 	{
