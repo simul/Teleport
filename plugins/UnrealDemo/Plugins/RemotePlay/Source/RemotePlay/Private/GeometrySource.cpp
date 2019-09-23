@@ -387,6 +387,8 @@ avs::uid GeometrySource::AddStreamableMeshComponent(UMeshComponent *MeshComponen
 avs::uid GeometrySource::AddNode(avs::uid parent_uid, USceneComponent* component, bool forceTransformUpdate)
 {
 	avs::uid node_uid;
+	if (!component)
+		return 0;
 	FName levelUniqueNodeName = *FPaths::Combine(component->GetOutermost()->GetName(), component->GetOuter()->GetName(), component->GetName());
 	std::map<FName, avs::uid>::iterator nodeIt = decomposedNodes.find(levelUniqueNodeName);
 

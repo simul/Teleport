@@ -131,19 +131,28 @@ float GetroughnessFromMip(float mip, float num_mips, float roughness_mip_scale)
 	return saturate(exp2((3 - num_mips + mip) / roughness_mip_scale));
 }
 
+vec3 rand3v(vec3 p)
+{
+	return frac(sin(vec3(dot(p, vec3(127.1, 311.7, 55.3221)),
+		dot(p, vec3(269.5, 183.3, 251.1732)),
+		dot(p, vec3(12.9898, 42.1287, 78.233))))
+		* 43758.5453123);
+}
+
 vec4 RoughnessMip(vec3 view, float roughness, float alpha, bool rough)
 {
 	vec4 outp;
-	float r = saturate(roughness);//exp2( ( 3 - numMips + mipIndex) / 1.2 );;
-	float CubeSize = SourceSize;
-	const float SolidAngleTexel = 4.0 *PI / float((6.0 * CubeSize * CubeSize) * 2.0);
-	const uint NumSamples = roughness < 0.1 ? 32 : 64;
+	float r =  saturate(roughness);//exp2( ( 3 - numMips + mipIndex) / 1.2 );;
+	float CubeSize =TargetSize;
+	const float SolidAngleTexel = 4.0 * PI / float((6.0 * CubeSize * CubeSize) * 2.0);
+	const uint NumSamples = 32;// (roughness < 0.1) ? 32 : 64;
 	vec4 result = vec4(0, 0, 0, 0);
 	mat3 TangentToWorld = GetTangentBasis(view);
 	float Weight = 0.0;
 	for (uint i = 0; i < NumSamples; i++)
 	{
-		vec2 E = Hammersley(i, NumSamples, uint2(0, 0));
+		vec3 rn = rand3v(view + vec3(i, i, i));
+		vec2 E = Hammersley(i, NumSamples, uint2(rn.xy*1000000));
 		vec3 L;
 		if (rough) // used for roughness > 0.99
 		{
@@ -187,8 +196,9 @@ void FromMipCS(uint3 ThreadID : SV_DispatchThreadID)
 {
 	uint OutputW, OutputH, OutputD;
 	RWOutputTexture.GetDimensions(OutputW, OutputH, OutputD);
+	if (ThreadID.x >= OutputW || ThreadID.y >= OutputH)
+		return;
 	float3 view = CubeFaceIndexToView(ThreadID, uint2(OutputW, OutputH));
-
 
 	vec4 Result = RoughnessMip(view, Roughness, 1.0, MIP_ROUGH);
 	//float4 SceneColour = InputCubeMap.SampleLevel(DefaultSampler, view, 0);
@@ -201,6 +211,8 @@ void WriteToStreamCS(uint3 ThreadID : SV_DispatchThreadID)
 {
 	uint InputW, InputH, InputD;
 	RWOutputTexture.GetDimensions(InputW, InputH, InputD);
+	if (ThreadID.x >= InputW || ThreadID.y >= InputH)
+		return;
 	int3 pos = int3(ThreadID);
 	int2 FaceOffsets[] = { {0,0},{1,0},{2,0},{0,1},{1,1},{2,1} };
 	float4 radiance = RWOutputTexture[pos];

@@ -68,7 +68,6 @@ public:
 		RWOutputTexture.SetTexture(RHICmdList, ShaderRHI, OutputColorTextureRef, OutputColorTextureUAVRef);
 		SetShaderValue(RHICmdList, ShaderRHI, SourceSize, InputCubeMapTextureRef->GetSize());
 		SetShaderValue(RHICmdList, ShaderRHI, TargetSize, OutputColorTextureRef->GetSize());
-		SetShaderValue(RHICmdList, ShaderRHI, Roughness, 0.0f);
 	}
 
 	void SetParameters(
@@ -78,8 +77,8 @@ public:
 		FUnorderedAccessViewRHIRef OutputColorTextureUAVRef,
 		int32 InSourceSize,
 		int32 InTargetSize,
-		int32 InDirLightCount,
 		float InRoughness,
+		int32 InDirLightCount,
 		FShaderResourceViewRHIRef DirLightsShaderResourceViewRef)
 	{
 		FComputeShaderRHIParamRef ShaderRHI = GetComputeShader();
@@ -97,9 +96,9 @@ public:
 
 		if (DirLightsShaderResourceViewRef)
 		{
-		SetShaderValue(RHICmdList, ShaderRHI, DirLightCount, InDirLightCount);
-		SetSRVParameter(RHICmdList, ShaderRHI, DirLightStructBuffer, DirLightsShaderResourceViewRef);
-	}
+			SetShaderValue(RHICmdList, ShaderRHI, DirLightCount, InDirLightCount);
+			SetSRVParameter(RHICmdList, ShaderRHI, DirLightStructBuffer, DirLightsShaderResourceViewRef);
+		}
 		SetShaderValue(RHICmdList, ShaderRHI, Offset, FIntPoint(0,0));
 		SetShaderValue(RHICmdList, ShaderRHI, SourceSize, InSourceSize);
 		SetShaderValue(RHICmdList, ShaderRHI, TargetSize, InTargetSize);
@@ -323,7 +322,7 @@ void URemotePlayReflectionCaptureComponent::UpdateReflections_RenderThread(
 
 	const int32 NumMips =  FMath::CeilLogTwo(EffectiveTopMipSize) + 1;
 
-	const int32 CaptureIndex = FindOrAllocateCubemapIndex(Scene, this);
+	int32 CaptureIndex = 0;
 	FTextureRHIRef TargetResource;
 	if (OverrideTexture)
 	{
@@ -331,6 +330,7 @@ void URemotePlayReflectionCaptureComponent::UpdateReflections_RenderThread(
 	}
 	else
 	{
+		CaptureIndex = FindOrAllocateCubemapIndex(Scene, this);
 		if (CaptureIndex>=0&&Scene&&Scene->ReflectionSceneData.CubemapArray.GetCubemapSize())
 		{
 			FSceneRenderTargetItem &rt = Scene->ReflectionSceneData.CubemapArray.GetRenderTarget();
