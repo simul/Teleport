@@ -10,6 +10,7 @@
 #include "SceneInterface.h"
 #include "SceneUtils.h"
 #include "RemotePlayContext.h"
+#include "RemotePlayMonitor.h"
 
 #include "Engine/TextureRenderTargetCube.h"
 
@@ -210,13 +211,14 @@ static inline FVector2D CreateWorldZToDeviceZTransform(float FOV)
 	return FVector2D{1.0f / DepthAdd, SubtractValue};
 }
 
-void FEncodePipelineMonoscopic::Initialize(const FRemotePlayEncodeParameters& InParams, struct FRemotePlayContext *context,avs::Queue* InColorQueue, avs::Queue* InDepthQueue)
+void FEncodePipelineMonoscopic::Initialize(const FRemotePlayEncodeParameters& InParams, struct FRemotePlayContext *context, ARemotePlayMonitor* InMonitor, avs::Queue* InColorQueue, avs::Queue* InDepthQueue)
 {
 	check(InColorQueue);
 	RemotePlayContext = context;
 	Params = InParams;
 	ColorQueue = InColorQueue;
 	DepthQueue = InDepthQueue;
+	Monitor = InMonitor;
 	WorldZToDeviceZTransform = CreateWorldZToDeviceZTransform(FMath::DegreesToRadians(90.0f));
 
 	ENQUEUE_RENDER_COMMAND(RemotePlayInitializeEncodePipeline)(
@@ -394,7 +396,6 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	Encoders.SetNum(NumStreams);
 	InputSurfaces.SetNum(NumStreams);
 
-	uint8 expectedLag = 2;
 	for(uint32_t i=0; i<NumStreams; ++i)
 	{ 
 		if(!InputSurfaces[i].configure(avsSurfaceBackends[i]))
@@ -415,10 +416,10 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 			return;
 		}
 		avs::Transform Transform = avs::Transform();
-		for (uint8 j = 0; j < expectedLag; ++j)
+		for (uint8 j = 0; j < Monitor->ExpectedLag; ++j)
 		{
 			Encoders[i].setCameraTransform(Transform);
-	}
+		}
 }
 }
 	

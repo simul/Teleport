@@ -33,6 +33,8 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 	UseCompressedTextures = true;
 	QualityLevel = 1;
 	CompressionLevel = 1;
+
+	ExpectedLag = 1;
 }
 
 

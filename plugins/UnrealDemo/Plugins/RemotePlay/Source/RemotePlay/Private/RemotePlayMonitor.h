@@ -45,6 +45,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
 	int32 DetectionSphereBufferDistance;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
+	int32 ExpectedLag;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
 	int32 DebugStream;
 
@@ -62,6 +65,7 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Compression)
 	uint8 CompressionLevel;
+
 
 	// In order:
 	virtual void PostInitProperties() override;
