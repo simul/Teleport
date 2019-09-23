@@ -71,12 +71,12 @@ void FGeometryStreamingService::Initialise(UWorld *World, GeometrySource *geomSo
 		auto sgc = actor->GetComponentByClass(UStreamableGeometryComponent::StaticClass());
 		if (sgc)
 		{
-			TArray<UTexture2D*> shadowAndLightMaps = static_cast<UStreamableGeometryComponent*>(sgc)->GetLightAndShadowMaps();
-			ULightComponent* lc = static_cast<UStreamableGeometryComponent*>(sgc)->GetLightComponent();
-			if (lc)
+			//TArray<UTexture2D*> shadowAndLightMaps = static_cast<UStreamableGeometryComponent*>(sgc)->GetLightAndShadowMaps();
+			ULightComponent* lightComponent = static_cast<UStreamableGeometryComponent*>(sgc)->GetLightComponent();
+			if (lightComponent)
 			{
-				ShadowMapData smd(lc);
-				UE_LOG(LogRemotePlay, Warning, TEXT("LightComponent Orientation: {%4.4f, %4.4f, %4.4f}, %4.4f"), smd.orientation.X, smd.orientation.Y, smd.orientation.Z, smd.orientation.W);
+				//ShadowMapData smd(lc);
+				geometrySource->AddNode(root_node_uid, lightComponent, true);
 			}
 		}
 	}
@@ -156,7 +156,12 @@ avs::uid FGeometryStreamingService::RemoveActor(AActor *oldActor)
 	return actor_uid;
 }
 
-void FGeometryStreamingService::GetNodeResourceUIDs(avs::uid nodeUID, std::vector<avs::uid> &outMeshIds, std::vector<avs::uid>& outTextureIds, std::vector<avs::uid> &outMaterialIds, std::vector<avs::uid> &outNodeIds)
+void FGeometryStreamingService::GetNodeResourceUIDs(
+	avs::uid nodeUID, 
+	std::vector<avs::uid>& outMeshIds, 
+	std::vector<avs::uid>& outTextureIds, 
+	std::vector<avs::uid>& outMaterialIds,
+	std::vector<avs::uid>& outNodeIds)
 {
 	//Retrieve node.
 	std::shared_ptr<avs::DataNode> thisNode;
@@ -211,16 +216,36 @@ void FGeometryStreamingService::RequestResource(avs::uid resource_uid)
 	sentResources[resource_uid] = false;
 }
 
-void FGeometryStreamingService::GetResourcesClientNeeds(std::vector<avs::uid> &outMeshIds, std::vector<avs::uid>& outTextureIds, std::vector<avs::uid> &outMaterialIds, std::vector<avs::uid> &outNodeIds)
+void FGeometryStreamingService::GetResourcesClientNeeds(
+	std::vector<avs::uid>& outMeshIds, 
+	std::vector<avs::uid>& outTextureIds, 
+	std::vector<avs::uid>& outMaterialIds,
+	std::vector<avs::uid>& outShadowIds,
+	std::vector<avs::uid>& outNodeIds)
 {
 	outMeshIds.empty();
 	outMaterialIds.empty();
+	outShadowIds.empty();
 	outNodeIds.empty();
 
 	for(auto nodePair : streamedActors)
 	{
 		outNodeIds.push_back(nodePair.second);
 		GetNodeResourceUIDs(nodePair.second, outMeshIds, outTextureIds, outMaterialIds, outNodeIds);
+	}
+	//shadowUIDs - Should replace this nested loop!
+	outShadowIds = geometrySource->getShadowMapUIDs();
+	auto& nodes = geometrySource->getNodes();
+	for (auto& shadowUID : outShadowIds)
+	{
+		for (auto& node : nodes)
+		{
+			if (node.second->data_uid == shadowUID)
+			{
+				outNodeIds.push_back(node.first);
+				break;
+			}
+		}
 	}
 
 	//Remove duplicates, and 0s, from mesh IDs.
@@ -237,4 +262,9 @@ void FGeometryStreamingService::GetResourcesClientNeeds(std::vector<avs::uid> &o
 	std::sort(outMaterialIds.begin(), outMaterialIds.end());
 	outMaterialIds.erase(std::unique(outMaterialIds.begin(), outMaterialIds.end()), outMaterialIds.end());
 	outMaterialIds.erase(std::remove(outMaterialIds.begin(), outMaterialIds.end(), 0), outMaterialIds.end()); ///Do Nodes contain 0 material ids?
+	
+	//Remove duplicates, and 0s, from shadow IDs.
+	std::sort(outShadowIds.begin(), outShadowIds.end());
+	outShadowIds.erase(std::unique(outShadowIds.begin(), outShadowIds.end()), outShadowIds.end());
+	outShadowIds.erase(std::remove(outShadowIds.begin(), outShadowIds.end(), 0), outShadowIds.end());
 }

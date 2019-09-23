@@ -29,7 +29,12 @@ public:
 	virtual void EncodedResource(avs::uid resource_uid) override;
 	virtual void RequestResource(avs::uid resource_uid) override;
 
-	virtual void GetResourcesClientNeeds(std::vector<avs::uid>& outMeshIds, std::vector<avs::uid>& outTextureIds, std::vector<avs::uid>& outMaterialIds, std::vector<avs::uid>& outNodeIds) override;
+	virtual void GetResourcesClientNeeds(
+		std::vector<avs::uid>& outMeshIds, 
+		std::vector<avs::uid>& outTextureIds, 
+		std::vector<avs::uid>& outMaterialIds,
+		std::vector<avs::uid>& outShadowIds,
+		std::vector<avs::uid>& outNodeIds) override;
 
 	virtual avs::AxesStandard GetAxesStandard() const override
 	{
@@ -75,5 +80,10 @@ private:
 	std::map<FName, avs::uid> streamedActors; //Actors that the client needs to draw, and should be sent to them; <Level Unique Name, Node UID of root mesh>.
 
 	//Recursive function to retrieve the resource UIDs from a node, and its child nodes.
-	void GetNodeResourceUIDs(avs::uid nodeUID, std::vector<avs::uid>& outMeshIds, std::vector<avs::uid>& outTextureIds, std::vector<avs::uid>& outMaterialIds, std::vector<avs::uid>& outNodeIds);
+	void GetNodeResourceUIDs(
+		avs::uid nodeUID, 
+		std::vector<avs::uid>& outMeshIds, 
+		std::vector<avs::uid>& outTextureIds, 
+		std::vector<avs::uid>& outMaterialIds, 
+		std::vector<avs::uid>& outNodeIds);
 };

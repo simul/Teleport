@@ -46,8 +46,8 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp, avs::GeometrySourceBacke
 	// The source backend will give us the data to encode.
 	// What data it provides depends on the contents of the avs::GeometryRequesterBackendInterface object.
 	
-	std::vector<avs::uid> meshUIDs, textureUIDs, materialUIDs, nodeUIDs;
-	req->GetResourcesClientNeeds(meshUIDs, textureUIDs, materialUIDs, nodeUIDs);
+	std::vector<avs::uid> meshUIDs, textureUIDs, materialUIDs, shadowUIDs, nodeUIDs;
+	req->GetResourcesClientNeeds(meshUIDs, textureUIDs, materialUIDs, shadowUIDs, nodeUIDs);
 
 	if(GetNewUIDs(meshUIDs, req) != 0)
 	{
@@ -64,6 +64,10 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp, avs::GeometrySourceBacke
 		size_t previousSize = buffer.size();
 		encodeTextures(src, req, textureUIDs);
 		UE_LOG(LogRemotePlay, Log, TEXT("Texture Buffer Size: %d"), buffer.size() - previousSize);
+	}
+	if(GetNewUIDs(shadowUIDs, req) != 0)
+	{
+		encodeShadowMaps(src, req, shadowUIDs);
 	}
 
 	if(GetNewUIDs(nodeUIDs, req) != 0)
@@ -318,13 +322,21 @@ avs::Result GeometryEncoder::encodeMaterials(avs::GeometrySourceBackendInterface
 	return avs::Result::OK;
 }
 
+avs::Result GeometryEncoder::encodeShadowMaps(avs::GeometrySourceBackendInterface* src, avs::GeometryRequesterBackendInterface* req, std::vector<avs::uid> missingUIDs)
+{
+	encodeTexturesBackend(src, req, missingUIDs);
+	return avs::Result::OK;
+}
+
 avs::Result GeometryEncoder::encodeTexturesBackend(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req, std::vector<avs::uid> missingUIDs)
 {
 	for(avs::uid uid : missingUIDs)
 	{
 		avs::Texture outTexture;
+		bool IsTexture = src->getTexture(uid, outTexture);
+		bool IsShadowMap = src->getShadowMap(uid, outTexture);
 
-		if(src->getTexture(uid, outTexture))
+		if(IsTexture || IsShadowMap)
 		{
 			//Place payload type onto the buffer.
 			putPayload(avs::GeometryPayloadType::Texture);

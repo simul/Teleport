@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <CoreMinimal.h>
 #include <Runtime/Engine/Classes/Components/LightComponent.h>
+#include <Runtime/Engine/Classes/Engine/MapBuildDataRegistry.h>
 
 #include "basisu_comp.h"
 
@@ -33,6 +34,7 @@ public:
 	//Returns the UID of the processed material information, or 0 if a nullptr is passed.
 	avs::uid AddMaterial(class UMaterialInterface *materialInterface);
 
+	avs::uid AddShadowMap(const FStaticShadowDepthMapData* shadowDepthMapData);
 	void Tick();
 
 	// Inherited via GeometrySourceBackendInterface
@@ -54,6 +56,9 @@ public:
 	virtual std::vector<avs::uid> getMaterialUIDs() const override;
 	virtual bool getMaterial(avs::uid material_uid, avs::Material & outMaterial) const override;
 
+	virtual std::vector<avs::uid> getShadowMapUIDs() const override;
+	virtual bool getShadowMap(avs::uid shadow_uid, avs::Texture& outShadowMap) const override;
+
 
 protected:
 	struct Mesh;
@@ -71,9 +76,11 @@ protected:
 	std::unordered_map<UTexture*, avs::uid> decomposedTextures; //Textures we have already stored in the GeometrySource; the pointer points to the uid of the stored texture information.
 	std::unordered_map<UMaterialInterface*, avs::uid> decomposedMaterials; //Materials we have already stored in the GeometrySource; the pointer points to the uid of the stored material information.
 	std::map<FName, avs::uid> decomposedNodes; //Nodes we have already stored in the GeometrySource; <Level Unique Node Name, Node Identifier>.
+	std::unordered_map<const FStaticShadowDepthMapData*, avs::uid> storedShadowMaps;
 
 	std::map<avs::uid, avs::Texture> textures;
 	std::map<avs::uid, avs::Material> materials;
+	std::map<avs::uid, avs::Texture> shadowMaps;
 	
 	mutable std::map<avs::uid, std::vector<avs::vec3>> scaledPositionBuffers;
 	mutable std::map<avs::uid, std::vector<FVector2D>> processedUVs;
