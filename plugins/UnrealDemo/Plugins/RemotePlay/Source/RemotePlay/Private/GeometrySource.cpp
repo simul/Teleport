@@ -134,7 +134,7 @@ void GeometrySource::Initialize(ARemotePlayMonitor* monitor, UWorld* world)
 		if(handMeshComponent)
 		{
 			avs::uid firstHandUID = AddNode(rootNodeUid, handMeshComponent);
-			nodes[firstHandUID]->data_type = avs::NodeDataType::Controller;
+			nodes[firstHandUID]->data_type = avs::NodeDataType::Hand;
 
 			avs::uid secondHandUID = avs::GenerateUid();
 			nodes[secondHandUID] = nodes[firstHandUID];

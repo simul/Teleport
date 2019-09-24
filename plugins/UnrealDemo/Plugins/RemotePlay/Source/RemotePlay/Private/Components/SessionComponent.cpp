@@ -490,7 +490,7 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 		return;
 	}
 
-	if(handshake.needsControllers)
+	if(handshake.usingHands)
 	{
 		GeometryStreamingService.AddControllersToStream();
 	}
