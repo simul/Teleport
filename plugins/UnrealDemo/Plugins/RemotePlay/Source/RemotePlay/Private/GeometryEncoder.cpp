@@ -324,19 +324,22 @@ avs::Result GeometryEncoder::encodeMaterials(avs::GeometrySourceBackendInterface
 
 avs::Result GeometryEncoder::encodeShadowMaps(avs::GeometrySourceBackendInterface* src, avs::GeometryRequesterBackendInterface* req, std::vector<avs::uid> missingUIDs)
 {
-	encodeTexturesBackend(src, req, missingUIDs);
+	encodeTexturesBackend(src, req, missingUIDs, true);
 	return avs::Result::OK;
 }
 
-avs::Result GeometryEncoder::encodeTexturesBackend(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req, std::vector<avs::uid> missingUIDs)
+avs::Result GeometryEncoder::encodeTexturesBackend(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req, std::vector<avs::uid> missingUIDs, bool isShadowMap)
 {
 	for(avs::uid uid : missingUIDs)
 	{
 		avs::Texture outTexture;
-		bool IsTexture = src->getTexture(uid, outTexture);
-		bool IsShadowMap = src->getShadowMap(uid, outTexture);
+		bool textureIsFound = false;
+		if(isShadowMap)
+			textureIsFound = src->getShadowMap(uid, outTexture);
+		else
+			textureIsFound = src->getTexture(uid, outTexture);
 
-		if(IsTexture || IsShadowMap)
+		if(textureIsFound)
 		{
 			//Place payload type onto the buffer.
 			putPayload(avs::GeometryPayloadType::Texture);
