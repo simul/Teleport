@@ -18,7 +18,7 @@ class GeometrySource : public avs::GeometrySourceBackendInterface
 public:
 	GeometrySource();
 	~GeometrySource();
-	void Initialize(class ARemotePlayMonitor *m);
+	void Initialize(ARemotePlayMonitor* monitor, UWorld* world);
 	void clearData();
 
 	avs::uid AddMesh(class UStaticMesh *);
@@ -29,6 +29,11 @@ public:
 
 	avs::uid GetRootNodeUid();
 	bool GetRootNode(std::shared_ptr<avs::DataNode>& node);
+
+	const std::vector<avs::uid>& GetHandActorUIDs()
+	{
+		return handUIDs;
+	};
 	
 	//Adds the material to the geometry source, where it is processed into a streamable material.
 	//Returns the UID of the processed material information, or 0 if a nullptr is passed.
@@ -123,6 +128,8 @@ protected:
 	size_t DecomposeTextureSampleExpression(UMaterialInterface* materialInterface, UMaterialExpressionTextureSample* textureSample, avs::TextureAccessor& outTexture);
 
 	class ARemotePlayMonitor* Monitor;
+
+	std::vector<avs::uid> handUIDs;
 };
 
 struct ShadowMapData

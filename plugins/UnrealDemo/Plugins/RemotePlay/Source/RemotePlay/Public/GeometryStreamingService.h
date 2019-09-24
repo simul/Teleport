@@ -61,6 +61,9 @@ public:
 	//Returns uid of actor the client is no longer responsible for.
 	avs::uid RemoveActor(AActor *oldActor);
 
+	//Causes the controllers to be added to the list of streamed actors.
+	void AddControllersToStream();
+
 	// avs::GeometryTransferState
 	size_t getNumRequiredNodes() const;
 	avs::uid getRequiredNode(size_t index) const;

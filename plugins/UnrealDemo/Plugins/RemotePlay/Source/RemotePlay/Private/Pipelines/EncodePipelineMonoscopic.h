@@ -15,7 +15,7 @@ public:
 
 
 	/* Begin IEncodePipeline interface */
-	void Initialize(const FRemotePlayEncodeParameters& InParams, struct FRemotePlayContext *context, avs::Queue* InColorQueue, avs::Queue* InDepthQueue) override;
+	void Initialize(const FRemotePlayEncodeParameters& InParams, struct FRemotePlayContext *context, ARemotePlayMonitor* InMonitor, avs::Queue* InColorQueue, avs::Queue* InDepthQueue) override;
 	void Release() override;
 	void PrepareFrame(FSceneInterface* InScene, UTexture* InSourceTexture) override;
 	void EncodeFrame(FSceneInterface* InScene, UTexture* InSourceTexture, FTransform& CameraTransform) override;
@@ -55,4 +55,6 @@ private:
 
 	FTextureCubeRHIRef LightingTextureCubeRHIRef;
 	FUnorderedAccessViewRHIRef LightingUnorderedAccessViewRHIRefs[8];
+
+	ARemotePlayMonitor* Monitor;
 };

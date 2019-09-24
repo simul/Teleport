@@ -45,6 +45,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
 	int32 DetectionSphereBufferDistance;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
+	int32 ExpectedLag;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
+	UBlueprint* HandActor;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
 	int32 DebugStream;
 
@@ -54,6 +60,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
 	uint32 ResetCache : 1;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
+	float SecondsBeforeGeometryStreamStart;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Compression)
 	bool UseCompressedTextures;
 	
@@ -62,6 +71,7 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Compression)
 	uint8 CompressionLevel;
+
 
 	// In order:
 	virtual void PostInitProperties() override;

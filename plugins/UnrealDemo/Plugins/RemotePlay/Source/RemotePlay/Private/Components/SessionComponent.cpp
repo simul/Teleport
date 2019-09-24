@@ -16,6 +16,7 @@
 DECLARE_STATS_GROUP(TEXT("RemotePlay_Game"), STATGROUP_RemotePlay, STATCAT_Advanced);
 
 #include "Engine/Classes/Components/SphereComponent.h"
+#include "TimerManager.h"
 
 template< typename TStatGroup>
 static TStatId CreateStatId(const FName StatNameOrDescription, EStatDataType::Type dataType)
@@ -424,6 +425,11 @@ void URemotePlaySessionComponent::StopStreaming()
 	RemotePlayContext = nullptr;
 }
 
+void URemotePlaySessionComponent::StartGeometryStream()
+{
+	GeometryStreamingService.StartStreaming(RemotePlayContext);
+}
+
 void URemotePlaySessionComponent::OnInnerSphereBeginOverlap(UPrimitiveComponent *OverlappedComponent, AActor *OtherActor, UPrimitiveComponent *OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult &SweepResult)
 {
 	avs::uid actor_uid = GeometryStreamingService.AddActor(OtherActor);
@@ -483,19 +489,17 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Handshake not ready to receive."));
 		return;
 	}
+
+	if(handshake.usingHands)
+	{
+		GeometryStreamingService.AddControllersToStream();
+	}
+
 	RemotePlayContext->axesStandard = handshake.axesStandard;
 	URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
 	const int32 StreamingPort = ServerHost->address.port + 1;
 
-	CaptureComponent->StartStreaming(RemotePlayContext);
-	Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
-	if (Monitor&&Monitor->StreamGeometry)
-	{
-		GeometryStreamingService.SetStreamingContinuously(Monitor->StreamGeometryContinuously);
-		GeometryStreamingService.StartStreaming(RemotePlayContext);
-	}
-
-	if (!RemotePlayContext->NetworkPipeline.IsValid())
+	if(!RemotePlayContext->NetworkPipeline.IsValid())
 	{
 		FRemotePlayNetworkParameters NetworkParams;
 		NetworkParams.RemoteIP = Client_GetIPAddress();
@@ -507,6 +511,24 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 		RemotePlayContext->NetworkPipeline.Reset(new FNetworkPipeline);
 		RemotePlayContext->NetworkPipeline->Initialize(Monitor, NetworkParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get(), RemotePlayContext->GeometryQueue.Get());
 	}
+
+	CaptureComponent->StartStreaming(RemotePlayContext);
+
+	if (Monitor&&Monitor->StreamGeometry)
+	{
+		GeometryStreamingService.SetStreamingContinuously(Monitor->StreamGeometryContinuously);
+
+		if(Monitor->SecondsBeforeGeometryStreamStart <= 0)
+		{
+			StartGeometryStream();
+		}
+		else
+		{
+			//Start the geometry stream after a set amount of time has elapsed.
+			FTimerHandle unusedTimerHandle;
+			GetWorld()->GetTimerManager().SetTimer(unusedTimerHandle, this, &URemotePlaySessionComponent::StartGeometryStream, Monitor->SecondsBeforeGeometryStreamStart, false);
+		}
+	}	
 
 	UE_LOG(LogRemotePlay, Log, TEXT("RemotePlay: Started streaming to %s:%d"), *Client_GetIPAddress(), StreamingPort);
 }
