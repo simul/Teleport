@@ -729,6 +729,8 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 		uint32_t mipCount = textureSource.GetNumMips();
 		avs::TextureFormat format;
 
+		UE_CLOG(bytesPerPixel != 4, LogRemotePlay, Warning, TEXT("Texture \"%s\" has bytes per pixel of %d!"), *texture->GetName(), bytesPerPixel);
+
 		std::size_t texSize = width * height * bytesPerPixel;
 
 		switch(unrealFormat)
@@ -763,12 +765,13 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 				UE_LOG(LogRemotePlay, Warning, TEXT("Invalid texture format"));
 				break;
 		}		
+
+		avs::TextureCompression compression = avs::TextureCompression::UNCOMPRESSED;
 		
 		uint32_t dataSize=0;
 		unsigned char* data = nullptr;
-		avs::TextureCompression compression = avs::TextureCompression::UNCOMPRESSED;
-		//Compress the texture with Basis Universal if the flag is set.
-		if(Monitor->UseCompressedTextures)
+		//Compress the texture with Basis Universal if the flag is set, and bytes per pixel is equal to 4.
+		if(Monitor->UseCompressedTextures && bytesPerPixel == 4)
 		{
 			compression = avs::TextureCompression::BASIS_COMPRESSED;
 			bool validBasisFileExists = false;
@@ -854,6 +857,8 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 			dataSize = texSize;
 			data = new unsigned char[dataSize];
 			memcpy(data, mipData.GetData(), dataSize);
+
+			UE_CLOG(dataSize > 1048576, LogRemotePlay, Warning, TEXT("Texture \"%s\" was stored UNCOMPRESSED with a data size larger than 1MB! Size: %dB(%.2fMB)"), *texture->GetName(), dataSize, dataSize / 1048576.0f)
 		}
 
 		//We're using a single sampler for now.
