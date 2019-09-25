@@ -222,7 +222,8 @@ void FGeometryStreamingService::GetMeshNodeResources(avs::uid node_uid, std::vec
 {
 	std::shared_ptr<avs::DataNode> thisNode;
 	geometrySource->getNode(node_uid, thisNode);
-
+	if (thisNode->data_uid == 0)
+		return;
 	avs::MeshNodeResources meshNode;
 	meshNode.node_uid = node_uid;
 	meshNode.mesh_uid = thisNode->data_uid;

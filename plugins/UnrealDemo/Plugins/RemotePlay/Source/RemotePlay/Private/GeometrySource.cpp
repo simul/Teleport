@@ -470,15 +470,17 @@ avs::uid GeometrySource::AddNode(avs::uid parent_uid, USceneComponent* component
 			getNode(parent_uid, parent);
 
 			avs::uid mesh_uid = AddStreamableMeshComponent(meshComponent);
+			if (mesh_uid == 0)
+				return 0;
 			// the material/s that this particular instance of the mesh has applied to its slots...
-			TArray<UMaterialInterface*> mats = meshComponent->GetMaterials();
+			TArray<UMaterialInterface *> mats = meshComponent->GetMaterials();
 
 			std::vector<avs::uid> mat_uids;
 			//Add material, and textures, for streaming to clients.
 			int32 num_mats = mats.Num();
 			for(int32 i = 0; i < num_mats; i++)
 			{
-				UMaterialInterface* materialInterface = mats[i];
+				UMaterialInterface *materialInterface = mats[i];
 				mat_uids.push_back(AddMaterial(materialInterface));
 			}
 
@@ -487,7 +489,7 @@ avs::uid GeometrySource::AddNode(avs::uid parent_uid, USceneComponent* component
 
 			parent->childrenUids.push_back(node_uid);
 
-			TArray<USceneComponent*> children;
+			TArray<USceneComponent *> children;
 			component->GetChildrenComponents(false, children);
 
 			for(auto child : children)
@@ -504,6 +506,8 @@ avs::uid GeometrySource::AddNode(avs::uid parent_uid, USceneComponent* component
 			getNode(parent_uid, parent);
 
 			avs::uid shadow_uid = AddShadowMap(lightComponent->StaticShadowDepthMap.Data);
+			if (shadow_uid == 0)
+				return 0;
 
 			node_uid = CreateNode(component, shadow_uid, avs::NodeDataType::ShadowMap, {});
 			decomposedNodes[levelUniqueNodeName] = node_uid;
