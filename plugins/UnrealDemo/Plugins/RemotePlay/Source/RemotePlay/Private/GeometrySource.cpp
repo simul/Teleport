@@ -464,40 +464,40 @@ avs::uid GeometrySource::AddNode(avs::uid parent_uid, USceneComponent* component
 		UMeshComponent* meshComponent = Cast<UMeshComponent>(component);
 		ULightComponent* lightComponent = Cast<ULightComponent>(component);
 
-		if (meshComponent)
+		if(meshComponent)
 		{
-		std::shared_ptr<avs::DataNode> parent;
-		getNode(parent_uid, parent);
+			std::shared_ptr<avs::DataNode> parent;
+			getNode(parent_uid, parent);
 
-		avs::uid mesh_uid = AddStreamableMeshComponent(meshComponent);
-		// the material/s that this particular instance of the mesh has applied to its slots...
-		TArray<UMaterialInterface *> mats = meshComponent->GetMaterials();
+			avs::uid mesh_uid = AddStreamableMeshComponent(meshComponent);
+			// the material/s that this particular instance of the mesh has applied to its slots...
+			TArray<UMaterialInterface*> mats = meshComponent->GetMaterials();
 
-		std::vector<avs::uid> mat_uids;
-		//Add material, and textures, for streaming to clients.
-		int32 num_mats = mats.Num();
-		for(int32 i = 0; i < num_mats; i++)
-		{
-			UMaterialInterface *materialInterface = mats[i];
-			mat_uids.push_back(AddMaterial(materialInterface));
-		}
-
-		node_uid = CreateNode(component, mesh_uid, avs::NodeDataType::Mesh, mat_uids);
-		decomposedNodes[levelUniqueNodeName] = node_uid;
-
-		parent->childrenUids.push_back(node_uid);
-
-		TArray<USceneComponent *> children;
-		component->GetChildrenComponents(false, children);
-
-		for(auto child : children)
-		{
-			if(child->GetClass()->IsChildOf(UMeshComponent::StaticClass()))
+			std::vector<avs::uid> mat_uids;
+			//Add material, and textures, for streaming to clients.
+			int32 num_mats = mats.Num();
+			for(int32 i = 0; i < num_mats; i++)
 			{
-				AddNode(node_uid, Cast<UMeshComponent>(child));
+				UMaterialInterface* materialInterface = mats[i];
+				mat_uids.push_back(AddMaterial(materialInterface));
+			}
+
+			node_uid = CreateNode(component, mesh_uid, avs::NodeDataType::Mesh, mat_uids);
+			decomposedNodes[levelUniqueNodeName] = node_uid;
+
+			parent->childrenUids.push_back(node_uid);
+
+			TArray<USceneComponent*> children;
+			component->GetChildrenComponents(false, children);
+
+			for(auto child : children)
+			{
+				if(child->GetClass()->IsChildOf(UMeshComponent::StaticClass()))
+				{
+					AddNode(node_uid, Cast<UMeshComponent>(child));
+				}
 			}
 		}
-	}
 		else if (lightComponent)
 		{
 			std::shared_ptr<avs::DataNode> parent;
