@@ -7,6 +7,8 @@ public:
 	GeometryEncoder();
 	~GeometryEncoder();
 
+	void Initialise(class ARemotePlayMonitor* Monitor);
+
 	// Inherited via GeometryEncoderBackendInterface
 	avs::Result encode(uint32_t timestamp, avs::GeometrySourceBackendInterface * target
 		, avs::GeometryRequesterBackendInterface *geometryRequester) override;
@@ -33,6 +35,8 @@ protected:
 		memcpy(buffer.data() + pos, &data, sizeof(T));
 	}
 private:
+	class ARemotePlayMonitor* Monitor;
+
 	void putPayload(avs::GeometryPayloadType t);
 	static unsigned char GALU_code[];
 

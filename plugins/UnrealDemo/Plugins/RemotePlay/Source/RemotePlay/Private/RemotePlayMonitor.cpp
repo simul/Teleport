@@ -6,7 +6,7 @@
 TMap<UWorld*, ARemotePlayMonitor*> ARemotePlayMonitor::Monitors;
 
 ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectInitializer)
-	: Super(ObjectInitializer), HandActor(nullptr), SecondsBeforeGeometryStreamStart(1.0f)
+	: Super(ObjectInitializer), HandActor(nullptr), GeometryTicksPerSecond(2), GeometryBufferCutoffSize(102400) /*100MB*/
 {
 	// Defaults from settings class.
 	const URemotePlaySettings *RemotePlaySettings = GetDefault<URemotePlaySettings>();
