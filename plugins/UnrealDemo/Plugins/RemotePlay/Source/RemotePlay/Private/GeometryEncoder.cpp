@@ -6,13 +6,17 @@
 
 #include "LogMacros.h"
 
-GeometryEncoder::GeometryEncoder()
-{ 
-}
+#include "RemotePlayMonitor.h"
 
+GeometryEncoder::GeometryEncoder()
+{}
 
 GeometryEncoder::~GeometryEncoder()
+{}
+
+void GeometryEncoder::Initialise(ARemotePlayMonitor* Monitor)
 {
+	this->Monitor = Monitor;
 }
 
 //Clear a passed vector of UIDs that are believed to have already been sent to the client.
@@ -46,30 +50,69 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp, avs::GeometrySourceBacke
 	// The source backend will give us the data to encode.
 	// What data it provides depends on the contents of the avs::GeometryRequesterBackendInterface object.
 	
-	std::vector<avs::uid> meshUIDs, textureUIDs, materialUIDs, nodeUIDs;
-	req->GetResourcesClientNeeds(meshUIDs, textureUIDs, materialUIDs, nodeUIDs);
+	//The buffer will have data put onto it node-by-node until after placing a node onto the buffer there is too much data to put on; causing it to wait until the next encode call.
+	///The biggest problem with the current implementation is if the buffer is just below the threshold, and then the next node has a lot of data to push onto it.
 
-	if(GetNewUIDs(meshUIDs, req) != 0)
+	std::vector<avs::MeshNodeResources> meshNodeResources;
+	std::vector<avs::LightNodeResources> lightNodeResources;
+
+	req->GetResourcesToStream(meshNodeResources, lightNodeResources);
+
+	//Encode mesh nodes first, as they should be sent before lighting data.
+	for(avs::MeshNodeResources meshResourceInfo : meshNodeResources)
 	{
-		encodeMeshes(src, req, meshUIDs);
-	}
-	
-	if(GetNewUIDs(materialUIDs, req) != 0)
-	{
-		encodeMaterials(src, req, materialUIDs);
+		if(!req->HasResource(meshResourceInfo.mesh_uid))
+		{
+			encodeMeshes(src, req, {meshResourceInfo.mesh_uid});
+		}
+
+		for(avs::MaterialResources material : meshResourceInfo.materials)
+		{
+			if(GetNewUIDs(material.texture_uids, req) != 0)
+			{
+				encodeTextures(src, req, material.texture_uids);
+			}
+
+			if(!req->HasResource(material.material_uid))
+			{
+				encodeMaterials(src, req, {material.material_uid});
+			}
+		}
+
+		if(!req->HasResource(meshResourceInfo.node_uid))
+		{
+			encodeNodes(src, req, {meshResourceInfo.node_uid});
+		}
+
+		if(buffer.size() >= Monitor->GeometryBufferCutoffSize)
+		{
+			break;
+		}
 	}
 
-	if(GetNewUIDs(textureUIDs, req) != 0)
+	//Encode light nodes, if there is not too much data from the mesh nodes.
+	if(buffer.size() < Monitor->GeometryBufferCutoffSize)
 	{
-		size_t previousSize = buffer.size();
-		encodeTextures(src, req, textureUIDs);
-		UE_LOG(LogRemotePlay, Log, TEXT("Texture Buffer Size: %d"), buffer.size() - previousSize);
+		for(avs::LightNodeResources lightResourceInfo : lightNodeResources)
+		{
+			if(!req->HasResource(lightResourceInfo.shadowmap_uid))
+			{
+				encodeTextures(src, req, {lightResourceInfo.shadowmap_uid});
+			}
+
+			if(!req->HasResource(lightResourceInfo.node_uid))
+			{
+				encodeNodes(src, req, {lightResourceInfo.node_uid});
+			}
+
+			if(buffer.size() >= Monitor->GeometryBufferCutoffSize)
+			{
+				break;
+			}
+		}
 	}
 
-	if(GetNewUIDs(nodeUIDs, req) != 0)
-	{
-		encodeNodes(src, req, nodeUIDs);
-	}
+
 	// GALU to end.
 	buffer.push_back(GALU_code[0]);
 	buffer.push_back(GALU_code[1]);
@@ -318,13 +361,24 @@ avs::Result GeometryEncoder::encodeMaterials(avs::GeometrySourceBackendInterface
 	return avs::Result::OK;
 }
 
-avs::Result GeometryEncoder::encodeTexturesBackend(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req, std::vector<avs::uid> missingUIDs)
+avs::Result GeometryEncoder::encodeShadowMaps(avs::GeometrySourceBackendInterface* src, avs::GeometryRequesterBackendInterface* req, std::vector<avs::uid> missingUIDs)
+{
+	encodeTexturesBackend(src, req, missingUIDs, true);
+	return avs::Result::OK;
+}
+
+avs::Result GeometryEncoder::encodeTexturesBackend(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req, std::vector<avs::uid> missingUIDs, bool isShadowMap)
 {
 	for(avs::uid uid : missingUIDs)
 	{
 		avs::Texture outTexture;
+		bool textureIsFound = false;
+		if(isShadowMap)
+			textureIsFound = src->getShadowMap(uid, outTexture);
+		else
+			textureIsFound = src->getTexture(uid, outTexture);
 
-		if(src->getTexture(uid, outTexture))
+		if(textureIsFound)
 		{
 			//Place payload type onto the buffer.
 			putPayload(avs::GeometryPayloadType::Texture);

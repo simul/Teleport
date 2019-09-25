@@ -115,7 +115,7 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 		{
 			EncodeParams.bDeferOutput = Monitor->DeferOutput;
 			RemotePlayContext->EncodePipeline.Reset(new FEncodePipelineMonoscopic);
-			RemotePlayContext->EncodePipeline->Initialize(EncodeParams, RemotePlayContext, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get());
+			RemotePlayContext->EncodePipeline->Initialize(EncodeParams, RemotePlayContext, Monitor, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get());
 
 			if (RemotePlayReflectionCaptureComponent)
 			{

@@ -7,6 +7,8 @@ public:
 	GeometryEncoder();
 	~GeometryEncoder();
 
+	void Initialise(class ARemotePlayMonitor* Monitor);
+
 	// Inherited via GeometryEncoderBackendInterface
 	avs::Result encode(uint32_t timestamp, avs::GeometrySourceBackendInterface * target
 		, avs::GeometryRequesterBackendInterface *geometryRequester) override;
@@ -33,6 +35,8 @@ protected:
 		memcpy(buffer.data() + pos, &data, sizeof(T));
 	}
 private:
+	class ARemotePlayMonitor* Monitor;
+
 	void putPayload(avs::GeometryPayloadType t);
 	static unsigned char GALU_code[];
 
@@ -44,7 +48,8 @@ private:
 	avs::Result encodeNodes(avs::GeometrySourceBackendInterface *src, avs::GeometryRequesterBackendInterface *req, std::vector<avs::uid> missingUIDs);
 	avs::Result encodeTextures(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req, std::vector<avs::uid> missingUIDs);
 	avs::Result encodeMaterials(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req, std::vector<avs::uid> missingUIDs);
+	avs::Result encodeShadowMaps(avs::GeometrySourceBackendInterface* src, avs::GeometryRequesterBackendInterface* req, std::vector<avs::uid> missingUIDs);
 
 	//The actual implementation of encode textures that can be used by encodeMaterials to package textures with it.
-	avs::Result encodeTexturesBackend(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req, std::vector<avs::uid> missingUIDs);
+	avs::Result encodeTexturesBackend(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req, std::vector<avs::uid> missingUIDs, bool isShadowMap = false);
 };

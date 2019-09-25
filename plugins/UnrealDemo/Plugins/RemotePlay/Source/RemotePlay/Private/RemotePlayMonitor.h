@@ -34,16 +34,29 @@ public:
 	uint32 DeferOutput : 1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
-	uint32 StreamGeometry : 1;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
-	uint32 StreamGeometryContinuously : 1;	
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
 	int32 DetectionSphereRadius;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
 	int32 DetectionSphereBufferDistance;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
+	int32 ExpectedLag;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
+	UBlueprint* HandActor;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	uint32 StreamGeometry : 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	uint32 StreamGeometryContinuously : 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	uint8 GeometryTicksPerSecond;
+
+	//Size we stop encoding nodes at.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	int32 GeometryBufferCutoffSize;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
 	int32 DebugStream;
@@ -62,6 +75,7 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Compression)
 	uint8 CompressionLevel;
+
 
 	// In order:
 	virtual void PostInitProperties() override;

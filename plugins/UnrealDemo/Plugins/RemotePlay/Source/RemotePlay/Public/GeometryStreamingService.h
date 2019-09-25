@@ -29,7 +29,14 @@ public:
 	virtual void EncodedResource(avs::uid resource_uid) override;
 	virtual void RequestResource(avs::uid resource_uid) override;
 
-	virtual void GetResourcesClientNeeds(std::vector<avs::uid>& outMeshIds, std::vector<avs::uid>& outTextureIds, std::vector<avs::uid>& outMaterialIds, std::vector<avs::uid>& outNodeIds) override;
+	virtual void GetResourcesClientNeeds(
+		std::vector<avs::uid>& outMeshIds, 
+		std::vector<avs::uid>& outTextureIds, 
+		std::vector<avs::uid>& outMaterialIds,
+		std::vector<avs::uid>& outShadowIds,
+		std::vector<avs::uid>& outNodeIds) override;
+
+	virtual void GetResourcesToStream(std::vector<avs::MeshNodeResources>& outMeshResources, std::vector<avs::LightNodeResources>& outLightResources) override;
 
 	virtual avs::AxesStandard GetAxesStandard() const override
 	{
@@ -56,11 +63,15 @@ public:
 	//Returns uid of actor the client is no longer responsible for.
 	avs::uid RemoveActor(AActor *oldActor);
 
+	//Causes the controllers to be added to the list of streamed actors.
+	void AddControllersToStream();
+
 	// avs::GeometryTransferState
 	size_t getNumRequiredNodes() const;
 	avs::uid getRequiredNode(size_t index) const;
 private:
 	struct FRemotePlayContext* RemotePlayContext;
+	class ARemotePlayMonitor* Monitor;
 
 	// The following MIGHT be moved later to a separate Pipeline class:
 	TUniquePtr<avs::Pipeline> avsPipeline;
@@ -75,5 +86,13 @@ private:
 	std::map<FName, avs::uid> streamedActors; //Actors that the client needs to draw, and should be sent to them; <Level Unique Name, Node UID of root mesh>.
 
 	//Recursive function to retrieve the resource UIDs from a node, and its child nodes.
-	void GetNodeResourceUIDs(avs::uid nodeUID, std::vector<avs::uid>& outMeshIds, std::vector<avs::uid>& outTextureIds, std::vector<avs::uid>& outMaterialIds, std::vector<avs::uid>& outNodeIds);
+	void GetNodeResourceUIDs(
+		avs::uid nodeUID, 
+		std::vector<avs::uid>& outMeshIds, 
+		std::vector<avs::uid>& outTextureIds, 
+		std::vector<avs::uid>& outMaterialIds, 
+		std::vector<avs::uid>& outNodeIds);
+
+	//Recursively obtains the resources from the mesh node, and its child nodes.
+	void GetMeshNodeResources(avs::uid node_uid, std::vector<avs::MeshNodeResources>& outMeshResources);
 };
