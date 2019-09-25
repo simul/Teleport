@@ -41,7 +41,7 @@ void UpdateSpecularCS(uint3 ThreadID : SV_DispatchThreadID)
 	RWOutputTexture.GetDimensions(OutputW, OutputH, OutputD);
 	float3 view = CubeFaceIndexToView(ThreadID, uint2(OutputW, OutputH));
 	float4 SceneColour = InputCubeMap.SampleLevel(DefaultSampler, view, 0);
-	SceneColour.g += 0.05;
+	//SceneColour.g += 0.05;
 	RWOutputTexture[int3(ThreadID)] = SceneColour;
 }
 
@@ -68,7 +68,7 @@ void UpdateLightingCS(uint3 ThreadID : SV_DispatchThreadID)
 		float factor = dot(DirLights[i].Direction, -view); 
 		Radiance += (DirLights[i].Color * factor);
 	}
-	Radiance.b += 0.1;
+	//Radiance.b += 0.1;
 	RWOutputTexture[int3(ThreadID)] = saturate(Radiance);
 }
 
