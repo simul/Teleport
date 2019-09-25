@@ -74,7 +74,7 @@ GeometrySource::~GeometrySource()
 	delete basisCompressorParams.m_pJob_pool;
 }
 
-void GeometrySource::Initialize(class ARemotePlayMonitor *monitor)
+void GeometrySource::Initialize(ARemotePlayMonitor* monitor, UWorld* world)
 {
 	Monitor = monitor;
 
@@ -88,6 +88,60 @@ void GeometrySource::Initialize(class ARemotePlayMonitor *monitor)
 	//0 == No item. First generated UID will be 1.
 	rootNodeUid = CreateNode(nullptr, 0, avs::NodeDataType::Scene,std::vector<avs::uid>());
 
+	//Create the hand nodes, but only if we have not already done so.
+	if(handUIDs.size() == 0)
+	{
+		UStaticMeshComponent* handMeshComponent = nullptr;
+		//Use the hand actor blueprint set in the monitor.
+		if(Monitor->HandActor)
+		{
+			AActor* handActor = world->SpawnActor(Monitor->HandActor->GeneratedClass);
+			handMeshComponent = Cast<UStaticMeshComponent>(handActor->GetComponentByClass(UStaticMeshComponent::StaticClass()));
+
+			if(!handMeshComponent)
+			{
+				UE_LOG(LogRemotePlay, Warning, TEXT("Hand actor set in RemotePlayMonitor has no static mesh component."));
+}
+		}
+		else
+		{
+			UE_LOG(LogRemotePlay, Log, TEXT("No hand actor set in RemotePlayMonitor."));
+		}
+
+		//If we can not use a set blueprint, then we use the default one.
+		if(!handMeshComponent)
+		{
+			FString defaultHandLocation("Blueprint'/Game/RemotePlay/RemotePlayHand.RemotePlayHand'");
+			UBlueprint* defaultHandBlueprint = Cast<UBlueprint>(StaticLoadObject(UBlueprint::StaticClass(), nullptr, *defaultHandLocation));
+
+			if(defaultHandBlueprint)
+			{
+				AActor* handActor = world->SpawnActor(defaultHandBlueprint->GeneratedClass);
+				handMeshComponent = Cast<UStaticMeshComponent>(handActor->GetComponentByClass(UStaticMeshComponent::StaticClass()));
+
+				if(!handMeshComponent)
+				{
+					UE_LOG(LogRemotePlay, Warning, TEXT("Default hand actor in <%s> has no static mesh component."), *defaultHandLocation);
+				}
+			}
+			else
+			{
+				UE_LOG(LogRemotePlay, Warning, TEXT("Could not find default hand actor in <%s>."), *defaultHandLocation);
+			}
+		}
+
+		//Add the hand actors, and their resources, to the geometry source.
+		if(handMeshComponent)
+		{
+			avs::uid firstHandUID = AddNode(rootNodeUid, handMeshComponent);
+			nodes[firstHandUID]->data_type = avs::NodeDataType::Hand;
+
+			avs::uid secondHandUID = avs::GenerateUid();
+			nodes[secondHandUID] = nodes[firstHandUID];
+
+			handUIDs = {firstHandUID, secondHandUID};
+		}
+	}
 }
 
 avs::AttributeSemantic IndexToSemantic(int index)
@@ -335,9 +389,13 @@ void GeometrySource::clearData()
 	decomposedTextures.clear();
 	decomposedMaterials.clear();
 	decomposedNodes.clear();
+	storedShadowMaps.clear();
 
 	textures.clear();
 	materials.clear();
+	shadowMaps.clear();
+
+	handUIDs.clear();
 }
 
 // By adding a m, we also add a pipe, including the InputMesh, which must be configured with the appropriate 
@@ -404,13 +462,10 @@ avs::uid GeometrySource::AddNode(avs::uid parent_uid, USceneComponent* component
 	else
 	{
 		UMeshComponent* meshComponent = Cast<UMeshComponent>(component);
+		ULightComponent* lightComponent = Cast<ULightComponent>(component);
 
-		if(!meshComponent)
+		if (meshComponent)
 		{
-			UE_LOG(LogRemotePlay, Warning, TEXT("Currently only Mesh Components are supported, but a component of type <%s> was passed to the GeometrySource."), *component->GetName())
-			return 0;
-		}
-
 		std::shared_ptr<avs::DataNode> parent;
 		getNode(parent_uid, parent);
 
@@ -441,6 +496,24 @@ avs::uid GeometrySource::AddNode(avs::uid parent_uid, USceneComponent* component
 			{
 				AddNode(node_uid, Cast<UMeshComponent>(child));
 			}
+		}
+	}
+		else if (lightComponent)
+		{
+			std::shared_ptr<avs::DataNode> parent;
+			getNode(parent_uid, parent);
+
+			avs::uid shadow_uid = AddShadowMap(lightComponent->StaticShadowDepthMap.Data);
+
+			node_uid = CreateNode(component, shadow_uid, avs::NodeDataType::ShadowMap, {});
+			decomposedNodes[levelUniqueNodeName] = node_uid;
+
+			//This node is a Terminus. i.e. no children.
+		}
+		else
+		{
+			UE_LOG(LogRemotePlay, Warning, TEXT("Currently only UMeshComponents and ULightComponents are supported, but a component of type <%s> was passed to the GeometrySource."), *component->GetName())
+				return 0;
 		}
 	}
 
@@ -547,6 +620,49 @@ avs::uid GeometrySource::AddMaterial(UMaterialInterface *materialInterface)
 	}
 
 	return mat_uid;
+}
+
+avs::uid GeometrySource::AddShadowMap(const FStaticShadowDepthMapData* shadowDepthMapData)
+{
+	//Check for nullptr
+	if (!shadowDepthMapData)
+		return 0;
+
+	//Return pre-stored shadow_uid
+	auto it = storedShadowMaps.find(shadowDepthMapData);
+	if (it != storedShadowMaps.end())
+	{
+		return (it->second);
+	}
+
+	//Generate new shadow map
+	avs::uid shadow_uid = avs::GenerateUid();
+	avs::Texture shadowTexture;
+
+	shadowTexture.name = std::string("Shadow Map UID: ") + std::to_string(shadow_uid);
+	shadowTexture.width = shadowDepthMapData->ShadowMapSizeX;
+	shadowTexture.height = shadowDepthMapData->ShadowMapSizeY;
+	shadowTexture.depth = 1;
+	shadowTexture.bytesPerPixel = shadowDepthMapData->DepthSamples.GetTypeSize();;
+	shadowTexture.arrayCount = 1;
+	shadowTexture.mipCount = 1;
+
+	shadowTexture.format = shadowTexture.bytesPerPixel == 4 ? avs::TextureFormat::D32F : 
+							shadowTexture.bytesPerPixel == 3 ? avs::TextureFormat::D24F : 
+							shadowTexture.bytesPerPixel == 2 ? avs::TextureFormat::D16F :
+							avs::TextureFormat::INVALID;
+	shadowTexture.compression = avs::TextureCompression::UNCOMPRESSED;
+
+	shadowTexture.dataSize = shadowDepthMapData->DepthSamples.GetAllocatedSize();
+	shadowTexture.data = new unsigned char[shadowTexture.dataSize];
+	memcpy(shadowTexture.data, (uint8_t*)shadowDepthMapData->DepthSamples.GetData(), shadowTexture.dataSize);
+	shadowTexture.sampler_uid = 0;
+
+	//Store in std::maps
+	shadowMaps[shadow_uid] = shadowTexture;
+	storedShadowMaps[shadowDepthMapData] = shadow_uid;
+	
+	return shadow_uid;
 }
 
 void GeometrySource::Tick()
@@ -1167,5 +1283,34 @@ bool GeometrySource::getMaterial(avs::uid material_uid, avs::Material & outMater
 	{
 		UE_LOG(LogRemotePlay, Warning, TEXT("Failed to find material with UID: %d"), material_uid)
 		return false;
+	}
+}
+
+std::vector<avs::uid> GeometrySource::getShadowMapUIDs() const
+{
+	std::vector<avs::uid> shadowMapUIDs(shadowMaps.size());
+
+	size_t i = 0;
+	for (const auto& it : shadowMaps)
+	{
+		shadowMapUIDs[i++] = it.first;
+	}
+
+	return shadowMapUIDs;
+}
+
+bool GeometrySource::getShadowMap(avs::uid shadow_uid, avs::Texture& outShadowMap) const
+{
+	//Assuming an incorrect texture uid should not happen, or at least not frequently.
+	try
+	{
+		outShadowMap = shadowMaps.at(shadow_uid);
+
+		return true;
+	}
+	catch (std::out_of_range oor)
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Failed to find shadow map with UID: %d"), shadow_uid)
+			return false;
 	}
 }
