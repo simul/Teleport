@@ -464,40 +464,40 @@ avs::uid GeometrySource::AddNode(avs::uid parent_uid, USceneComponent* component
 		UMeshComponent* meshComponent = Cast<UMeshComponent>(component);
 		ULightComponent* lightComponent = Cast<ULightComponent>(component);
 
-		if (meshComponent)
+		if(meshComponent)
 		{
-		std::shared_ptr<avs::DataNode> parent;
-		getNode(parent_uid, parent);
+			std::shared_ptr<avs::DataNode> parent;
+			getNode(parent_uid, parent);
 
-		avs::uid mesh_uid = AddStreamableMeshComponent(meshComponent);
-		// the material/s that this particular instance of the mesh has applied to its slots...
-		TArray<UMaterialInterface *> mats = meshComponent->GetMaterials();
+			avs::uid mesh_uid = AddStreamableMeshComponent(meshComponent);
+			// the material/s that this particular instance of the mesh has applied to its slots...
+			TArray<UMaterialInterface*> mats = meshComponent->GetMaterials();
 
-		std::vector<avs::uid> mat_uids;
-		//Add material, and textures, for streaming to clients.
-		int32 num_mats = mats.Num();
-		for(int32 i = 0; i < num_mats; i++)
-		{
-			UMaterialInterface *materialInterface = mats[i];
-			mat_uids.push_back(AddMaterial(materialInterface));
-		}
-
-		node_uid = CreateNode(component, mesh_uid, avs::NodeDataType::Mesh, mat_uids);
-		decomposedNodes[levelUniqueNodeName] = node_uid;
-
-		parent->childrenUids.push_back(node_uid);
-
-		TArray<USceneComponent *> children;
-		component->GetChildrenComponents(false, children);
-
-		for(auto child : children)
-		{
-			if(child->GetClass()->IsChildOf(UMeshComponent::StaticClass()))
+			std::vector<avs::uid> mat_uids;
+			//Add material, and textures, for streaming to clients.
+			int32 num_mats = mats.Num();
+			for(int32 i = 0; i < num_mats; i++)
 			{
-				AddNode(node_uid, Cast<UMeshComponent>(child));
+				UMaterialInterface* materialInterface = mats[i];
+				mat_uids.push_back(AddMaterial(materialInterface));
+			}
+
+			node_uid = CreateNode(component, mesh_uid, avs::NodeDataType::Mesh, mat_uids);
+			decomposedNodes[levelUniqueNodeName] = node_uid;
+
+			parent->childrenUids.push_back(node_uid);
+
+			TArray<USceneComponent*> children;
+			component->GetChildrenComponents(false, children);
+
+			for(auto child : children)
+			{
+				if(child->GetClass()->IsChildOf(UMeshComponent::StaticClass()))
+				{
+					AddNode(node_uid, Cast<UMeshComponent>(child));
+				}
 			}
 		}
-	}
 		else if (lightComponent)
 		{
 			std::shared_ptr<avs::DataNode> parent;
@@ -729,6 +729,8 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 		uint32_t mipCount = textureSource.GetNumMips();
 		avs::TextureFormat format;
 
+		UE_CLOG(bytesPerPixel != 4, LogRemotePlay, Warning, TEXT("Texture \"%s\" has bytes per pixel of %d!"), *texture->GetName(), bytesPerPixel);
+
 		std::size_t texSize = width * height * bytesPerPixel;
 
 		switch(unrealFormat)
@@ -763,12 +765,13 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 				UE_LOG(LogRemotePlay, Warning, TEXT("Invalid texture format"));
 				break;
 		}		
+
+		avs::TextureCompression compression = avs::TextureCompression::UNCOMPRESSED;
 		
 		uint32_t dataSize=0;
 		unsigned char* data = nullptr;
-		avs::TextureCompression compression = avs::TextureCompression::UNCOMPRESSED;
-		//Compress the texture with Basis Universal if the flag is set.
-		if(Monitor->UseCompressedTextures)
+		//Compress the texture with Basis Universal if the flag is set, and bytes per pixel is equal to 4.
+		if(Monitor->UseCompressedTextures && bytesPerPixel == 4)
 		{
 			compression = avs::TextureCompression::BASIS_COMPRESSED;
 			bool validBasisFileExists = false;
@@ -854,6 +857,8 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 			dataSize = texSize;
 			data = new unsigned char[dataSize];
 			memcpy(data, mipData.GetData(), dataSize);
+
+			UE_CLOG(dataSize > 1048576, LogRemotePlay, Warning, TEXT("Texture \"%s\" was stored UNCOMPRESSED with a data size larger than 1MB! Size: %dB(%.2fMB)"), *texture->GetName(), dataSize, dataSize / 1048576.0f)
 		}
 
 		//We're using a single sampler for now.
