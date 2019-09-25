@@ -99,7 +99,7 @@ public:
 			SetSRVParameter(RHICmdList, ShaderRHI, DirLightStructBuffer, DirLightsShaderResourceViewRef);
 		}
 	}
-
+	 
 	void SetOutputs(
 		FRHICommandList& RHICmdList,
 		FTextureCubeRHIRef OutputColorTextureRef,
