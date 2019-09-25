@@ -29,7 +29,7 @@ void* FRemotePlayRHI::GetNativeDevice(EDeviceType& OutType) const
 	}
 	else
 	{
-		OutType = EDeviceType::Invalid;
+		OutType = EDeviceType::Invalid; 
 		UE_LOG(LogRemotePlay, Error, TEXT("Unsupported RHI shader platform!"));
 		return nullptr;
 	}

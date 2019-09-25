@@ -65,7 +65,9 @@ private:
 	};
 
 	FCubeTexture SpecularCubeTexture;
+	FCubeTexture RoughSpecularCubeTexture;
 	FCubeTexture DiffuseCubeTexture;
 	FCubeTexture LightingCubeTexture;
+	uint32 randomSeed = 0;
 };
 

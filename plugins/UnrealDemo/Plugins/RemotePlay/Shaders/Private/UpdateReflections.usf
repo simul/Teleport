@@ -13,6 +13,7 @@ RWTexture2DArray<float4> RWOutputTexture;
 TextureCube InputCubeMap;
 SamplerState DefaultSampler;
 uint DirLightCount;
+uint RandomSeed;
 StructuredBuffer<DirectionalLight> DirLights;
 
 RWTexture2D<float4> RWStreamOutputTexture;
@@ -115,12 +116,23 @@ vec4 ImportanceSampleGGX(vec2 E, float roughness)
 
 	return vec4(H, PDF);
 }
+/** Reverses all the 32 bits. */
+uint ReverseBits32(uint bits)
+{
+	bits = (bits << 16) | (bits >> 16);
+	bits = ((bits & 0x00ff00ff) << 8) | ((bits & 0xff00ff00) >> 8);
+	bits = ((bits & 0x0f0f0f0f) << 4) | ((bits & 0xf0f0f0f0) >> 4);
+	bits = ((bits & 0x33333333) << 2) | ((bits & 0xcccccccc) >> 2);
+	bits = ((bits & 0x55555555) << 1) | ((bits & 0xaaaaaaaa) >> 1);
+	return bits;
+}
+
 
 vec2 Hammersley(uint index, uint NumSamples, uint2 random)
 {
-	float E1 = frac((float)index / NumSamples + float(random.x & 0xffff) / (1 << 16));
+	float E1 = frac((float)index / float(NumSamples) + float(random.x & 0xffff) / (1 << 16));
 	// Radical inverse:
-	float E2 = float(reversebits(index) ^ random.y) * 2.3283064365386963e-10;
+	float E2 = float(ReverseBits32(index) ^ random.y) * 2.3283064365386963e-10;
 	return vec2(E1, E2);
 }
 
@@ -142,24 +154,25 @@ vec3 rand3v(vec3 p)
 vec4 RoughnessMip(vec3 view, float roughness, float alpha, bool rough)
 {
 	vec4 outp;
-	float r =  saturate(roughness);//exp2( ( 3 - numMips + mipIndex) / 1.2 );;
+	float r =  saturate(0);//exp2( ( 3 - numMips + mipIndex) / 1.2 );;
 	float CubeSize =TargetSize;
 	const float SolidAngleTexel = 4.0 * PI / float((6.0 * CubeSize * CubeSize) * 2.0);
-	const uint NumSamples = 32;// (roughness < 0.1) ? 32 : 64;
+	const uint NumSamples = 64;// (roughness < 0.1) ? 32 : 64;
 	vec4 result = vec4(0, 0, 0, 0);
 	mat3 TangentToWorld = GetTangentBasis(view);
 	float Weight = 0.0;
 	for (uint i = 0; i < NumSamples; i++)
 	{
-		vec3 rn = rand3v(view + vec3(i, i, i));
-		vec2 E = Hammersley(i, NumSamples, uint2(rn.xy*1000000));
+		vec3 rn = rand3v(view + vec3(RandomSeed, i, RandomSeed+ i));
+		vec2 E = Hammersley(i, NumSamples, uint2(rn.xy*(1000000+ RandomSeed)));
 		vec3 L;
 		if (rough) // used for roughness > 0.99
 		{
 			// roughness=1, GGX is constant. Use cosine distribution instead
 			L = CosineSampleHemisphere(E).xyz;
 			float NoL = L.z;
-			result += InputCubeMap.SampleLevel(DefaultSampler, L, 0) * NoL;
+			L = mul(L, TangentToWorld);
+			result +=  InputCubeMap.SampleLevel(DefaultSampler, L, 0) * NoL*saturate(L.z*0.5+0.5);
 			Weight += NoL;
 		}
 		else
@@ -180,7 +193,7 @@ vec4 RoughnessMip(vec3 view, float roughness, float alpha, bool rough)
 
 				L = mul(L, TangentToWorld);
 				// Apply a limit to avoid numerical issues:
-				vec4 lookup = 100.0*saturate(0.01*InputCubeMap.SampleLevel(DefaultSampler, L, 0));
+				vec4 lookup = 100.0*saturate(0.01*InputCubeMap.SampleLevel(DefaultSampler, L, 0))*saturate(L.z*0.5 + 0.5);;
 				result += NoL * lookup;
 
 				Weight += NoL;
@@ -199,10 +212,12 @@ void FromMipCS(uint3 ThreadID : SV_DispatchThreadID)
 	if (ThreadID.x >= OutputW || ThreadID.y >= OutputH)
 		return;
 	float3 view = CubeFaceIndexToView(ThreadID, uint2(OutputW, OutputH));
-
-	vec4 Result = RoughnessMip(view, Roughness, 1.0, MIP_ROUGH);
+	float alpha = 0.1;
+	vec4 Result = RoughnessMip(view, Roughness, alpha, MIP_ROUGH);
 	//float4 SceneColour = InputCubeMap.SampleLevel(DefaultSampler, view, 0);
 	//SceneColour = float4(saturate(view), 1.0) + 0.0001*SceneColour;
+	Result *= alpha;
+	Result += RWOutputTexture[int3(ThreadID)] * (1.0 - alpha);
 	RWOutputTexture[int3(ThreadID)] = Result;
 }
 
