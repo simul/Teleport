@@ -36,6 +36,8 @@ public:
 		std::vector<avs::uid>& outShadowIds,
 		std::vector<avs::uid>& outNodeIds) override;
 
+	virtual void GetResourcesToStream(std::vector<avs::MeshNodeResources>& outMeshResources, std::vector<avs::LightNodeResources>& outLightResources) override;
+
 	virtual avs::AxesStandard GetAxesStandard() const override
 	{
 		return RemotePlayContext->axesStandard;
@@ -69,6 +71,7 @@ public:
 	avs::uid getRequiredNode(size_t index) const;
 private:
 	struct FRemotePlayContext* RemotePlayContext;
+	class ARemotePlayMonitor* Monitor;
 
 	// The following MIGHT be moved later to a separate Pipeline class:
 	TUniquePtr<avs::Pipeline> avsPipeline;
@@ -89,4 +92,7 @@ private:
 		std::vector<avs::uid>& outTextureIds, 
 		std::vector<avs::uid>& outMaterialIds, 
 		std::vector<avs::uid>& outNodeIds);
+
+	//Recursively obtains the resources from the mesh node, and its child nodes.
+	void GetMeshNodeResources(avs::uid node_uid, std::vector<avs::MeshNodeResources>& outMeshResources);
 };

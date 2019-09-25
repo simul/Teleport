@@ -183,7 +183,18 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 		{
 			GeometryStreamingService.SetStreamingContinuously(Monitor->StreamGeometryContinuously);
 		}
-		GeometryStreamingService.Tick();
+
+		static float timeSinceLastGeometryStream = 0;
+		timeSinceLastGeometryStream += DeltaTime;
+
+		const float TIME_BETWEEN_GEOMETRY_TICKS = 1.0f / Monitor->GeometryTicksPerSecond;
+
+		//Only tick the geometry streaming service a set amount of times per second.
+		if(timeSinceLastGeometryStream >= TIME_BETWEEN_GEOMETRY_TICKS)
+		{
+			GeometryStreamingService.Tick();
+			timeSinceLastGeometryStream -= TIME_BETWEEN_GEOMETRY_TICKS;
+		}
 	}
 	else
 	{
@@ -425,11 +436,6 @@ void URemotePlaySessionComponent::StopStreaming()
 	RemotePlayContext = nullptr;
 }
 
-void URemotePlaySessionComponent::StartGeometryStream()
-{
-	GeometryStreamingService.StartStreaming(RemotePlayContext);
-}
-
 void URemotePlaySessionComponent::OnInnerSphereBeginOverlap(UPrimitiveComponent *OverlappedComponent, AActor *OtherActor, UPrimitiveComponent *OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult &SweepResult)
 {
 	avs::uid actor_uid = GeometryStreamingService.AddActor(OtherActor);
@@ -517,17 +523,7 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 	if (Monitor&&Monitor->StreamGeometry)
 	{
 		GeometryStreamingService.SetStreamingContinuously(Monitor->StreamGeometryContinuously);
-
-		if(Monitor->SecondsBeforeGeometryStreamStart <= 0)
-		{
-			StartGeometryStream();
-		}
-		else
-		{
-			//Start the geometry stream after a set amount of time has elapsed.
-			FTimerHandle unusedTimerHandle;
-			GetWorld()->GetTimerManager().SetTimer(unusedTimerHandle, this, &URemotePlaySessionComponent::StartGeometryStream, Monitor->SecondsBeforeGeometryStreamStart, false);
-		}
+		GeometryStreamingService.StartStreaming(RemotePlayContext);
 	}	
 
 	UE_LOG(LogRemotePlay, Log, TEXT("RemotePlay: Started streaming to %s:%d"), *Client_GetIPAddress(), StreamingPort);
