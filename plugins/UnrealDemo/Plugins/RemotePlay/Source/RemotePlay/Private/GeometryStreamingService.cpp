@@ -38,7 +38,7 @@ void FGeometryStreamingService::Initialise(UWorld *World, GeometrySource *geomSo
 	}
 	geometrySource = geomSource;
 
-	geometrySource->Initialize(ARemotePlayMonitor::Instantiate(World));
+	geometrySource->Initialize(ARemotePlayMonitor::Instantiate(World), World);
 
 	//Decompose all relevant actors into streamable geometry.
 	TArray<AActor*> staticMeshActors;
@@ -154,6 +154,17 @@ avs::uid FGeometryStreamingService::RemoveActor(AActor *oldActor)
 	streamedActors.erase(levelUniqueName);
 
 	return actor_uid;
+}
+
+void FGeometryStreamingService::AddControllersToStream()
+{
+	const std::vector<avs::uid>& handUIDs = geometrySource->GetHandActorUIDs();
+
+	if(handUIDs.size() != 0)
+	{
+		streamedActors["RemotePlayHandActor1"] = handUIDs[0];
+		streamedActors["RemotePlayHandActor2"] = handUIDs[1];
+	}
 }
 
 void FGeometryStreamingService::GetNodeResourceUIDs(

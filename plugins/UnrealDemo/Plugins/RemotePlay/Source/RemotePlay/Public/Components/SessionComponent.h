@@ -69,6 +69,8 @@ private:
 	void StartStreaming();
 	void StopStreaming();
 
+	void StartGeometryStream();
+
 	UFUNCTION()
 	void OnInnerSphereBeginOverlap(UPrimitiveComponent *OverlappedComponent, AActor *OtherActor, UPrimitiveComponent *OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult &SweepResult);
 
