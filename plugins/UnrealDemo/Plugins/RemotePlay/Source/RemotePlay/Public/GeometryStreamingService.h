@@ -56,11 +56,11 @@ public:
 
 	//Add actor to be streamed to the client.
 	//	newActor : Actor to be sent to the client.
-	//Returns uid of the actor the client is now responsible for.
+	//Returns uid of the actor the client is now responsible for, or 0 if the actor is not supported.
 	avs::uid AddActor(AActor *newActor);
 	//Remove actor from list of actors the client needs.
 	//	oldActor : Actor to be removed from the list.
-	//Returns uid of actor the client is no longer responsible for.
+	//Returns uid of actor the client is no longer responsible for, or 0 if the actor was never being streamed.
 	avs::uid RemoveActor(AActor *oldActor);
 
 	//Causes the controllers to be added to the list of streamed actors.

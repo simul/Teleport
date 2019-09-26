@@ -80,7 +80,9 @@ private:
 
 	TWeakObjectPtr<USphereComponent> DetectionSphereInner; //Detects when a steamable actor has moved close enough to the client to be sent to them.
 	TWeakObjectPtr<USphereComponent> DetectionSphereOuter; //Detects when a streamable actor has moved too far from the client.
-	
+	std::vector<avs::uid> ActorsEnteredBounds; //Stores actors client needs to know have entered streaming bounds.
+	std::vector<avs::uid> ActorsLeftBounds; //Stores actors client needs to know have left streaming bounds.
+
 	struct FInputQueue
 	{
 		TArray<FKey> ButtonsPressed;
