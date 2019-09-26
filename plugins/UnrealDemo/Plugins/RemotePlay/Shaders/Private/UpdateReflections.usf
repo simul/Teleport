@@ -154,7 +154,7 @@ vec3 rand3v(vec3 p)
 vec4 RoughnessMip(vec3 view, float roughness, float alpha, bool rough)
 {
 	vec4 outp;
-	float r =  saturate(0);//exp2( ( 3 - numMips + mipIndex) / 1.2 );;
+	float r =  saturate(roughness);//exp2( ( 3 - numMips + mipIndex) / 1.2 );;
 	float CubeSize =TargetSize;
 	const float SolidAngleTexel = 4.0 * PI / float((6.0 * CubeSize * CubeSize) * 2.0);
 	const uint NumSamples = 64;// (roughness < 0.1) ? 32 : 64;
@@ -172,7 +172,7 @@ vec4 RoughnessMip(vec3 view, float roughness, float alpha, bool rough)
 			L = CosineSampleHemisphere(E).xyz;
 			float NoL = L.z;
 			L = mul(L, TangentToWorld);
-			result +=  InputCubeMap.SampleLevel(DefaultSampler, L, 0) * NoL*saturate(L.z*0.5+0.5);
+			result +=  InputCubeMap.SampleLevel(DefaultSampler, L, 0) * NoL*saturate(L.z+1.0);
 			Weight += NoL;
 		}
 		else
@@ -193,7 +193,7 @@ vec4 RoughnessMip(vec3 view, float roughness, float alpha, bool rough)
 
 				L = mul(L, TangentToWorld);
 				// Apply a limit to avoid numerical issues:
-				vec4 lookup = 100.0*saturate(0.01*InputCubeMap.SampleLevel(DefaultSampler, L, 0))*saturate(L.z*0.5 + 0.5);;
+				vec4 lookup = 100.0*saturate(0.01*InputCubeMap.SampleLevel(DefaultSampler, L, 0))*saturate(L.z +1.0);
 				result += NoL * lookup;
 
 				Weight += NoL;

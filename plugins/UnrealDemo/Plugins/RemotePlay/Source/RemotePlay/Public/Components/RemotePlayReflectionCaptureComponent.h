@@ -62,6 +62,7 @@ private:
 	{
 		FLinearColor Color;
 		FVector Direction;
+		uint32_t pad;
 	};
 
 	FCubeTexture SpecularCubeTexture;

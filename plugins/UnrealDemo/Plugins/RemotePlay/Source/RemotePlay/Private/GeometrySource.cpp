@@ -37,7 +37,7 @@ std::default_random_engine generator;
 std::uniform_int_distribution<int> distribution(1, 6);
 int dice_roll = distribution(generator);
 #endif
-
+#define LOG_MATERIAL_INTERFACE(materialInterface) UE_LOG(LogRemotePlay, Warning, TEXT("%s"), *("Decomposing <" + materialInterface->GetName() + ">: Error"));
 #define LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name) UE_LOG(LogRemotePlay, Warning, TEXT("%s"), *("Decomposing <" + materialInterface->GetName() + ">: Unsupported expression with type name <" + name + ">"));
 #define LOG_UNSUPPORTED_MATERIAL_CHAIN_LENGTH(materialInterface, length) UE_LOG(LogRemotePlay, Warning, TEXT("%s"), *("Decomposing <" + materialInterface->GetName() + ">: Unsupported property chain length of <" + length + ">"));
 
@@ -898,6 +898,11 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 		std::function<size_t(size_t)> expressionDecomposer = [&](size_t expressionIndex)
 		{
 			size_t expressionsHandled = 1;
+			if (expressionIndex >= outExpressions.Num())
+			{
+				LOG_MATERIAL_INTERFACE(materialInterface);
+				return size_t(0);
+			}
 			FString name = outExpressions[expressionIndex]->GetName();
 
 			if(name.Contains("Multiply"))
