@@ -136,9 +136,16 @@ int GetByteSize(const scr::VertexBufferLayout::VertexAttribute &attr)
 }
 
 
+PC_VertexBuffer::PC_VertexBuffer(scr::RenderPlatform* r) :scr::VertexBuffer(r),m_layout(nullptr),m_SimulBuffer(nullptr)
+{
+}
+
 void PC_VertexBuffer::Destroy()
 {
 	delete m_SimulBuffer;
+	m_SimulBuffer = nullptr;
+	delete m_layout;
+	m_layout = nullptr;
 }
 
 void PC_VertexBuffer::Bind() const
@@ -157,26 +164,47 @@ void pc_client::PC_VertexBuffer::Create(VertexBufferCreateInfo * pVertexBufferCr
 	auto *rp = static_cast<PC_RenderPlatform*> (renderPlatform);
 	auto *srp = rp->GetSimulRenderPlatform();
 	m_SimulBuffer = srp->CreateBuffer();
-	simul::crossplatform::Layout layout;
 	size_t numAttr = m_CI.layout->m_Attributes.size();
 	simul::crossplatform::LayoutDesc *desc = new simul::crossplatform::LayoutDesc[numAttr];
-	// e.g. 
-	//	{ "POSITION", 0, crossplatform::RGB_32_FLOAT, 0, 0, false, 0 },
+
 	int byteOffset = 0;
 	for (size_t i = 0; i < numAttr; i++)
 	{
 		auto &attr = m_CI.layout->m_Attributes[i];
-		avs::AttributeSemantic s =(avs::AttributeSemantic) attr.location;
+		avs::AttributeSemantic s = (avs::AttributeSemantic) attr.location;
 		desc[i].semanticName = GetAttributeSemantic(s);
 		desc[i].semanticIndex = GetAttributeSemanticIndex((avs::AttributeSemantic)i);
 		desc[i].format = GetAttributeFormat(attr);
 		desc[i].inputSlot = (int)i;
-		desc[i].alignedByteOffset = byteOffset;
-		byteOffset += GetByteSize(attr);
+		size_t this_size = GetByteSize(attr);
+		desc[i].alignedByteOffset = byteOffset; 
+		if (m_CI.layout->m_PackingStyle == VertexBufferLayout::PackingStyle::INTERLEAVED)
+		{
+			byteOffset += GetByteSize(attr);
+		}
+		else if (m_CI.layout->m_PackingStyle == VertexBufferLayout::PackingStyle::GROUPED)
+		{
+			byteOffset += this_size * m_CI.vertexCount;
+		}
+
 		desc[i].perInstance = false;
 		desc[i].instanceDataStepRate = 0;
 	}
-
-	layout.SetDesc(desc, (int)m_CI.layout->m_Attributes.size());
-	m_SimulBuffer->EnsureVertexBuffer(srp, (int)num_vertices, &layout, m_CI.data);
+	delete m_layout;
+	{
+		simul::crossplatform::LayoutDesc desc[] =
+				{
+					{ "POSITION", 0, simul::crossplatform::RGB_32_FLOAT, 0, 0, false, 0 },
+					{ "NORMAL", 0, simul::crossplatform::RGB_32_FLOAT, 0, 12, false, 0 },
+					{ "TANGENT", 0, simul::crossplatform::RGBA_32_FLOAT, 0, 24, false, 0 },
+					{ "TEXCOORD", 0, simul::crossplatform::RG_32_FLOAT, 0, 40, false, 0 },
+					{ "TEXCOORD", 1, simul::crossplatform::RG_32_FLOAT, 0, 48, false, 0 },
+				};
+		m_layout = srp->CreateLayout(
+					sizeof(desc) / sizeof(simul::crossplatform::LayoutDesc)
+					, desc,true);
+	}
+	//m_layout = srp->CreateLayout( (int)m_CI.layout->m_Attributes.size(), desc, m_CI.layout->m_PackingStyle == VertexBufferLayout::PackingStyle::INTERLEAVED);// , m_CI.layout->m_PackingStyle == VertexBufferLayout::PackingStyle::INTERLEAVED);
+	//m_layout->SetDesc(desc, (int)m_CI.layout->m_Attributes.size(), m_CI.layout->m_PackingStyle == VertexBufferLayout::PackingStyle::INTERLEAVED);
+	m_SimulBuffer->EnsureVertexBuffer(srp, (int)num_vertices, m_layout, m_CI.data);
 }

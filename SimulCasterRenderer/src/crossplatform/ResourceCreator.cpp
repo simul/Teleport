@@ -15,10 +15,46 @@ ResourceCreator::~ResourceCreator()
 {
 }
 
-void ResourceCreator::SetRenderPlatform(scr::RenderPlatform* r)
+void ResourceCreator::Initialise(scr::RenderPlatform* r, scr::VertexBufferLayout::PackingStyle packingStyle)
 {
 	m_API.SetAPI(r->GetAPI());
 	m_pRenderPlatform = r;
+
+	assert(packingStyle == scr::VertexBufferLayout::PackingStyle::GROUPED || packingStyle == scr::VertexBufferLayout::PackingStyle::INTERLEAVED);
+	m_PackingStyle = packingStyle;
+
+	//Setup Dummy textures.
+	m_DummyDiffuse = m_pRenderPlatform->InstantiateTexture();
+	m_DummyNormal = m_pRenderPlatform->InstantiateTexture();
+	m_DummyCombined = m_pRenderPlatform->InstantiateTexture();
+
+	scr::Texture::TextureCreateInfo tci =
+	{
+		1, 1, 1, 4, 1, 1,
+		scr::Texture::Slot::UNKNOWN,
+		scr::Texture::Type::TEXTURE_2D,
+		scr::Texture::Format::RGBA8,
+		scr::Texture::SampleCountBit::SAMPLE_COUNT_1_BIT,
+		{4},
+		{0x00000000},
+		scr::Texture::CompressionFormat::UNCOMPRESSED,
+		false
+	};
+
+	uint32_t* diffuse = new uint32_t[1];
+	*diffuse = diffuseBGRA;
+	tci.mips[0] = (uint8_t*)diffuse;
+	m_DummyDiffuse->Create(tci);
+
+	uint32_t* normal = new uint32_t[1];
+	*normal = normalBGRA;
+	tci.mips[0] = (uint8_t*)normal;
+	m_DummyNormal->Create(tci);
+
+	uint32_t* combine = new uint32_t[1];
+	*combine = combinedBGRA;
+	tci.mips[0] = (uint8_t*)combine;
+	m_DummyCombined->Create(tci);
 }
 
 std::vector<avs::uid> ResourceCreator::TakeResourceRequests()
@@ -59,7 +95,6 @@ avs::Result ResourceCreator::Assemble(avs::MeshCreate * meshCreate)
             return avs::Result::GeometryDecoder_Incomplete;
 
 		std::shared_ptr<VertexBufferLayout> layout(new VertexBufferLayout);
-		layout->m_PackingStyle = scr::VertexBufferLayout::PackingStyle::GROUPED;
 		if (meshElementCreate->m_Vertices)
 		{
 			layout->AddAttribute((uint32_t)AttributeSemantic::POSITION, VertexBufferLayout::ComponentCount::VEC3, VertexBufferLayout::Type::FLOAT);
@@ -93,117 +128,214 @@ avs::Result ResourceCreator::Assemble(avs::MeshCreate * meshCreate)
 			layout->AddAttribute((uint32_t)AttributeSemantic::WEIGHTS_0, VertexBufferLayout::ComponentCount::VEC4, VertexBufferLayout::Type::FLOAT);
 		}
 		layout->CalculateStride();
+		layout->m_PackingStyle = this->m_PackingStyle;
 
-		size_t groupedVBSize = layout->m_Stride * meshElementCreate->m_VertexCount;
+		size_t constructedVBSize = layout->m_Stride * meshElementCreate->m_VertexCount;
 		size_t indicesSize = meshElementCreate->m_IndexCount * meshElementCreate->m_IndexSize;
 
-		std::unique_ptr<float[]> groupedVB = std::make_unique<float[]>(groupedVBSize);
+		std::unique_ptr<float[]> constructedVB = std::make_unique<float[]>(constructedVBSize);
 		std::unique_ptr<uint8_t[]> _indices = std::make_unique<uint8_t[]>(indicesSize);
+		
 		memcpy(_indices.get(), meshElementCreate->m_Indices, indicesSize);
 
-		size_t vertexBufferOffset = 0;
-		if (meshElementCreate->m_Vertices)
+		if (layout->m_PackingStyle == scr::VertexBufferLayout::PackingStyle::INTERLEAVED)
 		{
-			size_t size = sizeof(avs::vec3) * meshElementCreate->m_VertexCount;
-			assert(groupedVBSize >= vertexBufferOffset + size);
-			memcpy(groupedVB.get() + vertexBufferOffset, meshElementCreate->m_Vertices, size);
-			vertexBufferOffset += size;
+			for (size_t j = 0; j < meshElementCreate->m_VertexCount; j++)
+			{
+				size_t intraStrideOffset = 0;
+				if (meshElementCreate->m_Vertices)
+				{
+					memcpy(constructedVB.get() + (layout->m_Stride / 4 * j) + intraStrideOffset, meshElementCreate->m_Vertices + j, sizeof(avs::vec3)); intraStrideOffset += 3;
+				}
+				if (meshElementCreate->m_TangentNormals)
+				{
+					avs::vec3 normal;
+					avs::vec4 tangent;
+					char* nt = (char*)(meshElementCreate->m_TangentNormals + (meshElementCreate->m_TangentNormalSize * j));
+					// tangentx tangentz
+					if (meshElementCreate->m_TangentNormalSize == 8)
+					{
+						Vec4<signed char>& x8 = *((avs::Vec4<signed char>*)(nt));
+						tangent.x = float(x8.x) / 127.0f;
+						tangent.y = float(x8.y) / 127.0f;
+						tangent.z = float(x8.z) / 127.0f;
+						tangent.w = float(x8.w) / 127.0f;
+						Vec4<signed char>& n8 = *((avs::Vec4<signed char>*)(nt + 4));
+						normal.x = float(n8.x) / 127.0f;
+						normal.y = float(n8.y) / 127.0f;
+						normal.z = float(n8.z) / 127.0f;
+					}
+					else // 16
+					{
+						Vec4<short>& x8 = *((avs::Vec4<short>*)(nt));
+						tangent.x = float(x8.x) / 32767.0f;
+						tangent.y = float(x8.y) / 32767.0f;
+						tangent.z = float(x8.z) / 32767.0f;
+						tangent.w = float(x8.w) / 32767.0f;
+						Vec4<short>& n8 = *((avs::Vec4<short>*)(nt + 8));
+						normal.x = float(n8.x) / 32767.0f;
+						normal.y = float(n8.y) / 32767.0f;
+						normal.z = float(n8.z) / 32767.0f;
+					}
+					memcpy(constructedVB.get() + (layout->m_Stride / 4 * j) + intraStrideOffset, &normal, sizeof(avs::vec3));
+					intraStrideOffset += 3;
+					memcpy(constructedVB.get() + (layout->m_Stride / 4 * j) + intraStrideOffset, &tangent, sizeof(avs::vec4));
+					intraStrideOffset += 4;
+				}
+				else
+				{
+					if (meshElementCreate->m_Normals)
+					{
+						memcpy(constructedVB.get() + (layout->m_Stride / 4 * j) + intraStrideOffset, meshElementCreate->m_Normals + j, sizeof(avs::vec3));
+						intraStrideOffset += 3;
+					}
+					if (meshElementCreate->m_Tangents)
+					{
+						memcpy(constructedVB.get() + (layout->m_Stride / 4 * j) + intraStrideOffset, meshElementCreate->m_Tangents + j, sizeof(avs::vec4));
+						intraStrideOffset += 4;
+					}
+				}
+				if (meshElementCreate->m_UV0s)
+				{
+					memcpy(constructedVB.get() + (layout->m_Stride / 4 * j) + intraStrideOffset, meshElementCreate->m_UV0s + j, sizeof(avs::vec2));
+					intraStrideOffset += 2;
+				}
+				if (meshElementCreate->m_UV1s)
+				{
+					memcpy(constructedVB.get() + (layout->m_Stride / 4 * j) + intraStrideOffset, meshElementCreate->m_UV1s + j, sizeof(avs::vec2));
+					intraStrideOffset += 2;
+				}
+				if (meshElementCreate->m_Colors)
+				{
+					memcpy(constructedVB.get() + (layout->m_Stride / 4 * j) + intraStrideOffset, meshElementCreate->m_Colors + j, sizeof(avs::vec4));
+					intraStrideOffset += 4;
+				}
+				if (meshElementCreate->m_Joints)
+				{
+					memcpy(constructedVB.get() + (layout->m_Stride / 4 * j) + intraStrideOffset, meshElementCreate->m_Joints + j, sizeof(avs::vec4));
+					intraStrideOffset += 4;
+				}
+				if (meshElementCreate->m_Weights)
+				{
+					memcpy(constructedVB.get() + (layout->m_Stride / 4 * j) + intraStrideOffset, meshElementCreate->m_Weights + j, sizeof(avs::vec4));
+					intraStrideOffset += 4;
+				}
+			}
 		}
-		if (meshElementCreate->m_TangentNormals)
+		else if (layout->m_PackingStyle == scr::VertexBufferLayout::PackingStyle::GROUPED)
 		{
-			avs::vec3 normal;
-			avs::vec4 tangent;
-			char* nt = (char*)(meshElementCreate->m_TangentNormals);
-			// tangentx tangentz
-			if (meshElementCreate->m_TangentNormalSize == 8)
+			size_t vertexBufferOffset = 0;
+			if (meshElementCreate->m_Vertices)
 			{
-				Vec4<signed char>& x8 = *((avs::Vec4<signed char>*)(nt));
-				tangent.x = float(x8.x) / 127.0f;
-				tangent.y = float(x8.y) / 127.0f;
-				tangent.z = float(x8.z) / 127.0f;
-				tangent.w = float(x8.w) / 127.0f;
-				Vec4<signed char>& n8 = *((avs::Vec4<signed char>*)(nt + 4));
-				normal.x = float(n8.x) / 127.0f;
-				normal.y = float(n8.y) / 127.0f;
-				normal.z = float(n8.z) / 127.0f;
+				size_t size = sizeof(avs::vec3) * meshElementCreate->m_VertexCount;
+				assert(constructedVBSize >= vertexBufferOffset + size);
+				memcpy(constructedVB.get() + vertexBufferOffset, meshElementCreate->m_Vertices, size);
+				vertexBufferOffset += size;
 			}
-			else // 16
+			if (meshElementCreate->m_TangentNormals)
 			{
-				Vec4<short>& x8 = *((avs::Vec4<short>*)(nt));
-				tangent.x = float(x8.x) / 32767.0f;
-				tangent.y = float(x8.y) / 32767.0f;
-				tangent.z = float(x8.z) / 32767.0f;
-				tangent.w = float(x8.w) / 32767.0f;
-				Vec4<short>& n8 = *((avs::Vec4<short>*)(nt + 8));
-				normal.x = float(n8.x) / 32767.0f;
-				normal.y = float(n8.y) / 32767.0f;
-				normal.z = float(n8.z) / 32767.0f;
+				for (size_t j = 0; j < meshElementCreate->m_VertexCount; j++)
+				{
+					avs::vec3 normal;
+					avs::vec4 tangent;
+					char* nt = (char*)(meshElementCreate->m_TangentNormals + (meshElementCreate->m_TangentNormalSize * j));
+					// tangentx tangentz
+					if (meshElementCreate->m_TangentNormalSize == 8)
+					{
+						Vec4<signed char>& x8 = *((avs::Vec4<signed char>*)(nt));
+						tangent.x = float(x8.x) / 127.0f;
+						tangent.y = float(x8.y) / 127.0f;
+						tangent.z = float(x8.z) / 127.0f;
+						tangent.w = float(x8.w) / 127.0f;
+						Vec4<signed char>& n8 = *((avs::Vec4<signed char>*)(nt + 4));
+						normal.x = float(n8.x) / 127.0f;
+						normal.y = float(n8.y) / 127.0f;
+						normal.z = float(n8.z) / 127.0f;
+					}
+					else // 16
+					{
+						Vec4<short>& x8 = *((avs::Vec4<short>*)(nt));
+						tangent.x = float(x8.x) / 32767.0f;
+						tangent.y = float(x8.y) / 32767.0f;
+						tangent.z = float(x8.z) / 32767.0f;
+						tangent.w = float(x8.w) / 32767.0f;
+						Vec4<short>& n8 = *((avs::Vec4<short>*)(nt + 8));
+						normal.x = float(n8.x) / 32767.0f;
+						normal.y = float(n8.y) / 32767.0f;
+						normal.z = float(n8.z) / 32767.0f;
+					}
+
+					size_t size = sizeof(avs::vec3);
+					assert(constructedVBSize >= vertexBufferOffset + size);
+					memcpy(constructedVB.get() + vertexBufferOffset, &normal, size);
+					vertexBufferOffset += size;
+
+					size = sizeof(avs::vec4);
+					assert(constructedVBSize >= vertexBufferOffset + size);
+					memcpy(constructedVB.get() + vertexBufferOffset, &tangent, size);
+					vertexBufferOffset += size;
+				}
 			}
-
-			size_t size = sizeof(avs::vec3) * meshElementCreate->m_VertexCount;
-			assert(groupedVBSize >= vertexBufferOffset + size);
-			memcpy(groupedVB.get() + vertexBufferOffset, &normal, size);
-			vertexBufferOffset += size;
-
-			size = sizeof(avs::vec4) * meshElementCreate->m_VertexCount;
-			assert(groupedVBSize >= vertexBufferOffset + size);
-			memcpy(groupedVB.get() + vertexBufferOffset, &tangent, size);
-			vertexBufferOffset += size;
+			else
+			{
+				if (meshElementCreate->m_Normals)
+				{
+					size_t size = sizeof(avs::vec3) * meshElementCreate->m_VertexCount;
+					assert(constructedVBSize >= vertexBufferOffset + size);
+					memcpy(constructedVB.get() + vertexBufferOffset, meshElementCreate->m_Normals, size);
+					vertexBufferOffset += size;
+				}
+				if (meshElementCreate->m_Tangents)
+				{
+					size_t size = sizeof(avs::vec4) * meshElementCreate->m_VertexCount;
+					assert(constructedVBSize >= vertexBufferOffset + size);
+					memcpy(constructedVB.get() + vertexBufferOffset, meshElementCreate->m_Tangents, size);
+					vertexBufferOffset += size;
+				}
+			}
+			if (meshElementCreate->m_UV0s)
+			{
+				size_t size = sizeof(avs::vec2) * meshElementCreate->m_VertexCount;
+				assert(constructedVBSize >= vertexBufferOffset + size);
+				memcpy(constructedVB.get() + vertexBufferOffset, meshElementCreate->m_UV0s, size);
+				vertexBufferOffset += size;
+			}
+			if (meshElementCreate->m_UV1s)
+			{
+				size_t size = sizeof(avs::vec2) * meshElementCreate->m_VertexCount;
+				assert(constructedVBSize >= vertexBufferOffset + size);
+				memcpy(constructedVB.get() + vertexBufferOffset, meshElementCreate->m_UV1s, size);
+				vertexBufferOffset += size;
+			}
+			if (meshElementCreate->m_Colors)
+			{
+				size_t size = sizeof(avs::vec4) * meshElementCreate->m_VertexCount;
+				assert(constructedVBSize >= vertexBufferOffset + size);
+				memcpy(constructedVB.get() + vertexBufferOffset, meshElementCreate->m_Colors, size);
+				vertexBufferOffset += size;
+			}
+			if (meshElementCreate->m_Joints)
+			{
+				size_t size = sizeof(avs::vec4) * meshElementCreate->m_VertexCount;
+				assert(constructedVBSize >= vertexBufferOffset + size);
+				memcpy(constructedVB.get() + vertexBufferOffset, meshElementCreate->m_Joints, size);
+				vertexBufferOffset += size;
+			}
+			if (meshElementCreate->m_Weights)
+			{
+				size_t size = sizeof(avs::vec4) * meshElementCreate->m_VertexCount;
+				assert(constructedVBSize >= vertexBufferOffset + size);
+				memcpy(constructedVB.get() + vertexBufferOffset, meshElementCreate->m_Weights, size);
+				vertexBufferOffset += size;
+			}
 		}
 		else
 		{
-			if (meshElementCreate->m_Normals)
-			{
-				size_t size = sizeof(avs::vec3) * meshElementCreate->m_VertexCount;
-				assert(groupedVBSize >= vertexBufferOffset + size);
-				memcpy(groupedVB.get() + vertexBufferOffset, meshElementCreate->m_Normals, size);
-				vertexBufferOffset += size;
-			}
-			if (meshElementCreate->m_Tangents)
-			{
-				size_t size = sizeof(avs::vec4) * meshElementCreate->m_VertexCount;
-				assert(groupedVBSize >= vertexBufferOffset + size);
-				memcpy(groupedVB.get() + vertexBufferOffset, meshElementCreate->m_Tangents, size);
-				vertexBufferOffset += size;
-			}
-		}
-		if (meshElementCreate->m_UV0s)
-		{
-			size_t size = sizeof(avs::vec2) * meshElementCreate->m_VertexCount;
-			assert(groupedVBSize >= vertexBufferOffset + size);
-			memcpy(groupedVB.get() + vertexBufferOffset, meshElementCreate->m_UV0s, size);
-			vertexBufferOffset += size;
-		}
-		if (meshElementCreate->m_UV1s)
-		{
-			size_t size = sizeof(avs::vec2) * meshElementCreate->m_VertexCount;
-			assert(groupedVBSize >= vertexBufferOffset + size);
-			memcpy(groupedVB.get() + vertexBufferOffset, meshElementCreate->m_UV1s, size);
-			vertexBufferOffset += size;
-		}
-		if (meshElementCreate->m_Colors)
-		{
-			size_t size = sizeof(avs::vec4) * meshElementCreate->m_VertexCount;
-			assert(groupedVBSize >= vertexBufferOffset + size);
-			memcpy(groupedVB.get() + vertexBufferOffset, meshElementCreate->m_Colors, size);
-			vertexBufferOffset += size;
-		}
-		if (meshElementCreate->m_Joints)
-		{
-			size_t size = sizeof(avs::vec4) * meshElementCreate->m_VertexCount;
-			assert(groupedVBSize >= vertexBufferOffset + size);
-			memcpy(groupedVB.get() + vertexBufferOffset, meshElementCreate->m_Joints, size);
-			vertexBufferOffset += size;
-		}
-		if (meshElementCreate->m_Weights)
-		{
-			size_t size = sizeof(avs::vec4) * meshElementCreate->m_VertexCount;
-			assert(groupedVBSize >= vertexBufferOffset + size);
-			memcpy(groupedVB.get() + vertexBufferOffset, meshElementCreate->m_Weights, size);
-			vertexBufferOffset += size;
+			SCR_CERR("Unknown vertex buffer layout.");
+			return avs::Result::GeometryDecoder_ClientRendererError;
 		}
 
-		if (groupedVBSize == 0 || groupedVB == nullptr || meshElementCreate->m_IndexCount == 0 || meshElementCreate->m_Indices == nullptr)
+		if (constructedVBSize == 0 || constructedVB == nullptr || meshElementCreate->m_IndexCount == 0 || meshElementCreate->m_Indices == nullptr)
 		{
 			SCR_CERR("Unable to construct vertex and index buffers.");
 			return avs::Result::GeometryDecoder_ClientRendererError;
@@ -214,8 +346,8 @@ avs::Result ResourceCreator::Assemble(avs::MeshCreate * meshCreate)
 		vb_ci.layout = layout;
 		vb_ci.usage = (BufferUsageBit)(STATIC_BIT | DRAW_BIT);
 		vb_ci.vertexCount = meshElementCreate->m_VertexCount;
-		vb_ci.size = groupedVBSize;
-		vb_ci.data = (const void*)groupedVB.get();
+		vb_ci.size = constructedVBSize;
+		vb_ci.data = (const void*)constructedVB.get();
 		vb->Create(&vb_ci);
 
 		std::shared_ptr<IndexBuffer> ib = m_pRenderPlatform->InstantiateIndexBuffer();
@@ -308,6 +440,8 @@ void ResourceCreator::passTexture(avs::uid texture_uid, const avs::Texture& text
 		if (basis_transcoder.start_transcoding(texture.data, texture.dataSize))
 		{
 			texInfo.mipCount = basis_transcoder.get_total_image_levels(texture.data, texture.dataSize, 0);
+			texInfo.mipSizes.reserve(texInfo.mipCount);
+			texInfo.mips.reserve(texInfo.mipCount);
 
 			for (uint32_t mipIndex = 0; mipIndex < texInfo.mipCount; mipIndex++)
 			{
@@ -343,45 +477,12 @@ void ResourceCreator::passTexture(avs::uid texture_uid, const avs::Texture& text
 ///Most of these sets need actual values, rather than default initalisers.
 void ResourceCreator::passMaterial(avs::uid material_uid, const avs::Material & material)
 {
-	//Setup Dummy textures once.
-	if(!m_DummyDiffuse || !m_DummyNormal || !m_DummyCombined)
-	{
-		m_DummyDiffuse = m_pRenderPlatform->InstantiateTexture();
-		m_DummyNormal = m_pRenderPlatform->InstantiateTexture();
-		m_DummyCombined = m_pRenderPlatform->InstantiateTexture();
-
-		scr::Texture::TextureCreateInfo tci =
-				{
-						1, 1, 1, 4, 1, 1,
-						scr::Texture::Slot::UNKNOWN,
-						scr::Texture::Type::TEXTURE_2D,
-						scr::Texture::Format::BGRA8,
-						scr::Texture::SampleCountBit::SAMPLE_COUNT_1_BIT,
-						{4},
-						{0x00000000},
-						scr::Texture::CompressionFormat::UNCOMPRESSED,
-						false
-				};
-
-		uint32_t *diffuse=new uint32_t[1];
-		*diffuse = diffuseBGRA;
-		tci.mips[0] = (uint8_t*)diffuse;
-		m_DummyDiffuse->Create(tci);
-
-		uint32_t* normal = new uint32_t[1];
-		*normal = normalBGRA;
-		tci.mips[0] = (uint8_t*)normal;
-		m_DummyNormal->Create(tci);
-
-		uint32_t* combine = new uint32_t[1];
-		*combine = combinedBGRA;
-		tci.mips[0] = (uint8_t*)combine;
-		m_DummyCombined->Create(tci);
-
-	}
-
+	const size_t textureSlotSize = 3; //For pbrMetallicRoughness.baseColorTexture, normalTexture, pbrMetallicRoughness.metallicRoughnessTexture
 	std::shared_ptr<IncompleteMaterial> newMaterial = std::make_shared<IncompleteMaterial>();
 	std::vector<avs::uid> missingResources;
+	//newMaterial->textureSlots.reserve(textureSlotSize);
+	//missingResources.reserve(textureSlotSize);
+
 
 	newMaterial->materialInfo.renderPlatform = m_pRenderPlatform;
 	newMaterial->materialInfo.diffuse.texture = nullptr;
@@ -524,27 +625,22 @@ void ResourceCreator::passNode(avs::uid node_uid, avs::DataNode& node)
 	{
 	    switch (node.data_type)
 	    {
-	    case NodeDataType::Mesh:
-	    {
-	    	CreateActor(node_uid, node.data_uid,node.materials, node.transform);
-	    	return;
-	    }
-	    case NodeDataType::Camera:
-	    	return;
-	    case NodeDataType::Scene:
-	    	return;
-	    case NodeDataType::ShadowMap:
-		{
-			CreateLight(node_uid, node);
-	        return;
-		}
+	    ///GGMP: This is intended to continue into Mesh; I'd rather not copy+paste the CreateActor function call.
 		case NodeDataType::Hand:
-		{
 			m_pActorManager->handUIDs.push_back(node_uid);
-			return;
-		}
+	    case NodeDataType::Mesh:
+	    	CreateActor(node_uid, node.data_uid,node.materials, node.transform);
+	    	break;
+	    case NodeDataType::Camera:
+	    	break;
+	    case NodeDataType::Scene:
+	    	break;
+	    case NodeDataType::ShadowMap:
+			CreateLight(node_uid, node);
+	        break;
 	    default:
 	        SCR_LOG("Unknown NodeDataType: %c", node.data_type)
+	        break;
 	    }
 	}
 }

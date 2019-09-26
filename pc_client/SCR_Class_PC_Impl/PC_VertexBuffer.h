@@ -9,6 +9,7 @@ namespace simul
 	namespace crossplatform
 	{
 		class Buffer;
+		class Layout;
 	}
 }
 
@@ -18,9 +19,14 @@ namespace pc_client
 	{
 	private:
 		simul::crossplatform::Buffer *m_SimulBuffer;
+		simul::crossplatform::Layout *m_layout;
 	public:
-        PC_VertexBuffer(scr::RenderPlatform *r):scr::VertexBuffer(r) {}
+		PC_VertexBuffer(scr::RenderPlatform* r);
 
+		simul::crossplatform::Layout* GetLayout()
+		{
+			return m_layout;
+		}
 		void Destroy() override;
 
 		void Bind() const override;

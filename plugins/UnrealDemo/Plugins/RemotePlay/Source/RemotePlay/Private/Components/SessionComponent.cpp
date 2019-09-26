@@ -18,6 +18,8 @@ DECLARE_STATS_GROUP(TEXT("RemotePlay_Game"), STATGROUP_RemotePlay, STATCAT_Advan
 #include "Engine/Classes/Components/SphereComponent.h"
 #include "TimerManager.h"
 
+#include <algorithm> //std::remove
+
 template< typename TStatGroup>
 static TStatId CreateStatId(const FName StatNameOrDescription, EStatDataType::Type dataType)
 { 
@@ -183,7 +185,40 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 		{
 			GeometryStreamingService.SetStreamingContinuously(Monitor->StreamGeometryContinuously);
 		}
-		GeometryStreamingService.Tick();
+
+		static float timeSinceLastGeometryStream = 0;
+		timeSinceLastGeometryStream += DeltaTime;
+
+		const float TIME_BETWEEN_GEOMETRY_TICKS = 1.0f / Monitor->GeometryTicksPerSecond;
+
+		//Only tick the geometry streaming service a set amount of times per second.
+		if(timeSinceLastGeometryStream >= TIME_BETWEEN_GEOMETRY_TICKS)
+		{
+			GeometryStreamingService.Tick();
+
+			//Tell the client to change the visibility of actors that have changed whether they are within streamable bounds.
+			if(!ActorsEnteredBounds.empty() || !ActorsLeftBounds.empty())
+			{
+				size_t commandSize = sizeof(avs::ActorBoundsCommand);
+				size_t enteredBoundsSize = sizeof(avs::uid) * ActorsEnteredBounds.size();
+				size_t leftBoundsSize = sizeof(avs::uid) * ActorsLeftBounds.size();
+
+				avs::ActorBoundsCommand boundsCommand(ActorsEnteredBounds.size(), ActorsLeftBounds.size());
+				ENetPacket* packet = enet_packet_create(&boundsCommand, commandSize, ENET_PACKET_FLAG_RELIABLE);
+
+				//Resize packet, and insert actor lists.
+				enet_packet_resize(packet, commandSize + enteredBoundsSize + leftBoundsSize);
+				memcpy(packet->data + commandSize, ActorsEnteredBounds.data(), enteredBoundsSize);
+				memcpy(packet->data + commandSize + enteredBoundsSize, ActorsLeftBounds.data(), leftBoundsSize);
+
+				enet_peer_send(ClientPeer, RPCH_Control, packet);
+
+				ActorsEnteredBounds.clear();
+				ActorsLeftBounds.clear();
+			}
+
+			timeSinceLastGeometryStream -= TIME_BETWEEN_GEOMETRY_TICKS;
+		}
 	}
 	else
 	{
@@ -425,39 +460,38 @@ void URemotePlaySessionComponent::StopStreaming()
 	RemotePlayContext = nullptr;
 }
 
-void URemotePlaySessionComponent::StartGeometryStream()
-{
-	GeometryStreamingService.StartStreaming(RemotePlayContext);
-}
-
-void URemotePlaySessionComponent::OnInnerSphereBeginOverlap(UPrimitiveComponent *OverlappedComponent, AActor *OtherActor, UPrimitiveComponent *OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult &SweepResult)
+void URemotePlaySessionComponent::OnInnerSphereBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 	avs::uid actor_uid = GeometryStreamingService.AddActor(OtherActor);
-
-	if(ClientPeer)
+	if(actor_uid != 0)
 	{
-		avs::ActorBoundsCommand command(actor_uid, true);
+		//Don't tell the client to show an actor it has yet to receive. 
+		if(!GeometryStreamingService.HasResource(actor_uid))
+		{
+			return;
+		}
 
-		ENetPacket* packet = enet_packet_create(&command, sizeof(command), ENET_PACKET_FLAG_RELIABLE);
-		enet_peer_send(ClientPeer, RPCH_Control, packet);
+		ActorsEnteredBounds.push_back(actor_uid);
+		ActorsLeftBounds.erase(std::remove(ActorsLeftBounds.begin(), ActorsLeftBounds.end(), actor_uid), ActorsLeftBounds.end());
+
+		UE_LOG(LogRemotePlay, Verbose, TEXT("\"%s\" overlapped with actor \"%s\"."), *OverlappedComponent->GetName(), *OtherActor->GetName());
 	}
-
-	UE_LOG(LogRemotePlay, Verbose, TEXT("%s"), *("<" + OverlappedComponent->GetName() + "> BEGAN overlap with actor <" + OtherActor->GetName() + ">"));
+	else
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Actor \"%s\" overlapped with \"%s\", but the actor is not supported! Only use supported component types, and check collision settings!"), *OverlappedComponent->GetName(), *OtherActor->GetName())
+	}
 }
 
 void URemotePlaySessionComponent::OnOuterSphereEndOverlap(UPrimitiveComponent * OverlappedComponent, AActor * OtherActor, UPrimitiveComponent * OtherComp, int32 OtherBodyIndex)
 {
 	avs::uid actor_uid = GeometryStreamingService.RemoveActor(OtherActor);
-
-	if(ClientPeer)
+	if(actor_uid != 0)
 	{
-		avs::ActorBoundsCommand command(actor_uid, false);
+		ActorsLeftBounds.push_back(actor_uid);
+		ActorsEnteredBounds.erase(std::remove(ActorsEnteredBounds.begin(), ActorsEnteredBounds.end(), actor_uid), ActorsEnteredBounds.end());
 
-		ENetPacket *packet = enet_packet_create(&command, sizeof(command), ENET_PACKET_FLAG_RELIABLE);
-		enet_peer_send(ClientPeer, RPCH_Control, packet);
+		UE_LOG(LogRemotePlay, Verbose, TEXT("\"%s\" ended overlap with actor \"%s\"."), *OverlappedComponent->GetName(), *OtherActor->GetName());
 	}
-
-	UE_LOG(LogRemotePlay, Verbose, TEXT("%s"), *("<" + OverlappedComponent->GetName() + "> ENDED overlap with actor <" + OtherActor->GetName() + ">"));
 }
 
 void URemotePlaySessionComponent::ApplyPlayerInput(float DeltaTime)
@@ -517,17 +551,7 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 	if (Monitor&&Monitor->StreamGeometry)
 	{
 		GeometryStreamingService.SetStreamingContinuously(Monitor->StreamGeometryContinuously);
-
-		if(Monitor->SecondsBeforeGeometryStreamStart <= 0)
-		{
-			StartGeometryStream();
-		}
-		else
-		{
-			//Start the geometry stream after a set amount of time has elapsed.
-			FTimerHandle unusedTimerHandle;
-			GetWorld()->GetTimerManager().SetTimer(unusedTimerHandle, this, &URemotePlaySessionComponent::StartGeometryStream, Monitor->SecondsBeforeGeometryStreamStart, false);
-		}
+		GeometryStreamingService.StartStreaming(RemotePlayContext);
 	}	
 
 	UE_LOG(LogRemotePlay, Log, TEXT("RemotePlay: Started streaming to %s:%d"), *Client_GetIPAddress(), StreamingPort);

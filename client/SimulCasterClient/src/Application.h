@@ -73,7 +73,8 @@ private:
 	{
 		scr::ivec2 sourceOffset;
 		uint32_t   faceSize;
-		float      _pad = 0;
+		uint32_t    mip = 0;
+		uint32_t    face = 0;
 	};
 	CubemapUB cubemapUB;
 	CubemapUB cubemapUB2;
@@ -119,6 +120,7 @@ private:
 	std::shared_ptr<scr::Texture>       mCubemapTexture;
 	std::shared_ptr<scr::Texture>       mDiffuseTexture;
 	std::shared_ptr<scr::Texture>       mSpecularTexture;
+	std::shared_ptr<scr::Texture>       mRoughSpecularTexture;
 	std::shared_ptr<scr::Texture>       mCubemapLightingTexture;
 	std::shared_ptr<scr::UniformBuffer> mCubemapUB;
 	std::shared_ptr<scr::UniformBuffer> mCubemapUB2;
@@ -167,11 +169,15 @@ private:
 	std::map<avs::uid, std::shared_ptr<OVRActor>> mOVRActors;
 	inline void RemoveInvalidOVRActors()
 	{
-		for(std::map<avs::uid, std::shared_ptr<OVRActor>>::iterator it = mOVRActors.begin(); it != mOVRActors.end(); it++)
+		for(std::map<avs::uid, std::shared_ptr<OVRActor>>::iterator it = mOVRActors.begin(); it != mOVRActors.end();)
 		{
 			if(resourceManagers.mActorManager.GetActorList().find(it->first) == resourceManagers.mActorManager.GetActorList().end())
 			{
-				mOVRActors.erase(it);
+				it = mOVRActors.erase(it);
+			}
+			else
+			{
+				++it;
 			}
 		}
 	}

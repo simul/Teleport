@@ -20,6 +20,14 @@ FName GetLevelUniqueActorName(AActor* actor)
 	return *FPaths::Combine(actor->GetOutermost()->GetName(), actor->GetName());
 }
 
+//Remove duplicates, and 0s, from passed vector of UIDs..
+void UniqueUIDsOnly(std::vector<avs::uid>& cleanedUIDs)
+{
+	std::sort(cleanedUIDs.begin(), cleanedUIDs.end());
+	cleanedUIDs.erase(std::unique(cleanedUIDs.begin(), cleanedUIDs.end()), cleanedUIDs.end());
+	cleanedUIDs.erase(std::remove(cleanedUIDs.begin(), cleanedUIDs.end(), 0), cleanedUIDs.end());
+}
+
 FGeometryStreamingService::FGeometryStreamingService()
 {
 }
@@ -38,7 +46,9 @@ void FGeometryStreamingService::Initialise(UWorld *World, GeometrySource *geomSo
 	}
 	geometrySource = geomSource;
 
-	geometrySource->Initialize(ARemotePlayMonitor::Instantiate(World), World);
+	Monitor = ARemotePlayMonitor::Instantiate(World);
+	geometrySource->Initialize(Monitor, World);
+	geometryEncoder.Initialise(Monitor);
 
 	//Decompose all relevant actors into streamable geometry.
 	TArray<AActor*> staticMeshActors;
@@ -87,7 +97,7 @@ void FGeometryStreamingService::StartStreaming(FRemotePlayContext *Context)
 	if (RemotePlayContext == Context) return;
 
 	RemotePlayContext = Context;
-	 
+
 	avsPipeline.Reset(new avs::Pipeline); 
 	avsGeometrySource.Reset(new avs::GeometrySource);
 	avsGeometryEncoder.Reset(new avs::GeometryEncoder);
@@ -138,9 +148,11 @@ void FGeometryStreamingService::Reset()
 avs::uid FGeometryStreamingService::AddActor(AActor *newActor)
 {
 	avs::uid actor_uid = geometrySource->AddNode(geometrySource->GetRootNodeUid(), Cast<UMeshComponent>(newActor->GetComponentByClass(UMeshComponent::StaticClass())));
-	if (!actor_uid)
-		return actor_uid;
-	streamedActors[GetLevelUniqueActorName(newActor)] = actor_uid;
+	
+	if(actor_uid != 0)
+	{
+		streamedActors[GetLevelUniqueActorName(newActor)] = actor_uid;
+	}
 
 	return actor_uid;
 }
@@ -148,8 +160,8 @@ avs::uid FGeometryStreamingService::AddActor(AActor *newActor)
 avs::uid FGeometryStreamingService::RemoveActor(AActor *oldActor)
 {
 	FName levelUniqueName = GetLevelUniqueActorName(oldActor);
-	if (streamedActors.find(levelUniqueName) == streamedActors.end())
-		return 0;
+	//This will cause the actor to be added if it doesn't exist, but it gets removed next line anyway.
+	//Checking before hand would cause two searches for the same effect on an existing actor.
 	avs::uid actor_uid = streamedActors[levelUniqueName];
 	streamedActors.erase(levelUniqueName);
 
@@ -208,6 +220,46 @@ void FGeometryStreamingService::GetNodeResourceUIDs(
 	}
 }
 
+void FGeometryStreamingService::GetMeshNodeResources(avs::uid node_uid, std::vector<avs::MeshNodeResources>& outMeshResources)
+{
+	std::shared_ptr<avs::DataNode> thisNode;
+	geometrySource->getNode(node_uid, thisNode);
+	if (thisNode->data_uid == 0)
+		return;
+	avs::MeshNodeResources meshNode;
+	meshNode.node_uid = node_uid;
+	meshNode.mesh_uid = thisNode->data_uid;
+
+	for(avs::uid material_uid : thisNode->materials)
+	{
+		avs::Material thisMaterial;
+		geometrySource->getMaterial(material_uid, thisMaterial);
+
+		avs::MaterialResources material;
+		material.material_uid = material_uid;
+
+		material.texture_uids =
+		{
+			thisMaterial.pbrMetallicRoughness.baseColorTexture.index,
+			thisMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index,
+			thisMaterial.normalTexture.index,
+			thisMaterial.occlusionTexture.index,
+			thisMaterial.emissiveTexture.index
+		};
+
+		UniqueUIDsOnly(material.texture_uids);
+
+		meshNode.materials.push_back(material);
+	}
+
+	for(avs::uid childNode_uid : thisNode->childrenUids)
+	{
+		GetMeshNodeResources(childNode_uid, outMeshResources);
+	}
+
+	outMeshResources.push_back(meshNode);
+}
+
 bool FGeometryStreamingService::HasResource(avs::uid resource_uid) const
 {
 	///We need clientside to handshake when it is ready to receive payloads of resources.
@@ -235,6 +287,7 @@ void FGeometryStreamingService::GetResourcesClientNeeds(
 	std::vector<avs::uid>& outNodeIds)
 {
 	outMeshIds.empty();
+	outTextureIds.empty();
 	outMaterialIds.empty();
 	outShadowIds.empty();
 	outNodeIds.empty();
@@ -259,23 +312,30 @@ void FGeometryStreamingService::GetResourcesClientNeeds(
 		}
 	}
 
-	//Remove duplicates, and 0s, from mesh IDs.
-	std::sort(outMeshIds.begin(), outMeshIds.end());
-	outMeshIds.erase(std::unique(outMeshIds.begin(), outMeshIds.end()), outMeshIds.end());
-	outMeshIds.erase(std::remove(outMeshIds.begin(), outMeshIds.end(), 0), outMeshIds.end());
+	UniqueUIDsOnly(outMeshIds);
+	UniqueUIDsOnly(outTextureIds);
+	UniqueUIDsOnly(outMaterialIds);
+}
 
-	//Remove duplicates, and 0s, from texture IDs.
-	std::sort(outTextureIds.begin(), outTextureIds.end());
-	outTextureIds.erase(std::unique(outTextureIds.begin(), outTextureIds.end()), outTextureIds.end());
-	outTextureIds.erase(std::remove(outTextureIds.begin(), outTextureIds.end(), 0), outTextureIds.end());
+void FGeometryStreamingService::GetResourcesToStream(std::vector<avs::MeshNodeResources>& outMeshResources, std::vector<avs::LightNodeResources>& outLightResources)
+{
+	for(auto nodePair : streamedActors)
+	{
+		GetMeshNodeResources(nodePair.second, outMeshResources);
+	}
 
-	//Remove duplicates, and 0s, from material IDs.
-	std::sort(outMaterialIds.begin(), outMaterialIds.end());
-	outMaterialIds.erase(std::unique(outMaterialIds.begin(), outMaterialIds.end()), outMaterialIds.end());
-	outMaterialIds.erase(std::remove(outMaterialIds.begin(), outMaterialIds.end(), 0), outMaterialIds.end()); ///Do Nodes contain 0 material ids?
-	
-	//Remove duplicates, and 0s, from shadow IDs.
-	std::sort(outShadowIds.begin(), outShadowIds.end());
-	outShadowIds.erase(std::unique(outShadowIds.begin(), outShadowIds.end()), outShadowIds.end());
-	outShadowIds.erase(std::remove(outShadowIds.begin(), outShadowIds.end(), 0), outShadowIds.end());
+	///GGMP: If we're sending all shadowmaps anyway, can't we just store a list of all light datanodes?
+	std::vector<avs::uid> shadowIDs = geometrySource->getShadowMapUIDs();
+	const std::map<avs::uid, std::shared_ptr<avs::DataNode>>& nodes = geometrySource->getNodes();
+	for(auto& shadowUID : shadowIDs)
+	{
+		for(auto& node : nodes)
+		{
+			if(node.second->data_uid == shadowUID)
+			{
+				shadowIDs.push_back(node.first);
+				break;
+			}
+		}
+	}
 }

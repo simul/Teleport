@@ -84,11 +84,9 @@ ClientRenderer::ClientRenderer():
 	pbrEffect(nullptr),
 	cubemapClearEffect(nullptr),
 	specularCubemapTexture(nullptr),
+	roughSpecularCubemapTexture(nullptr),
 	lightingCubemapTexture(nullptr),
 	videoAsCubemapTexture(nullptr),
-	dummyDiffuse(nullptr),
-	dummyNormal(nullptr),
-	dummyCombined(nullptr),
 	diffuseCubemapTexture(nullptr),
 	framenumber(0),
 	resourceCreator(basist::transcoder_texture_format::cTFBC1),
@@ -96,7 +94,6 @@ ClientRenderer::ClientRenderer():
 	RenderMode(0)
 {
 	avsTextures.resize(NumStreams);
-	resourceCreator.SetRenderPlatform(&PcClientRenderPlatform);
 	resourceCreator.AssociateResourceManagers(&resourceManagers.mIndexBufferManager, &resourceManagers.mShaderManager, &resourceManagers.mMaterialManager, &resourceManagers.mTextureManager, &resourceManagers.mUniformBufferManager, &resourceManagers.mVertexBufferManager, &resourceManagers.mMeshManager, &resourceManagers.mLightManager);
 	resourceCreator.AssociateActorManager(&resourceManagers.mActorManager);
 
@@ -115,6 +112,7 @@ void ClientRenderer::Init(simul::crossplatform::RenderPlatform *r)
 {
 	renderPlatform=r;
 	PcClientRenderPlatform.SetSimulRenderPlatform(r);
+	resourceCreator.Initialise(&PcClientRenderPlatform, scr::VertexBufferLayout::PackingStyle::INTERLEAVED);
 	hDRRenderer		=new crossplatform::HdrRenderer();
 
 	hdrFramebuffer=renderPlatform->CreateFramebuffer();
@@ -149,24 +147,9 @@ void ClientRenderer::Init(simul::crossplatform::RenderPlatform *r)
 
 	videoAsCubemapTexture = renderPlatform->CreateTexture();
 	specularCubemapTexture = renderPlatform->CreateTexture();
+	roughSpecularCubemapTexture = renderPlatform->CreateTexture();
 	diffuseCubemapTexture = renderPlatform->CreateTexture();
 	lightingCubemapTexture = renderPlatform->CreateTexture();
-	// dummy textures for materials:
-	dummyDiffuse = renderPlatform->CreateTexture();
-	dummyNormal = renderPlatform->CreateTexture();
-	dummyCombined = renderPlatform->CreateTexture();
-	dummyDiffuse->ensureTexture2DSizeAndFormat(renderPlatform, 1, 1, crossplatform::PixelFormat::BGRA_8_UNORM);
-	uint32_t white = 0xFFFFFFFF;
-	dummyDiffuse->setTexels(renderPlatform->GetImmediateContext(), &white, 0, 1);
-
-	dummyNormal->ensureTexture2DSizeAndFormat(renderPlatform, 1, 1, crossplatform::PixelFormat::BGRA_8_UNORM);
-	// UNORM, so 127.
-	uint32_t blue = 0x007F0000;
-	dummyNormal->setTexels(renderPlatform->GetImmediateContext(), &blue, 0, 1);
-
-	dummyCombined->ensureTexture2DSizeAndFormat(renderPlatform, 1, 1, crossplatform::PixelFormat::BGRA_8_UNORM);
-	dummyCombined->setTexels(renderPlatform->GetImmediateContext(), &white, 0, 1);
-
 	errno=0;
 	RecompileShaders();
 
@@ -354,6 +337,8 @@ void ClientRenderer::Render(int view_id, void* context, void* renderTexture, int
 			sourceOffset.x += w * 3;
 			Recompose(deviceContext, ti->texture, specularCubemapTexture, specularCubemapTexture->mips, sourceOffset);
 			sourceOffset.x += w * 3;
+			Recompose(deviceContext, ti->texture, roughSpecularCubemapTexture, specularCubemapTexture->mips, sourceOffset);
+			sourceOffset.x += w * 3;
 			Recompose(deviceContext, ti->texture, lightingCubemapTexture, lightingCubemapTexture->mips, sourceOffset);
 		}
 		{
@@ -439,6 +424,8 @@ void ClientRenderer::Render(int view_id, void* context, void* renderTexture, int
 		avs::Transform transform = decoder[0].getCameraTransform();
 		renderPlatform->Print(deviceContext, w / 2, y += dy, simul::base::QuickFormat("Camera: %4.4f %4.4f %4.4f", transform.position.x, transform.position.y, transform.position.z),white);
 
+		renderPlatform->Print(deviceContext, w / 2, y += dy, simul::base::QuickFormat("Actors: %d, Meshes: %d",resourceManagers.mActorManager.GetActorList().size(),resourceManagers.mMeshManager.GetCache().size()), white);
+
 		//ImGui::PlotLines("Jitter buffer length", statJitterBuffer.data(), statJitterBuffer.count(), 0, nullptr, 0.0f, 100.0f);
 		//ImGui::PlotLines("Jitter buffer push calls", statJitterPush.data(), statJitterPush.count(), 0, nullptr, 0.0f, 5.0f);
 		//ImGui::PlotLines("Jitter buffer pop calls", statJitterPop.data(), statJitterPop.count(), 0, nullptr, 0.0f, 5.0f);
@@ -482,9 +469,12 @@ void ClientRenderer::RenderLocalActors(simul::crossplatform::DeviceContext& devi
 			const auto* ib = dynamic_cast<pc_client::PC_IndexBuffer*>(CI.ib[element].get());
 
 			const simul::crossplatform::Buffer* const v[] = { vb->GetSimulVertexBuffer() };
+			simul::crossplatform::Layout* layout = nullptr;
 			if (!layout)
 			{
-				simul::crossplatform::LayoutDesc desc[] =
+				layout =(const_cast<pc_client::PC_VertexBuffer*>( vb))->GetLayout();
+
+		/*		simul::crossplatform::LayoutDesc desc[] =
 				{
 					{ "POSITION", 0, crossplatform::RGB_32_FLOAT, 0, 0, false, 0 },
 					{ "NORMAL", 0, crossplatform::RGB_32_FLOAT, 0, 12, false, 0 },
@@ -494,7 +484,7 @@ void ClientRenderer::RenderLocalActors(simul::crossplatform::DeviceContext& devi
 				};
 				layout = renderPlatform->CreateLayout(
 					sizeof(desc) / sizeof(simul::crossplatform::LayoutDesc)
-					, desc);
+					, desc);*/
 			}
 			cameraConstants.invWorldViewProj = deviceContext.viewStruct.invViewProj;
 			mat4 model;
@@ -512,11 +502,12 @@ void ClientRenderer::RenderLocalActors(simul::crossplatform::DeviceContext& devi
 				auto* n = ((pc_client::PC_Texture*) & (*mcr.normal.texture));
 				auto* c = ((pc_client::PC_Texture*) & (*mcr.combined.texture));
 
-				pbrEffect->SetTexture(deviceContext, pbrEffect->GetShaderResource("diffuseTexture"), d ? d->GetSimulTexture() : dummyDiffuse);
-				pbrEffect->SetTexture(deviceContext, pbrEffect->GetShaderResource("normalTexture"), n ? n->GetSimulTexture() : dummyNormal);
-				pbrEffect->SetTexture(deviceContext, pbrEffect->GetShaderResource("combinedTexture"), c ? c->GetSimulTexture() : dummyCombined);
+				pbrEffect->SetTexture(deviceContext, pbrEffect->GetShaderResource("diffuseTexture"), d ? d->GetSimulTexture() : nullptr);
+				pbrEffect->SetTexture(deviceContext, pbrEffect->GetShaderResource("normalTexture"), n ? n->GetSimulTexture() : nullptr);
+				pbrEffect->SetTexture(deviceContext, pbrEffect->GetShaderResource("combinedTexture"), c ? c->GetSimulTexture() :nullptr);
 				pbrEffect->SetTexture(deviceContext, "specularCubemap", specularCubemapTexture);
-				pbrEffect->SetTexture(deviceContext, "diffuseCubemap", diffuseCubemapTexture);
+				pbrEffect->SetTexture(deviceContext, "roughSpecularCubemap", roughSpecularCubemapTexture);
+				pbrEffect->SetTexture(deviceContext, "diffuseCubemap", diffuseCubemapTexture); 
 				pbrEffect->SetTexture(deviceContext, "lightingCubemap", lightingCubemapTexture);
 			}
 
@@ -541,8 +532,6 @@ void ClientRenderer::RenderLocalActors(simul::crossplatform::DeviceContext& devi
 }
 void ClientRenderer::InvalidateDeviceObjects()
 {
-	delete layout;
-	layout = nullptr;
 	for (auto i : avsTextures)
 	{
 		AVSTextureImpl *ti = (AVSTextureImpl*)i.get();
@@ -569,11 +558,9 @@ void ClientRenderer::InvalidateDeviceObjects()
 	SAFE_DELETE(transparentMesh);
 	SAFE_DELETE(diffuseCubemapTexture);
 	SAFE_DELETE(specularCubemapTexture);
+	SAFE_DELETE(roughSpecularCubemapTexture);
 	SAFE_DELETE(lightingCubemapTexture);
 	SAFE_DELETE(videoAsCubemapTexture);
-	SAFE_DELETE(dummyDiffuse);
-	SAFE_DELETE(dummyNormal);
-	SAFE_DELETE(dummyCombined);
 	SAFE_DELETE(meshRenderer);
 	SAFE_DELETE(hDRRenderer);
 	SAFE_DELETE(hdrFramebuffer);
@@ -656,11 +643,11 @@ void ClientRenderer::OnVideoStreamChanged(const avs::SetupCommand &setupCommand,
 
 	videoAsCubemapTexture->ensureTextureArraySizeAndFormat(renderPlatform, setupCommand.colour_cubemap_size, setupCommand.colour_cubemap_size, 1, 1,
 		crossplatform::PixelFormat::RGBA_8_UNORM, true, false, true);
-	specularCubemapTexture->ensureTextureArraySizeAndFormat(renderPlatform, 128, 128, 1, 6,
-		crossplatform::PixelFormat::RGBA_8_UNORM, true, false, true);
-	lightingCubemapTexture->ensureTextureArraySizeAndFormat(renderPlatform, 128, 128, 1, 6,
+	specularCubemapTexture->ensureTextureArraySizeAndFormat(renderPlatform, 128, 128, 1, 3,	crossplatform::PixelFormat::RGBA_8_UNORM, true, false, true);
+	roughSpecularCubemapTexture->ensureTextureArraySizeAndFormat(renderPlatform, 128, 128, 1, 3, crossplatform::PixelFormat::RGBA_8_UNORM, true, false, true);
+	lightingCubemapTexture->ensureTextureArraySizeAndFormat(renderPlatform, 128, 128, 1, 1,
 		crossplatform::PixelFormat::RGBA_8_UNORM, true, false, true); 
-	diffuseCubemapTexture->ensureTextureArraySizeAndFormat(renderPlatform, 128, 128, 1, 6,
+	diffuseCubemapTexture->ensureTextureArraySizeAndFormat(renderPlatform, 128, 128, 1, 1,
 		crossplatform::PixelFormat::RGBA_8_UNORM, true, false, true);
 
 	colourOffsetScale.x=0;

@@ -18,15 +18,17 @@ layout(location = 11) in vec4 v_Weights;
 layout(location = 12) in vec3 v_CameraPosition;
 layout(location = 13) in vec3 v_ModelSpacePosition;
 
+#define lerp mix
+
 //From Application SR
 //Lights
 const int MaxLights = 8;
 struct Light //Layout conformant to GLSL std140
 {
-	vec4 u_Colour;
-	vec3 u_Position;
-	float u_Power;		 //Strength or Power of the light in Watts equilavent to Radiant Flux in Radiometry.
-	vec3 u_Direction;
+    vec4 u_Colour;
+    vec3 u_Position;
+    float u_Power;		 //Strength or Power of the light in Watts equilavent to Radiant Flux in Radiometry.
+    vec3 u_Direction;
 	float _pad3;
 	mat4 u_LightSpaceTransform;
 };
@@ -70,6 +72,7 @@ layout(binding = 12) uniform sampler2D u_Combined;
 layout(binding = 13) uniform samplerCube u_DiffuseCubemap;
 layout(binding = 14) uniform samplerCube u_SpecularCubemap;
 layout(binding = 15) uniform samplerCube u_LightsCubemap;
+layout(binding = 16) uniform samplerCube u_RoughSpecularCubemap;
 
 layout(binding = 19) uniform sampler2D u_ShadowMap0;
 layout(binding = 20) uniform sampler2D u_ShadowMap1;
@@ -89,7 +92,7 @@ float saturate(float _val)
     return min(1.0, max(0.0, _val));
 }
 
-vec3 EnvironmentBRDFApprox(vec3 specularColour, float roughness, float n_v)
+vec3 EnvBRDFApprox(vec3 specularColour, float roughness, float n_v)
 {
     const vec4 c0 = vec4(-1.0, -0.0275, -0.572, 0.022);
     const vec4 c1 = vec4(1.0, 0.0425, 1.04, -0.04);
@@ -162,38 +165,55 @@ float D(vec3 n, vec3 h, float a2)
     return a2 / (PI * temp * temp);
 }
 
-vec3 PBR(vec3 N, vec3 Wo, vec3 diffuseColour ,vec3 diffuse_light,vec3 specular_light,vec4 combinedLookup,float roughnessE ) //Return a RGB value;
+float MipFromRoughness(float roughness, float CubemapMaxMip)
 {
-	//Calculate basic parameters
+    return (log2(roughness * 1.2) + 3.0);
+}
 
+
+vec3 PBR(vec3 normal, vec3 viewDir, vec3 diffuseColour, float roughness,float metallic ,float ao) //Return a RGB value;
+{
+    // Constant normal incidence Fresnel factor for all dielectrics.
+    vec3 Fdielectric		=vec3(0.04,0.04,0.04);
+    // Fresnel reflectance at normal incidence (for metals use albedo color).
+    vec3 F0					= lerp(Fdielectric, diffuseColour, metallic);
+
+    float roughnessE =roughness*roughness;
+    float roughnessL		= max(.01, roughnessE);
+
+    float roughness_mip=MipFromRoughness(roughness,5.0);
     vec3 Diffuse	= vec3(0,0,0);
     vec3 Specular	= vec3(0,0,0);
 
-    vec3 R = reflect(-Wo, N);
-    vec3 env_diffuse = textureLod(u_DiffuseCubemap, N.zxy,0.0).rgb;
+    vec3 refl = reflect(viewDir, normal);
 
-    vec3 env_specular=textureLod(u_SpecularCubemap, R.zxy, 0.0).rgb;//roughnessE * 11.0
+    float n_v				= saturate(dot(normal, viewDir));
+    float cosLo				= saturate( dot(normal,- viewDir));
+    vec3 env_diffuse = textureLod(u_DiffuseCubemap, normal.zxy,1.0).rgb;
 
+    vec3 env_specular=textureLod(u_SpecularCubemap, normal.zxy,1.0).rgb;//roughnessE * 11.0
+    vec3 env_rough_specular=textureLod(u_RoughSpecularCubemap, normal.zxy,0.0).rgb;//roughnessE * 11.0
+   // env_specular=mix(env_specular,env_rough_specular,(roughness_mip-2.0));
     //Environment Light Calculation
     vec3 environment = mix(env_specular, env_diffuse, saturate((roughnessE - 0.25) / 0.75));
 
     //Diffuse
-    Diffuse += diffuseColour.rgb * (env_diffuse+ diffuse_light );
+    Diffuse += diffuseColour.rgb * (env_diffuse );
 
     //Specular
-    vec3 environmentSpecularColour = EnvironmentBRDFApprox(u_SpecularColour, roughnessE, saturate(dot(N, Wo)));
-    Specular += environmentSpecularColour * environment;
 
-    float metallic = GetMetallic(combinedLookup);
-    Specular += specular_light * saturate(dot(Wo, N));
+    vec3 envSpecularColour = EnvBRDFApprox(u_SpecularColour, roughnessE, n_v);
+    Specular += envSpecularColour * environment;
+
+   // Specular += specular_light * saturate(dot(-viewDir, normal));
 
     //Ambient Occlusion
-    float ao = GetAO(combinedLookup);
-    Specular *= saturate(pow(dot(N, Wo) + ao, roughnessE) - 1.0 + ao);
+   // Specular *= saturate(pow(dot(normal, -viewDir) + ao, roughnessE) - 1.0 + ao);
 
 	// factor diffuse by kD ???
-    return env_diffuse;// Diffuse + Specular; //kS is already included in the Specular calculations.
+    return vec3(roughness_mip,roughness_mip,0);// Diffuse + Specular; //kS is already included in the Specular calculations.
 }
+
 vec4 Gamma(vec4 a)
 {
     return pow(a,vec4(.45,.45,.45,1.0));
@@ -211,18 +231,18 @@ void main()
 	vec3 Lo;				//Exitance Radiance from the surface in the direction of the camera.
     vec3 Le = vec3(0.0);	//Emissive Radiance from the surface in the direction of the camera, if any.
 
-    vec4 combinedLookup = u_CombinedOutputScalar * texture(u_Combined, v_UV_diffuse);
+    vec4 combinedLookup = texture(u_Combined, v_UV_diffuse);//u_CombinedOutputScalar *
     //Primary non-light dependent
-    float roughnessE = GetRoughness(combinedLookup);
-    roughnessE *= roughnessE;
+    float roughness = GetRoughness(combinedLookup);
+    float roughnessE =roughness*roughness;
     float roughnessL = max(0.01, roughnessE);
 
     vec3 normalLookup=texture(u_Normal, v_UV_normal).bgr;
     vec3 tangetSpaceNormalMap = 2.0*(normalLookup-vec3(0.5,0.5,0.5));//*u_NormalOutputScalar.bgr;
-    vec3 N = normalize( v_TBN*tangetSpaceNormalMap );
+    vec3 normal = normalize( v_TBN*tangetSpaceNormalMap );
 
 
-    vec3 Wo = normalize(v_CameraPosition-v_Position);
+    vec3 viewDir = normalize(-v_CameraPosition+v_Position);
 	vec3 diffuse_light = vec3(0, 0, 0);
 	vec3 specular_light = vec3(0, 0, 0);
     float metallic = GetMetallic(combinedLookup);
@@ -237,29 +257,30 @@ void main()
         vec3 Wi = normalize(-v_Position + d_Light.u_Position);
 
         vec3 R0 = mix(diffuseColour, u_SpecularColour, metallic); //Mix R0 based on metallic look up.
-        vec3 H = normalize(Wo + Wi);
-        float D = D(N, H, roughnessL);
+        vec3 H = normalize(-viewDir + Wi);
+        float D = D(normal, H, roughnessL);
         vec3 F = fresnel_schlick(R0, H, Wi);
         vec3 kS = F;
         vec3 kD = vec3(1.0, 1.0, 1.0) - kS;
         kD *= 1.0 - metallic; //Metallic materials will have no diffuse output.
-        float G = G(N, Wi, Wo, roughnessL, true);
-        specular_light += specular_light * D * F * G * (1.0 / 4.0 * saturate(dot(Wi, N)));
-
+        float G = G(normal, Wi, -viewDir, roughnessL, true);
+        specular_light += specular_light * D * F * G * (1.0 / 4.0 * saturate(dot(Wi, normal)));
 
         //Calucate irradance from the light over the sphere of directions.
-        float distanceToLight = length(-v_Position + d_Light.u_Position);
-        vec3 SPD = d_Light.u_Colour.xyz * d_Light.u_Power;
-        vec3 irradiance = SPD / (4.0 * PI * pow(distanceToLight, 2.0));
+        float distanceToLight   = length(-v_Position + d_Light.u_Position);
+        vec3 SPD                = d_Light.u_Colour.xyz * d_Light.u_Power;
+        vec3 irradiance         = SPD / (4.0 * PI * pow(distanceToLight, 2.0));
 
         //Because the radiance is only non-zero in the direction Wi,
         //We can replace radiance with irradiance;
-        vec3 radiance = irradiance;
+        vec3 radiance           = irradiance;
 
 		diffuse_light += Le ;
 		//specular_light += Le;
     }
-	vec3 output_radiance = PBR(N, Wo,diffuseColour, diffuse_light,specular_light,combinedLookup,roughnessE);
-    //vec3 R = reflect(Wo, N);
-    gl_FragColor = 0.001 * Gamma(vec4(output_radiance.rgb,1.0)) + vec4(diffuseColour,1);
+
+    float ao = GetAO(combinedLookup);
+	vec3 output_radiance = PBR(normal, viewDir, diffuseColour, roughness, metallic, ao);
+    //vec3 refl = reflect(Wo, normal);
+    gl_FragColor = Gamma(vec4(combinedLookup.rgb,1.0));
 }

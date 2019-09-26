@@ -37,7 +37,7 @@ std::default_random_engine generator;
 std::uniform_int_distribution<int> distribution(1, 6);
 int dice_roll = distribution(generator);
 #endif
-
+#define LOG_MATERIAL_INTERFACE(materialInterface) UE_LOG(LogRemotePlay, Warning, TEXT("%s"), *("Decomposing <" + materialInterface->GetName() + ">: Error"));
 #define LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name) UE_LOG(LogRemotePlay, Warning, TEXT("%s"), *("Decomposing <" + materialInterface->GetName() + ">: Unsupported expression with type name <" + name + ">"));
 #define LOG_UNSUPPORTED_MATERIAL_CHAIN_LENGTH(materialInterface, length) UE_LOG(LogRemotePlay, Warning, TEXT("%s"), *("Decomposing <" + materialInterface->GetName() + ">: Unsupported property chain length of <" + length + ">"));
 
@@ -101,7 +101,7 @@ void GeometrySource::Initialize(ARemotePlayMonitor* monitor, UWorld* world)
 			if(!handMeshComponent)
 			{
 				UE_LOG(LogRemotePlay, Warning, TEXT("Hand actor set in RemotePlayMonitor has no static mesh component."));
-			}
+}
 		}
 		else
 		{
@@ -421,6 +421,13 @@ avs::uid GeometrySource::AddStreamableMeshComponent(UMeshComponent *MeshComponen
 	avs::uid mesh_uid=avs::uid(0);
 	UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(MeshComponent);
 	UStaticMesh *StaticMesh = StaticMeshComponent->GetStaticMesh();
+
+	if(!StaticMesh)
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Actor \"%s\" has been set as streamable, but they have no mesh assigned to their mesh component!"), *MeshComponent->GetOuter()->GetName());
+		return 0;
+	}
+
 	bool already_got_mesh = false;
 	for (auto &i : Meshes)
 	{
@@ -464,21 +471,23 @@ avs::uid GeometrySource::AddNode(avs::uid parent_uid, USceneComponent* component
 		UMeshComponent* meshComponent = Cast<UMeshComponent>(component);
 		ULightComponent* lightComponent = Cast<ULightComponent>(component);
 
-		if (meshComponent)
+		if(meshComponent)
 		{
 			std::shared_ptr<avs::DataNode> parent;
 			getNode(parent_uid, parent);
 
 			avs::uid mesh_uid = AddStreamableMeshComponent(meshComponent);
+			if (mesh_uid == 0)
+				return 0;
 			// the material/s that this particular instance of the mesh has applied to its slots...
-			TArray<UMaterialInterface*> mats = meshComponent->GetMaterials();
+			TArray<UMaterialInterface *> mats = meshComponent->GetMaterials();
 
 			std::vector<avs::uid> mat_uids;
 			//Add material, and textures, for streaming to clients.
 			int32 num_mats = mats.Num();
-			for (int32 i = 0; i < num_mats; i++)
+			for(int32 i = 0; i < num_mats; i++)
 			{
-				UMaterialInterface* materialInterface = mats[i];
+				UMaterialInterface *materialInterface = mats[i];
 				mat_uids.push_back(AddMaterial(materialInterface));
 			}
 
@@ -487,12 +496,12 @@ avs::uid GeometrySource::AddNode(avs::uid parent_uid, USceneComponent* component
 
 			parent->childrenUids.push_back(node_uid);
 
-			TArray<USceneComponent*> children;
+			TArray<USceneComponent *> children;
 			component->GetChildrenComponents(false, children);
 
-			for (auto child : children)
+			for(auto child : children)
 			{
-				if (child->GetClass()->IsChildOf(UMeshComponent::StaticClass()))
+				if(child->GetClass()->IsChildOf(UMeshComponent::StaticClass()))
 				{
 					AddNode(node_uid, Cast<UMeshComponent>(child));
 				}
@@ -504,6 +513,8 @@ avs::uid GeometrySource::AddNode(avs::uid parent_uid, USceneComponent* component
 			getNode(parent_uid, parent);
 
 			avs::uid shadow_uid = AddShadowMap(lightComponent->StaticShadowDepthMap.Data);
+			if (shadow_uid == 0)
+				return 0;
 
 			node_uid = CreateNode(component, shadow_uid, avs::NodeDataType::ShadowMap, {});
 			decomposedNodes[levelUniqueNodeName] = node_uid;
@@ -729,6 +740,8 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 		uint32_t mipCount = textureSource.GetNumMips();
 		avs::TextureFormat format;
 
+		UE_CLOG(bytesPerPixel != 4, LogRemotePlay, Warning, TEXT("Texture \"%s\" has bytes per pixel of %d!"), *texture->GetName(), bytesPerPixel);
+
 		std::size_t texSize = width * height * bytesPerPixel;
 
 		switch(unrealFormat)
@@ -763,12 +776,13 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 				UE_LOG(LogRemotePlay, Warning, TEXT("Invalid texture format"));
 				break;
 		}		
+
+		avs::TextureCompression compression = avs::TextureCompression::UNCOMPRESSED;
 		
 		uint32_t dataSize=0;
 		unsigned char* data = nullptr;
-		avs::TextureCompression compression = avs::TextureCompression::UNCOMPRESSED;
-		//Compress the texture with Basis Universal if the flag is set.
-		if(Monitor->UseCompressedTextures)
+		//Compress the texture with Basis Universal if the flag is set, and bytes per pixel is equal to 4.
+		if(Monitor->UseCompressedTextures && bytesPerPixel == 4)
 		{
 			compression = avs::TextureCompression::BASIS_COMPRESSED;
 			bool validBasisFileExists = false;
@@ -854,6 +868,8 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 			dataSize = texSize;
 			data = new unsigned char[dataSize];
 			memcpy(data, mipData.GetData(), dataSize);
+
+			UE_CLOG(dataSize > 1048576, LogRemotePlay, Warning, TEXT("Texture \"%s\" was stored UNCOMPRESSED with a data size larger than 1MB! Size: %dB(%.2fMB)"), *texture->GetName(), dataSize, dataSize / 1048576.0f)
 		}
 
 		//We're using a single sampler for now.
@@ -889,6 +905,11 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 		std::function<size_t(size_t)> expressionDecomposer = [&](size_t expressionIndex)
 		{
 			size_t expressionsHandled = 1;
+			if (expressionIndex >= outExpressions.Num())
+			{
+				LOG_MATERIAL_INTERFACE(materialInterface);
+				return size_t(0);
+			}
 			FString name = outExpressions[expressionIndex]->GetName();
 
 			if(name.Contains("Multiply"))

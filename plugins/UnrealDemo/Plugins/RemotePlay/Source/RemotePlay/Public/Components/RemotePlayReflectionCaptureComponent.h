@@ -62,10 +62,13 @@ private:
 	{
 		FLinearColor Color;
 		FVector Direction;
+		uint32_t pad;
 	};
 
 	FCubeTexture SpecularCubeTexture;
+	FCubeTexture RoughSpecularCubeTexture;
 	FCubeTexture DiffuseCubeTexture;
 	FCubeTexture LightingCubeTexture;
+	uint32 randomSeed = 0;
 };
 

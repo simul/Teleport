@@ -36,6 +36,8 @@ public:
 		std::vector<avs::uid>& outShadowIds,
 		std::vector<avs::uid>& outNodeIds) override;
 
+	virtual void GetResourcesToStream(std::vector<avs::MeshNodeResources>& outMeshResources, std::vector<avs::LightNodeResources>& outLightResources) override;
+
 	virtual avs::AxesStandard GetAxesStandard() const override
 	{
 		return RemotePlayContext->axesStandard;
@@ -54,11 +56,11 @@ public:
 
 	//Add actor to be streamed to the client.
 	//	newActor : Actor to be sent to the client.
-	//Returns uid of the actor the client is now responsible for.
+	//Returns uid of the actor the client is now responsible for, or 0 if the actor is not supported.
 	avs::uid AddActor(AActor *newActor);
 	//Remove actor from list of actors the client needs.
 	//	oldActor : Actor to be removed from the list.
-	//Returns uid of actor the client is no longer responsible for.
+	//Returns uid of actor the client is no longer responsible for, or 0 if the actor was never being streamed.
 	avs::uid RemoveActor(AActor *oldActor);
 
 	//Causes the controllers to be added to the list of streamed actors.
@@ -69,6 +71,7 @@ public:
 	avs::uid getRequiredNode(size_t index) const;
 private:
 	struct FRemotePlayContext* RemotePlayContext;
+	class ARemotePlayMonitor* Monitor;
 
 	// The following MIGHT be moved later to a separate Pipeline class:
 	TUniquePtr<avs::Pipeline> avsPipeline;
@@ -89,4 +92,7 @@ private:
 		std::vector<avs::uid>& outTextureIds, 
 		std::vector<avs::uid>& outMaterialIds, 
 		std::vector<avs::uid>& outNodeIds);
+
+	//Recursively obtains the resources from the mesh node, and its child nodes.
+	void GetMeshNodeResources(avs::uid node_uid, std::vector<avs::MeshNodeResources>& outMeshResources);
 };
