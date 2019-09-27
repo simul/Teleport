@@ -87,9 +87,15 @@ Application::Application()
 	sci.wrapU = scr::Sampler::Wrap::REPEAT;
 	sci.wrapV = scr::Sampler::Wrap::REPEAT;
 	sci.wrapW = scr::Sampler::Wrap::REPEAT;
-	sci.minFilter = scr::Sampler::Filter::MIPMAP_LINEAR;
+	sci.minFilter = scr::Sampler::Filter::LINEAR;
 	sci.magFilter = scr::Sampler::Filter::LINEAR;
+
+	mSampler = renderPlatform.InstantiateSampler();
 	mSampler->Create(&sci);
+
+	sci.minFilter = scr::Sampler::Filter::MIPMAP_LINEAR;
+	mSamplerCubeMipMap = renderPlatform.InstantiateSampler();
+	mSamplerCubeMipMap->Create(&sci);
 }
 
 Application::~Application()
@@ -245,7 +251,7 @@ void Application::EnteredVrMode(const ovrIntentType intentType, const char* inte
             layout.AddBinding(2, scr::ShaderResourceLayout::ShaderResourceType::UNIFORM_BUFFER, scr::Shader::Stage ::SHADER_STAGE_COMPUTE);
 
             scr::ShaderResource sr({layout, layout});
-            sr.AddImage(0, scr::ShaderResourceLayout::ShaderResourceType::STORAGE_IMAGE, 0, "destTex", {mSampler, mCubemapTexture,0,uint32_t(-1)});
+            sr.AddImage(0, scr::ShaderResourceLayout::ShaderResourceType::STORAGE_IMAGE, 0, "destTex", {mSamplerCubeMipMap, mCubemapTexture,0,uint32_t(-1)});
             sr.AddImage(0, scr::ShaderResourceLayout::ShaderResourceType::COMBINED_IMAGE_SAMPLER, 1, "videoFrameTexture", {mSampler, mVideoTexture});
             sr.AddBuffer(0, scr::ShaderResourceLayout::ShaderResourceType::UNIFORM_BUFFER, 2, "cubemapUB", {mCubemapUB.get(), 0, mCubemapUB->GetUniformBufferCreateInfo().size});
 
@@ -468,17 +474,15 @@ ovrFrameResult Application::Frame(const ovrFrameInput& vrFrame)
 	ovrQuatf headPoseC={-headPose.x,-headPose.y,-headPose.z,headPose.w};
 	ovrQuatf xDir= QuaternionMultiply(QuaternionMultiply(headPose,X0),headPoseC);
 #if 1
-	//Orient: %1.3f, {%1.3f, %1.3f, %1.3f}
-    //Pos: %3.3f %3.3f %3.3f
+    std::unique_ptr<std::lock_guard<std::mutex>> cacheLock;
 	auto ctr=mNetworkSource.getCounterValues();
-	mGuiSys->ShowInfoText( 0.017f,"Packets Dropped: Network %d | Decoder %d\n Framerate: %4.4f Bandwidth(kbps): %4.4f\n Actors: SCR %d | OVR %d | Lights: %d\n Capture Position: %1.3f, %1.3f, %1.3f\n Orient: %1.3f, {%1.3f, %1.3f, %1.3f}\n Pos: %3.3f %3.3f %3.3f\n Trackpad: %3.1f %3.1f | Orphans: %d\n"
+	mGuiSys->ShowInfoText( 0.017f,"Packets Dropped: Network %d | Decoder %d\n Framerate: %4.4f Bandwidth(kbps): %4.4f\n Actors: SCR %d | OVR %d | Lights: %d\n Capture Position: %1.3f, %1.3f, %1.3f\n Orient: %1.3f, {%1.3f, %1.3f, %1.3f}\n Pos: %3.3f %3.3f %3.3f\n Orphans: %d\n"
 			, ctr.networkPacketsDropped, ctr.decoderPacketsDropped,
 			frameRate, ctr.bandwidthKPS,
-			(uint64_t)resourceManagers.mActorManager.GetActorList().size(), (uint64_t)mOVRActors.size(), resourceManagers.mLightManager.GetCache().size(),
+			(uint64_t)resourceManagers.mActorManager.GetActorList().size(), (uint64_t)mOVRActors.size(), resourceManagers.mLightManager.GetCache(cacheLock).size(),
 			capturePosition.x, capturePosition.y, capturePosition.z,
-						   headPose.w, headPose.x, headPose.y, headPose.z,
+			headPose.w, headPose.x, headPose.y, headPose.z,
 			headPos.x,headPos.y,headPos.z,
-			controllerState.mTrackpadX,controllerState.mTrackpadY,
 			ctr.m_packetMapOrphans);
 
 #endif
@@ -589,6 +593,7 @@ ovrFrameResult Application::Frame(const ovrFrameInput& vrFrame)
 	RemoveInvalidOVRActors();
 	uint32_t time_elapsed=(uint32_t)(vrFrame.DeltaSeconds*1000.0f);
 	resourceManagers.Update(time_elapsed);
+	resourceCreator.Update(time_elapsed);
 	RenderLocalActors(res);
 	GL_CheckErrors("Frame: Post-SCR");
 
@@ -702,7 +707,7 @@ void Application::OnVideoStreamChanged(const avs::SetupCommand &setupCommand,avs
 						scr::Texture::CompressionFormat::UNCOMPRESSED
 				};
 	   mCubemapTexture->Create(textureCreateInfo);
-	   mCubemapTexture->UseSampler(mSampler);
+	   mCubemapTexture->UseSampler(mSamplerCubeMipMap);
    }
     //GL_CheckErrors("Built Video Cubemap");
    //Build Lighting Cubemap
@@ -735,10 +740,10 @@ void Application::OnVideoStreamChanged(const avs::SetupCommand &setupCommand,avs
 		textureCreateInfo.height=specularSize;
 		mSpecularTexture->Create(textureCreateInfo);
 		mRoughSpecularTexture->Create(textureCreateInfo);
-		mDiffuseTexture->UseSampler(mSampler);
-		mSpecularTexture->UseSampler(mSampler);
-		mRoughSpecularTexture->UseSampler(mSampler);
-		mCubemapLightingTexture->UseSampler(mSampler);
+		mDiffuseTexture->UseSampler(mSamplerCubeMipMap);
+		mSpecularTexture->UseSampler(mSamplerCubeMipMap);
+		mRoughSpecularTexture->UseSampler(mSamplerCubeMipMap);
+		mCubemapLightingTexture->UseSampler(mSamplerCubeMipMap);
 	}
     //GL_CheckErrors("Built Lighting Cubemap");
 
@@ -756,6 +761,10 @@ void Application::OnVideoStreamClosed()
 	mPipeline.deconfigure();
 	mPipeline.reset();
 	mPipelineConfigured = false;
+
+	//GGMP: We need a more robust system of the client telling the server what data it has, and the server sending what the client needs.
+	resourceManagers.mActorManager.Clear();
+	mOVRActors.clear();
 }
 
 bool Application::OnActorEnteredBounds(avs::uid actor_uid)
@@ -919,7 +928,7 @@ void Application::CopyToCubemaps()
 			for (uint32_t m = 0; m < 6; m++)
 			{
 				inputCommand.m_WorkGroupSize={(mip_size+1)/8,(mip_size+1)/8,6};
-				mCubemapComputeShaderResources[0][1].SetImageInfo(0, {mSampler, mSpecularTexture, m});
+				mCubemapComputeShaderResources[0][1].SetImageInfo(0, {mSamplerCubeMipMap, mSpecularTexture, m});
 				cubemapUB.sourceOffset.y       = (int32_t) (2 * tc.width) + mip_y;
 				cubemapUB.faceSize = mip_size;
 				inputCommand.m_ShaderResources = {mCubemapComputeShaderResources[0][1]};
@@ -1199,6 +1208,7 @@ const scr::Effect::EffectPassCreateInfo& Application::BuildEffectPass(const char
 	ci.colourBlendingState = cbs;
 
     mEffect.CreatePass(&ci);
+
 
     mEffect.LinkShaders(effectPassName, shaderResources);
 
