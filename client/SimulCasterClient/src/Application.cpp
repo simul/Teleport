@@ -10,6 +10,7 @@
 #include "OVR_LogUtils.h"
 #include "OVR_FileSys.h"
 #include "OVR_GlUtils.h"
+#include "OVR_Math.h"
 #include "GLESDebug.h"
 
 #include <enet/enet.h>
@@ -35,6 +36,15 @@ jlong Java_co_Simul_remoteplayclient_MainActivity_nativeSetAppInterface(JNIEnv* 
 } // extern "C"
 
 #endif
+
+const int specularSize = 128;
+const int diffuseSize = 64;
+const int lightSize = 64;
+scr::ivec2 specularOffset={0,0};
+scr::ivec2 diffuseOffset={3* specularSize/2, specularSize*2};
+scr::ivec2 roughOffset={3* specularSize,0};
+scr::ivec2  lightOffset={2 * specularSize+3 * specularSize / 2, specularSize * 2};
+
 
 Application::Application()
 	: mDecoder(avs::DecoderBackend::Custom)
@@ -91,6 +101,7 @@ Application::~Application()
 	delete mVideoSurfaceTexture;
 	mVideoSurfaceDef.geo.Free();
 	GlProgram::Free(mVideoSurfaceProgram);
+	GlProgram::Free(mEffect.GetGlPlatform());
 
 	delete mSoundEffectPlayer;
 	delete mSoundEffectContext;
@@ -143,17 +154,24 @@ void Application::EnteredVrMode(const ovrIntentType intentType, const char* inte
 
 		//VideoSurfaceProgram
 		{
+			{
+				mVideoUB = renderPlatform.InstantiateUniformBuffer();
+				scr::UniformBuffer::UniformBufferCreateInfo uniformBufferCreateInfo = {2, sizeof(VideoUB), &videoUB};
+				mVideoUB->Create(&uniformBufferCreateInfo);
+			}
 			static ovrProgramParm uniformParms[] =    // both TextureMvpProgram and CubeMapPanoProgram use the same parm mapping
 										  {
-												  {"colourOffsetScale", ovrProgramParmType::FLOAT_VECTOR4},
-												  {"depthOffsetScale",  ovrProgramParmType::FLOAT_VECTOR4},
-												  {"cubemapTexture", ovrProgramParmType::TEXTURE_SAMPLED},
+												  {"colourOffsetScale"	, ovrProgramParmType::FLOAT_VECTOR4},
+												  {"depthOffsetScale"	, ovrProgramParmType::FLOAT_VECTOR4},
+												  {"cubemapTexture"		, ovrProgramParmType::TEXTURE_SAMPLED},
+												  {"videoFrameTexture"	, ovrProgramParmType::TEXTURE_SAMPLED},
+												  {"videoUB"			, ovrProgramParmType::BUFFER_UNIFORM},
 										  };
 			std::string videoSurfaceVert = LoadTextFile("shaders/VideoSurface.vert");
 			std::string videoSurfaceFrag = LoadTextFile("shaders/VideoSurface.frag");
 			mVideoSurfaceProgram = GlProgram::Build(
 					nullptr, videoSurfaceVert.c_str(),
-					nullptr, videoSurfaceFrag.c_str(),
+					"#extension GL_OES_EGL_image_external_essl3 : require\n", videoSurfaceFrag.c_str(),
 					uniformParms, sizeof(uniformParms) / sizeof(ovrProgramParm),
 					310);
 			if (!mVideoSurfaceProgram.IsValid())
@@ -166,7 +184,6 @@ void Application::EnteredVrMode(const ovrIntentType intentType, const char* inte
 		mVideoSurfaceTexture = new OVR::SurfaceTexture(java->Env);
 		mVideoTexture        = renderPlatform.InstantiateTexture();
 		mCubemapUB = renderPlatform.InstantiateUniformBuffer();
-		mCubemapUB2 = renderPlatform.InstantiateUniformBuffer();
 		{
 			scr::Texture::TextureCreateInfo textureCreateInfo={};
 			textureCreateInfo.externalResource = true;
@@ -187,32 +204,38 @@ void Application::EnteredVrMode(const ovrIntentType intentType, const char* inte
 		{
 			CopyCubemapSrc     = LoadTextFile("shaders/CopyCubemap.comp");
 			mCopyCubemapEffect = renderPlatform.InstantiateEffect();
+			mCopyCubemapWithDepthEffect = renderPlatform.InstantiateEffect();
 			scr::Effect::EffectCreateInfo effectCreateInfo = {};
 			effectCreateInfo.effectName = "CopyCubemap";
 			mCopyCubemapEffect->Create(&effectCreateInfo);
+
+			effectCreateInfo.effectName = "CopyCubemapWithDepth";
+			mCopyCubemapWithDepthEffect->Create(&effectCreateInfo);
 
 			scr::ShaderSystem::PipelineCreateInfo pipelineCreateInfo = {};
 			pipelineCreateInfo.m_Count = 1;
 			pipelineCreateInfo.m_PipelineType                   = scr::ShaderSystem::PipelineType::PIPELINE_TYPE_COMPUTE;
 			pipelineCreateInfo.m_ShaderCreateInfo[0].stage      = scr::Shader::Stage::SHADER_STAGE_COMPUTE;
-			pipelineCreateInfo.m_ShaderCreateInfo[0].entryPoint = "main";
+			pipelineCreateInfo.m_ShaderCreateInfo[0].entryPoint = "colour_only";
 			pipelineCreateInfo.m_ShaderCreateInfo[0].filepath   = "shaders/CopyCubemap.comp";
 			pipelineCreateInfo.m_ShaderCreateInfo[0].sourceCode = CopyCubemapSrc;
 			scr::ShaderSystem::Pipeline cp(&renderPlatform, &pipelineCreateInfo);
 
-
 			scr::Effect::EffectPassCreateInfo effectPassCreateInfo;
 			effectPassCreateInfo.effectPassName = "CopyCubemap";
 			effectPassCreateInfo.pipeline = cp;
-
 			mCopyCubemapEffect->CreatePass(&effectPassCreateInfo);
+
+			pipelineCreateInfo.m_ShaderCreateInfo[0].entryPoint = "colour_and_depth";
+			scr::ShaderSystem::Pipeline cp2(&renderPlatform, &pipelineCreateInfo);
+
+			effectPassCreateInfo.effectPassName = "ColourAndDepth";
+			effectPassCreateInfo.pipeline = cp2;
+			mCopyCubemapWithDepthEffect->CreatePass(&effectPassCreateInfo);
+
 			{
 				scr::UniformBuffer::UniformBufferCreateInfo uniformBufferCreateInfo = {2, sizeof(CubemapUB), &cubemapUB};
 				mCubemapUB->Create(&uniformBufferCreateInfo);
-			}
-			{
-				scr::UniformBuffer::UniformBufferCreateInfo uniformBufferCreateInfo = {2, sizeof(CubemapUB), &cubemapUB2};
-				mCubemapUB2->Create(&uniformBufferCreateInfo);
 			}
 			GL_CheckErrors("mCubemapUB:Create");
 
@@ -234,6 +257,7 @@ void Application::EnteredVrMode(const ovrIntentType intentType, const char* inte
 			mCubemapComputeShaderResources.push_back(sr);
 
 			mCopyCubemapEffect->LinkShaders("CopyCubemap", {});
+			mCopyCubemapWithDepthEffect->LinkShaders("ColourAndDepth",{});
 		}
 
 		mVideoSurfaceDef.surfaceName = "VideoSurface";
@@ -338,6 +362,8 @@ bool Application::OnKeyEvent(const int keyCode, const int repeatCount, const Key
 	return false;
 }
 
+extern ovrQuatf QuaternionMultiply(const ovrQuatf &p,const ovrQuatf &q);
+
 ovrFrameResult Application::Frame(const ovrFrameInput& vrFrame)
 {
     GL_CheckErrors("Frame: Start");
@@ -379,7 +405,7 @@ ovrFrameResult Application::Frame(const ovrFrameInput& vrFrame)
 			controllerState.mTrackpadX = ovrState.TrackpadPosition.x / mTrackpadDim.x;
 			controllerState.mTrackpadY = ovrState.TrackpadPosition.y / mTrackpadDim.y;
 			controllerState.mJoystickAxisX=ovrState.Joystick.x;
-			controllerState.mJoystickAxisY=ovrState.Joystick.y;
+			controllerState.mJoystickAxisY=ovrState.Joystick.y * -1;
 		}
 	}
 
@@ -417,12 +443,17 @@ ovrFrameResult Application::Frame(const ovrFrameInput& vrFrame)
 	// Update GUI systems after the app frame, but before rendering anything.
 	mGuiSys->Frame(vrFrame, res.FrameMatrices.CenterView);
 
+	//Get HMD Position/Orientation
+	ovrVector3f headPos =vrFrame.Tracking.HeadPose.Pose.Position;
+	//ovrQuatf headOrient = vrFrame.Tracking.HeadPose.Pose.Orientation;
+	scr::vec3 scr_OVR_headPos = {headPos.x, headPos.y, headPos.z};
+
 	//Get the Capture Position
 	scr::Transform::TransformCreateInfo tci = {(scr::RenderPlatform*)(&renderPlatform)};
 	scr::Transform scr_UE4_captureTransform(tci);
 	avs::Transform avs_UE4_captureTransform = mDecoder.getCameraTransform();
 	scr_UE4_captureTransform = avs_UE4_captureTransform;
-	capturePosition = scr_UE4_captureTransform.m_Translation;
+	capturePosition = scr_UE4_captureTransform.m_Translation - scr_OVR_headPos;
 	scrCamera->UpdatePosition(capturePosition);
 
 	static float frameRate=1.0f;
@@ -431,21 +462,24 @@ ovrFrameResult Application::Frame(const ovrFrameInput& vrFrame)
 		frameRate*=0.99f;
 		frameRate+=0.01f/vrFrame.DeltaSeconds;
 	}
+
+	Quat<float> headPose = vrFrame.Tracking.HeadPose.Pose.Orientation;
+	ovrQuatf X0={1.0f,0.f,0.f,0.0f};
+	ovrQuatf headPoseC={-headPose.x,-headPose.y,-headPose.z,headPose.w};
+	ovrQuatf xDir= QuaternionMultiply(QuaternionMultiply(headPose,X0),headPoseC);
 #if 1
 	//Orient: %1.3f, {%1.3f, %1.3f, %1.3f}
     //Pos: %3.3f %3.3f %3.3f
-	ovrQuatf headPose = vrFrame.Tracking.HeadPose.Pose.Orientation;
-	ovrVector3f headPos=vrFrame.Tracking.HeadPose.Pose.Position;
 	auto ctr=mNetworkSource.getCounterValues();
-	mGuiSys->ShowInfoText( 0.017f,"Packets Dropped: Network %d | Decoder %d\n Framerate: %4.4f Bandwidth(kbps): %4.4f\n Actors: SCR %d | OVR %d | Lights: %d\n Capture Position: %1.3f, %1.3f, %1.3f\n Trackpad: %3.1f %3.1f | Orphans: %d \nVideo Frames %d\n"
+	mGuiSys->ShowInfoText( 0.017f,"Packets Dropped: Network %d | Decoder %d\n Framerate: %4.4f Bandwidth(kbps): %4.4f\n Actors: SCR %d | OVR %d | Lights: %d\n Capture Position: %1.3f, %1.3f, %1.3f\n Orient: %1.3f, {%1.3f, %1.3f, %1.3f}\n Pos: %3.3f %3.3f %3.3f\n Trackpad: %3.1f %3.1f | Orphans: %d\n"
 			, ctr.networkPacketsDropped, ctr.decoderPacketsDropped,
 			frameRate, ctr.bandwidthKPS,
 			(uint64_t)resourceManagers.mActorManager.GetActorList().size(), (uint64_t)mOVRActors.size(), resourceManagers.mLightManager.GetCache().size(),
 			capturePosition.x, capturePosition.y, capturePosition.z,
-			/*headPose.w, headPose.x, headPose.y, headPose.z,
-			headPos.x,headPos.y,headPos.z,*/
+						   headPose.w, headPose.x, headPose.y, headPose.z,
+			headPos.x,headPos.y,headPos.z,
 			controllerState.mTrackpadX,controllerState.mTrackpadY,
-			ctr.m_packetMapOrphans, mNumPendingFrames);
+			ctr.m_packetMapOrphans);
 
 #endif
 	res.FrameIndex   = vrFrame.FrameNumber;
@@ -472,9 +506,17 @@ ovrFrameResult Application::Frame(const ovrFrameInput& vrFrame)
 	// Append video surface
 	mVideoSurfaceDef.graphicsCommand.UniformData[0].Data = &renderConstants.colourOffsetScale;
 	mVideoSurfaceDef.graphicsCommand.UniformData[1].Data = &renderConstants.depthOffsetScale;
+	mVideoUB->Submit();
+	mVideoSurfaceDef.graphicsCommand.UniformData[4].Data =  &(((scc::GL_UniformBuffer *)  mVideoUB.get())->GetGlBuffer());
 	if(mCubemapTexture->IsValid())
 	{
+		static float w=.04f; //half separation.
+		scr::vec4 right_eye={w*xDir.x,w*xDir.y,w*xDir.z,0.0f};
+		scr::vec4 left_eye ={-right_eye.x,-right_eye.y,-right_eye.z,0.0f};
+		videoUB.eyeOffsets[0]=left_eye;		// left eye
+		videoUB.eyeOffsets[1]=right_eye;	// right eye.
 		mVideoSurfaceDef.graphicsCommand.UniformData[2].Data = &(((scc::GL_Texture *) mCubemapTexture.get())->GetGlTexture());
+		mVideoSurfaceDef.graphicsCommand.UniformData[3].Data = &(((scc::GL_Texture *)  mVideoTexture.get())->GetGlTexture());
 		res.Surfaces.push_back(ovrDrawSurface(&mVideoSurfaceDef));
 	}
 
@@ -592,10 +634,10 @@ void Application::OnVideoStreamChanged(const avs::SetupCommand &setupCommand,avs
 		return;
 	}
 
-	OVR_WARN("VIDEO STREAM CHANGED: %d %d %d", setupCommand.port, setupCommand.video_width, setupCommand.video_height);
+	OVR_WARN("VIDEO STREAM CHANGED: %d %d %d, cubemap %d", setupCommand.port, setupCommand.video_width, setupCommand.video_height,setupCommand.colour_cubemap_size);
 
 	avs::NetworkSourceParams sourceParams = {};
-	sourceParams.socketBufferSize = 3 * 1024 * 1024; // 4* 64MiB socket buffer size
+	sourceParams.socketBufferSize = 3 * 1024 * 1024; // 3 Mb socket buffer size
 	//sourceParams.gcTTL = (1000/60) * 4; // TTL = 4 * expected frame time
 	sourceParams.maxJitterBufferLength = 0;
 
@@ -682,9 +724,15 @@ void Application::OnVideoStreamChanged(const avs::SetupCommand &setupCommand,avs
 						scr::Texture::CompressionFormat::UNCOMPRESSED
 				};
 		textureCreateInfo.mipCount=1;
+		textureCreateInfo.width=diffuseSize;
+		textureCreateInfo.height=diffuseSize;
 		mDiffuseTexture->Create(textureCreateInfo);
+		textureCreateInfo.width=lightSize;
+		textureCreateInfo.height=lightSize;
 		mCubemapLightingTexture->Create(textureCreateInfo);
 		textureCreateInfo.mipCount=3;
+		textureCreateInfo.width=specularSize;
+		textureCreateInfo.height=specularSize;
 		mSpecularTexture->Create(textureCreateInfo);
 		mRoughSpecularTexture->Create(textureCreateInfo);
 		mDiffuseTexture->UseSampler(mSampler);
@@ -788,30 +836,31 @@ void Application::CopyToCubemaps()
 		size.z=std::min(size.z,(uint32_t)max_w);
 
 		scr::InputCommandCreateInfo inputCommandCreateInfo={};
-		scr::InputCommand_Compute inputCommand(&inputCommandCreateInfo, size, mCopyCubemapEffect, {mCubemapComputeShaderResources[0][0]});
-		cubemapUB.faceSize=tc.width;
-		cubemapUB.sourceOffset={0,0};
-		cubemapUB.mip             = 0;
-		cubemapUB.face             = 0;
+		scr::InputCommand_Compute inputCommand(&inputCommandCreateInfo, size, mCopyCubemapWithDepthEffect, {mCubemapComputeShaderResources[0][0]});
+		cubemapUB.faceSize			=tc.width;
+		cubemapUB.sourceOffset		={0,0};
+		cubemapUB.mip             	=0;
+		cubemapUB.face             	=0;
 
 		mDeviceContext.DispatchCompute(&inputCommand);
 		GL_CheckErrors("Frame: CopyToCubemaps - Main");
-		cubemapUB.faceSize = 128;
-		cubemapUB.sourceOffset.x= (int32_t) ((3 *  tc.width) / 2);
+		cubemapUB.faceSize = 0;
+		scr::ivec2 offset0={(int32_t) ((3 *  tc.width) / 2),(int32_t) (2 * tc.width)};
 		//Lighting Cubemaps
-		uint32_t mip_y=0;
+		inputCommand.m_pComputeEffect=mCopyCubemapEffect;
+		int32_t mip_y=0;
 #if 1
 		{
 			static uint32_t face= 0;
 			mip_y = 0;
-			uint32_t         mip_size = 128;
+			int32_t mip_size=specularSize;
 			uint32_t M=mDiffuseTexture->GetTextureCreateInfo().mipCount;
+			scr::ivec2 offset={offset0.x+diffuseOffset.x,offset0.y+diffuseOffset.y};
 			for (uint32_t m        = 0; m < M; m++)
 			{
 					inputCommand.m_WorkGroupSize = {(mip_size + 1) / ThreadCount, (mip_size + 1) / ThreadCount ,6};
-					mCubemapComputeShaderResources[0].SetImageInfo(1, 0, {
-							mDiffuseTexture->GetSampler(), mDiffuseTexture, m});
-					cubemapUB.sourceOffset.y       = (int32_t) (2 * tc.width) + mip_y;
+					mCubemapComputeShaderResources[0].SetImageInfo(1, 0, {mDiffuseTexture->GetSampler(), mDiffuseTexture, m});
+					cubemapUB.sourceOffset			={offset.x,offset.y+mip_y};
 					cubemapUB.faceSize             = mip_size;
 					cubemapUB.mip                  = m;
 					cubemapUB.face				   = 0;
@@ -825,41 +874,40 @@ void Application::CopyToCubemaps()
 			face++;
 			face=face%6;
 		}
-		cubemapUB.sourceOffset.x+= 3*128;
+
 		{
 			mip_y=0;
-			uint32_t mip_size=128;
+			int32_t mip_size=specularSize;
 			uint32_t M=mSpecularTexture->GetTextureCreateInfo().mipCount;
+			scr::ivec2 offset={offset0.x+specularOffset.x,offset0.y+specularOffset.y};
 			for(uint32_t m=0;m<M;m++)
 			{
 				inputCommand.m_WorkGroupSize={(mip_size+1)/ThreadCount,(mip_size+1)/ThreadCount,6};
 				mCubemapComputeShaderResources[0].SetImageInfo(1 ,0, {mSpecularTexture->GetSampler(), mSpecularTexture, m});
-				cubemapUB.sourceOffset.y = (int32_t) (2 *  tc.width) + mip_y;
-				cubemapUB.faceSize = mip_size;
-				cubemapUB.mip             = m;
+				cubemapUB.sourceOffset			={offset.x,offset.y+mip_y};
+				cubemapUB.faceSize 				= mip_size;
+				cubemapUB.mip             		= m;
 				cubemapUB.face				   = 0;
 				inputCommand.m_ShaderResources = {mCubemapComputeShaderResources[0][1]};
 				mDeviceContext.DispatchCompute(&inputCommand);
 				mip_y+=2*mip_size;
 				mip_size/=2;
 			}
-		}
-		cubemapUB.sourceOffset.x+= 3*128;
-		{
+
 			mip_y=0;
-			uint32_t mip_size=128;
-			uint32_t M=mRoughSpecularTexture->GetTextureCreateInfo().mipCount;
+			mip_size=specularSize;
+			M=mRoughSpecularTexture->GetTextureCreateInfo().mipCount;
 			for(uint32_t m=0;m<M;m++)
 			{
 				inputCommand.m_WorkGroupSize={(mip_size+1)/ThreadCount,(mip_size+1)/ThreadCount,6};
 				mCubemapComputeShaderResources[0].SetImageInfo(1 ,0, {mRoughSpecularTexture->GetSampler(), mRoughSpecularTexture, m});
-				cubemapUB.sourceOffset.y = (int32_t) (2 *  tc.width) + mip_y;
+				cubemapUB.sourceOffset			={offset.x,offset.y+mip_y};
 				cubemapUB.faceSize = mip_size;
 				cubemapUB.mip             = m;
 				cubemapUB.face				   = 0;
 				inputCommand.m_ShaderResources = {mCubemapComputeShaderResources[0][1]};
 				mDeviceContext.DispatchCompute(&inputCommand);
-				mip_y+=2*mip_size;
+				mip_y					+=2*mip_size;
 				mip_size/=2;
 			}
 		}
@@ -932,7 +980,7 @@ void Application::RenderLocalActors(ovrFrameResult& res)
 				if(i>=meshCI.vb.size()||i>=meshCI.ib.size())
 				{
 					OVR_LOG("Skipping empty element in mesh.");
-					break;
+					break; //This break; isn't working correctly
 				}
 				//Mesh.
 				// The first instance of vb/ib should be adequate to get the information needed.
@@ -1054,10 +1102,9 @@ void Application::RenderLocalActors(ovrFrameResult& res)
 		{
 			if(i>=pOvrActor->ovrSurfaceDefs.size())
 			{
-				OVR_LOG("Skipping empty element in ovrSurfaceDefs.");
+				//OVR_LOG("Skipping empty element in ovrSurfaceDefs.");
 				break;
 			}
-			OVR_LOG("BlendDst is %d",(int)pOvrActor->ovrSurfaceDefs[i]->graphicsCommand.GpuState.blendDst);
 			//----OVR Actor Set Transforms----//
 			float     heightOffset = -0.0F;
 			scr::vec3 camPos       = capturePosition * -1;
