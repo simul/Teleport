@@ -421,6 +421,13 @@ avs::uid GeometrySource::AddStreamableMeshComponent(UMeshComponent *MeshComponen
 	avs::uid mesh_uid=avs::uid(0);
 	UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(MeshComponent);
 	UStaticMesh *StaticMesh = StaticMeshComponent->GetStaticMesh();
+
+	if(!StaticMesh)
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Actor \"%s\" has been set as streamable, but they have no mesh assigned to their mesh component!"), *MeshComponent->GetOuter()->GetName());
+		return 0;
+	}
+
 	bool already_got_mesh = false;
 	for (auto &i : Meshes)
 	{
