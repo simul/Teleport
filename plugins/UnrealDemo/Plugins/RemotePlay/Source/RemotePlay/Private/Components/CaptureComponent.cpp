@@ -147,10 +147,12 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 				Scene->GetRenderScene(),
 				TextureTarget,
 				Scene->GetFeatureLevel());
+			int32 W = TextureTarget->GetSurfaceWidth();
+			FIntPoint Offset0((W*3)/2,W*2);
 			RemotePlayReflectionCaptureComponent->PrepareFrame(
 				Scene->GetRenderScene(),
 				RemotePlayContext->EncodePipeline->GetSurfaceTexture(),
-				Scene->GetFeatureLevel());
+				Scene->GetFeatureLevel(),Offset0);
 		}
 		RemotePlayContext->EncodePipeline->EncodeFrame(Scene, TextureTarget, Transform);
 	}

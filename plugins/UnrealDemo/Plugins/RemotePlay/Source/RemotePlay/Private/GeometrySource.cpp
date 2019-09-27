@@ -471,7 +471,10 @@ avs::uid GeometrySource::AddNode(avs::uid parent_uid, USceneComponent* component
 
 			avs::uid mesh_uid = AddStreamableMeshComponent(meshComponent);
 			if (mesh_uid == 0)
+			{
+				UE_LOG(LogRemotePlay, Warning, TEXT("FAILED TO ADD MESH"));
 				return 0;
+			}
 			// the material/s that this particular instance of the mesh has applied to its slots...
 			TArray<UMaterialInterface *> mats = meshComponent->GetMaterials();
 
