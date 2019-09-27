@@ -40,7 +40,7 @@ public:
 	void Initialize();
 	void UpdateContents(FScene *Scene, class UTextureRenderTargetCube *src, ERHIFeatureLevel::Type FeatureLevel) ;
 
-	void PrepareFrame(FScene *Scene, struct FSurfaceTexture *UAV, ERHIFeatureLevel::Type FeatureLevel);
+	void PrepareFrame(FScene *Scene, struct FSurfaceTexture *UAV, ERHIFeatureLevel::Type FeatureLevel, FIntPoint StartOffset);
 
 	// To test:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
@@ -51,7 +51,7 @@ private:
 	void Initialize_RenderThread(FRHICommandListImmediate& RHICmdList);
 	void Release_RenderThread(FRHICommandListImmediate& RHICmdList);
 	void UpdateReflections_RenderThread(FRHICommandListImmediate& RHICmdList, FScene *Scene, UTextureRenderTargetCube *InSourceTexture, ERHIFeatureLevel::Type FeatureLevel);
-	void WriteReflections_RenderThread(FRHICommandListImmediate& RHICmdList, FScene *Scene, struct FSurfaceTexture *, ERHIFeatureLevel::Type FeatureLevel);
+	void WriteReflections_RenderThread(FRHICommandListImmediate& RHICmdList, FScene *Scene, struct FSurfaceTexture *, ERHIFeatureLevel::Type FeatureLevel, FIntPoint StartOffset);
 
 	void Decompose_RenderThread(FRHICommandListImmediate& RHICmdList
 		, FCubeTexture &CubeTexture
@@ -70,5 +70,12 @@ private:
 	FCubeTexture DiffuseCubeTexture;
 	FCubeTexture LightingCubeTexture;
 	uint32 randomSeed = 0;
+	FIntPoint specularOffset;
+	FIntPoint diffuseOffset ;
+	FIntPoint roughOffset;
+	FIntPoint lightOffset ;
+	const int specularSize = 128;
+	const int diffuseSize = 64;
+	const int lightSize = 64;
 };
 

@@ -256,6 +256,11 @@ URemotePlayReflectionCaptureComponent::URemotePlayReflectionCaptureComponent(con
 	Mobility = EComponentMobility::Movable;
 	PrimaryComponentTick.bCanEverTick = true;
 	PrimaryComponentTick.bTickEvenWhenPaused = true;
+	
+	specularOffset	=FIntPoint(0, 0);
+	diffuseOffset	= specularOffset + FIntPoint(specularSize*3/2, specularSize*2);
+	roughOffset	 = FIntPoint(3 * specularSize, 0);
+	lightOffset = diffuseOffset + FIntPoint(specularSize * 3 / 2, specularSize * 2);
 }
 
 void URemotePlayReflectionCaptureComponent::UpdatePreviewShape()
@@ -284,7 +289,7 @@ void URemotePlayReflectionCaptureComponent::Init(FRHICommandListImmediate& RHICm
 	for (int i = 0; i < NumMips; i++)
 	{
 		t.TextureCubeMipRHIRefs[i] = RHICmdList.CreateShaderResourceView(t.TextureCubeRHIRef, i);
-}
+	}
 }
 
 void URemotePlayReflectionCaptureComponent::Release(FCubeTexture &t)
@@ -301,14 +306,14 @@ void URemotePlayReflectionCaptureComponent::Release(FCubeTexture &t)
 		t.TextureCubeRHIRef->Release();
 }
 
-
 void URemotePlayReflectionCaptureComponent::Initialize_RenderThread(FRHICommandListImmediate& RHICmdList)
 {
-	Init(RHICmdList, SpecularCubeTexture,128, 3);
-	Init(RHICmdList, RoughSpecularCubeTexture, 128, 3);
-	Init(RHICmdList,DiffuseCubeTexture,128, 1);
-	Init(RHICmdList,LightingCubeTexture,128, 1);
+	Init(RHICmdList, SpecularCubeTexture, specularSize, 3);
+	Init(RHICmdList, RoughSpecularCubeTexture, specularSize, 3);
+	Init(RHICmdList,DiffuseCubeTexture,diffuseSize, 1);
+	Init(RHICmdList,LightingCubeTexture,lightSize, 1);
 }
+
 void URemotePlayReflectionCaptureComponent::Release_RenderThread(FRHICommandListImmediate& RHICmdList)
 {
 	Release(SpecularCubeTexture);
@@ -335,7 +340,6 @@ void URemotePlayReflectionCaptureComponent::UpdateReflections_RenderThread(
 	if(InSourceTexture)
 		SourceCubeResource =static_cast<FTextureRenderTargetCubeResource*>(InSourceTexture->GetRenderTargetResource());
 
-	const int32 EffectiveTopMipSize = 128;
 	const int32 SourceSize = SourceCubeResource->GetSizeX();
 
 
@@ -392,7 +396,7 @@ void URemotePlayReflectionCaptureComponent::UpdateReflections_RenderThread(
 		FUpdateReflectionsBaseCS *r=(MipRoughShader.operator*());
 		// The 0 mip is copied directly from the source cubemap,
 		{
-			const int32 MipSize = EffectiveTopMipSize;
+			const int32 MipSize = specularSize;
 			CopyCubemapShader->SetInputs(RHICmdList,SourceCubeResource->GetTextureRHI());
 			CopyCubemapShader->SetOutputs(RHICmdList,
 				SpecularCubeTexture.TextureCubeRHIRef,
@@ -400,13 +404,13 @@ void URemotePlayReflectionCaptureComponent::UpdateReflections_RenderThread(
 				);
 			CopyCubemapShader->SetParameters(RHICmdList, Offset0, 0.f, randomSeed);
 			SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*CopyCubemapShader));
-			uint32 NumThreadGroupsXY = (EffectiveTopMipSize+1) / ShaderType::kThreadGroupSize;
+			uint32 NumThreadGroupsXY = (specularSize +1) / ShaderType::kThreadGroupSize;
 			DispatchComputeShader(RHICmdList, *CopyCubemapShader, NumThreadGroupsXY, NumThreadGroupsXY, CubeFace_MAX);
 			CopyCubemapShader->UnsetParameters(RHICmdList);
 		}
 		// The other mips are generated
-		int32 MipSize = EffectiveTopMipSize;
-		int32 PrevMipSize = EffectiveTopMipSize;
+		int32 MipSize = specularSize;
+		int32 PrevMipSize = specularSize;
 		uint32_t NumMips = SpecularCubeTexture.TextureCubeRHIRef->GetNumMips();
 		for (uint32 MipIndex = 1; MipIndex < NumMips; MipIndex++)
 		{
@@ -427,8 +431,8 @@ void URemotePlayReflectionCaptureComponent::UpdateReflections_RenderThread(
 			DispatchComputeShader(RHICmdList, Shader, NumThreadGroupsXY, NumThreadGroupsXY, CubeFace_MAX);
 			Shader->UnsetParameters(RHICmdList);
 		}
-		MipSize = EffectiveTopMipSize;
-		PrevMipSize = EffectiveTopMipSize;
+		MipSize = specularSize;
+		PrevMipSize = specularSize;
 		for (uint32 MipIndex = 0; MipIndex < RoughSpecularCubeTexture.TextureCubeRHIRef->GetNumMips(); MipIndex++)
 		{
 			float roughness = RoughnessFromMip(float(NumMips+MipIndex), (float)(2 * NumMips));
@@ -515,7 +519,7 @@ void URemotePlayReflectionCaptureComponent::UpdateReflections_RenderThread(
 			typedef FUpdateReflectionsCS<EUpdateReflectionsVariant::UpdateLighting> ShaderType;
 			TShaderMapRef<FUpdateReflectionsCS<EUpdateReflectionsVariant::UpdateLighting>> ComputeShader(ShaderMap);
 			FUpdateReflectionsBaseCS *Shader = static_cast<FUpdateReflectionsBaseCS *>(*ComputeShader);
-			int32 MipSize = EffectiveTopMipSize;
+			int32 MipSize = lightSize;
 			uint32_t NumMips = LightingCubeTexture.TextureCubeRHIRef->GetNumMips();
 			for (uint32 MipIndex = 0; MipIndex < NumMips; MipIndex++)
 			{
@@ -567,7 +571,8 @@ void URemotePlayReflectionCaptureComponent::Decompose_RenderThread(FRHICommandLi
 	}
 }
 // write the reflections to the UAV of the output video stream.
-void URemotePlayReflectionCaptureComponent::WriteReflections_RenderThread(FRHICommandListImmediate& RHICmdList, FScene *Scene, FSurfaceTexture *TargetSurfaceTexture, ERHIFeatureLevel::Type FeatureLevel)
+void URemotePlayReflectionCaptureComponent::WriteReflections_RenderThread(FRHICommandListImmediate& RHICmdList, FScene *Scene, FSurfaceTexture *TargetSurfaceTexture, ERHIFeatureLevel::Type FeatureLevel
+	,FIntPoint StartOffset)
 {
 	SCOPED_DRAW_EVENT(RHICmdList, WriteReflections);
 
@@ -576,22 +581,13 @@ void URemotePlayReflectionCaptureComponent::WriteReflections_RenderThread(FRHICo
 	auto* ShaderMap = GetGlobalShaderMap(FeatureLevel);
 
 	TShaderMapRef<FUpdateReflectionsCS<EUpdateReflectionsVariant::WriteToStream>> ComputeShader(ShaderMap);
-	const int32 EffectiveTopMipSize	=128;
-	const int32 NumMips				=FMath::CeilLogTwo(EffectiveTopMipSize) + 1;
 	SCOPED_DRAW_EVENT(RHICmdList, WriteReflections);
 
 	FShader *Shader = ComputeShader.operator*();
-	int W = TargetSurfaceTexture->Texture->GetSizeX()/3;
-	// Add EffectiveTopMipSize because we put to the right of specular cubemap
-	uint32 xOffset = (W / 2) * 3;
-	uint32 yOffset = W * 2;
-	Decompose_RenderThread(RHICmdList, DiffuseCubeTexture, TargetSurfaceTexture, Shader, FIntPoint(xOffset, yOffset));
-	xOffset += EffectiveTopMipSize*3;
-	Decompose_RenderThread(RHICmdList, SpecularCubeTexture, TargetSurfaceTexture, Shader, FIntPoint(xOffset, yOffset));
-	xOffset += EffectiveTopMipSize*3;
-	Decompose_RenderThread(RHICmdList, RoughSpecularCubeTexture, TargetSurfaceTexture, Shader, FIntPoint(xOffset, yOffset));
-	xOffset += EffectiveTopMipSize * 3;
-	Decompose_RenderThread(RHICmdList, LightingCubeTexture, TargetSurfaceTexture, Shader, FIntPoint(xOffset, yOffset));
+	Decompose_RenderThread(RHICmdList, DiffuseCubeTexture, TargetSurfaceTexture, Shader, StartOffset+diffuseOffset);
+	Decompose_RenderThread(RHICmdList, SpecularCubeTexture, TargetSurfaceTexture, Shader, StartOffset + specularOffset);
+	Decompose_RenderThread(RHICmdList, RoughSpecularCubeTexture, TargetSurfaceTexture, Shader, StartOffset+roughOffset);
+	Decompose_RenderThread(RHICmdList, LightingCubeTexture, TargetSurfaceTexture, Shader, StartOffset + lightOffset);
 }
 
 void URemotePlayReflectionCaptureComponent::Initialize()
@@ -616,13 +612,13 @@ void URemotePlayReflectionCaptureComponent::UpdateContents(FScene *Scene,UTextur
 	);
 }
 
-void URemotePlayReflectionCaptureComponent::PrepareFrame(FScene *Scene, FSurfaceTexture *TargetSurfaceTexture, ERHIFeatureLevel::Type FeatureLevel)
+void URemotePlayReflectionCaptureComponent::PrepareFrame(FScene *Scene, FSurfaceTexture *TargetSurfaceTexture, ERHIFeatureLevel::Type FeatureLevel, FIntPoint StartOffset)
 {
 	ENQUEUE_RENDER_COMMAND(RemotePlayWriteReflectionsToSurface)(
-		[this, Scene, TargetSurfaceTexture, FeatureLevel](FRHICommandListImmediate& RHICmdList)
+		[this, Scene, TargetSurfaceTexture, FeatureLevel, StartOffset](FRHICommandListImmediate& RHICmdList)
 		{
 			//SCOPED_DRAW_EVENT(RHICmdList, RemotePlayReflectionCaptureComponent);
-			WriteReflections_RenderThread(RHICmdList, Scene, TargetSurfaceTexture, FeatureLevel);
+			WriteReflections_RenderThread(RHICmdList, Scene, TargetSurfaceTexture, FeatureLevel, StartOffset);
 		}
 	);
 }
