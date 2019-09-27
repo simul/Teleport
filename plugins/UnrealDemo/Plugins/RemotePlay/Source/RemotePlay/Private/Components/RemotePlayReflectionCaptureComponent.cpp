@@ -313,6 +313,7 @@ void URemotePlayReflectionCaptureComponent::Initialize_RenderThread(FRHICommandL
 	Init(RHICmdList,DiffuseCubeTexture,diffuseSize, 1);
 	Init(RHICmdList,LightingCubeTexture,lightSize, 1);
 }
+
 void URemotePlayReflectionCaptureComponent::Release_RenderThread(FRHICommandListImmediate& RHICmdList)
 {
 	Release(SpecularCubeTexture);
