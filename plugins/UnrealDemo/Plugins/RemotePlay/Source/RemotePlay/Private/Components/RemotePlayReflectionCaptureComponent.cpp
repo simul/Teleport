@@ -479,7 +479,7 @@ void URemotePlayReflectionCaptureComponent::UpdateReflections_RenderThread(
 					ResolveParams.DestArrayIndex = CaptureIndex >= 0 ? CaptureIndex : 0;
 					ResolveParams.CubeFace = (ECubeFace)CubeFace;
 					ResolveParams.MipIndex = MipIndex;
-					RHICmdList.CopyToResolveTarget(RoughSpecularCubeTexture.TextureCubeRHIRef
+					RHICmdList.CopyToResolveTarget(SpecularCubeTexture.TextureCubeRHIRef
 						, TargetResource, ResolveParams);
 				}
 			}

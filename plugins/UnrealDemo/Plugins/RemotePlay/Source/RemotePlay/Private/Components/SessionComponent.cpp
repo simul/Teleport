@@ -497,9 +497,12 @@ void URemotePlaySessionComponent::OnOuterSphereEndOverlap(UPrimitiveComponent * 
 void URemotePlaySessionComponent::ApplyPlayerInput(float DeltaTime)
 {
 	check(PlayerController.IsValid());
-	PlayerController->InputAxis(EKeys::MotionController_Right_Thumbstick_X, InputTouchAxis.X+ InputJoystick.X, DeltaTime, 1, true);
-	PlayerController->InputAxis(EKeys::MotionController_Right_Thumbstick_Y, InputTouchAxis.Y- InputJoystick.Y, DeltaTime, 1, true);
-
+	static bool move_from_inputs = false;
+	if (move_from_inputs)
+	{
+		PlayerController->InputAxis(EKeys::MotionController_Right_Thumbstick_X, InputTouchAxis.X + InputJoystick.X, DeltaTime, 1, true);
+		PlayerController->InputAxis(EKeys::MotionController_Right_Thumbstick_Y, InputTouchAxis.Y + InputJoystick.Y, DeltaTime, 1, true);
+	}
 	while (InputQueue.ButtonsPressed.Num() > 0)
 	{
 		PlayerController->InputKey(InputQueue.ButtonsPressed.Pop(), EInputEvent::IE_Pressed, 1.0f, true);
@@ -594,21 +597,37 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 
 void URemotePlaySessionComponent::RecvHeadPose(const ENetPacket* Packet)
 {
-	if (Packet->dataLength != sizeof(FQuat))
+	struct HeadPose
+	{
+		avs::vec4 OrientationQuat;
+		avs::vec3 Position;
+	};
+	if (Packet->dataLength != sizeof(HeadPose))
 	{
 		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Received malformed head pose packet of length: %d"), Packet->dataLength);
 		return;
 	}
 	if (!RemotePlayContext)
 		return;
-	avs::vec4 HeadPose;
-	FPlatformMemory::Memcpy(&HeadPose, Packet->data, Packet->dataLength);
+	if (RemotePlayContext->axesStandard == avs::AxesStandard::NotInitialized)
+		return;
+	HeadPose headPose;
+	FPlatformMemory::Memcpy(&headPose, Packet->data, Packet->dataLength);
 
 	// Here we set the angle of the player pawn.
 	// Convert quaternion from Simulcaster coordinate system (X right, Y forward, Z up) to UE4 coordinate system (left-handed, X left, Y forward, Z up).
-	avs::ConvertRotation(RemotePlayContext->axesStandard,avs::AxesStandard::UnrealStyle,HeadPose);
-	const FQuat HeadPoseUE{ HeadPose.x, HeadPose.y, HeadPose.z, HeadPose.w };
-	//const FQuat HeadPoseUE{ -HeadPose.x, HeadPose.y, -HeadPose.z, HeadPose.w };
+	avs::ConvertRotation(RemotePlayContext->axesStandard,avs::AxesStandard::UnrealStyle, headPose.OrientationQuat);
+	avs::ConvertPosition(RemotePlayContext->axesStandard, avs::AxesStandard::UnrealStyle, headPose.Position);
+	FVector pos(headPose.Position.x, headPose.Position.y, headPose.Position.z);
+	// back to centimetres...
+	pos *= 100.0f;
+	static FVector offset(0, 0, 1.5f);
+	FVector oldPos = PlayerController->GetPawn()->GetActorLocation();
+	pos += offset;
+	pos.Z = oldPos.Z;
+	PlayerController->GetPawn()->SetActorLocation(pos);
+	const FQuat HeadPoseUE{ headPose.OrientationQuat.x, headPose.OrientationQuat.y, headPose.OrientationQuat.z, headPose.OrientationQuat.w };
+	
 	FVector Euler = HeadPoseUE.Euler();
 	Euler.X = Euler.Y = 0.0f;
 	// Unreal thinks the Euler angle starts from facing X, but actually it's Y.
