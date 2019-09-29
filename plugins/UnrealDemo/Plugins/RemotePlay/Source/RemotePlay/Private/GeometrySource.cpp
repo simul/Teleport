@@ -366,8 +366,8 @@ void GeometrySource::UpdateNodeTransform(std::shared_ptr<avs::DataNode>& node, U
 		// We retain Unreal axes until sending to individual clients, which might have varying standards.
 		FQuat r = transform.GetRotation();
 		const FVector s = transform.GetScale3D();
-
-		node->transform = {t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z};
+		// Roderick: put W on the end, for consistency with standard usage.
+		node->transform = {t.X, t.Y, t.Z, r.X, r.Y, r.Z, s.X, s.Y, s.Z, r.W };
 	}
 	else
 	{
