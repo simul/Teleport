@@ -101,4 +101,3 @@ private:
 
 	avs::uid server_id = 0; //UID of the server; resets between sessions.
 };
-

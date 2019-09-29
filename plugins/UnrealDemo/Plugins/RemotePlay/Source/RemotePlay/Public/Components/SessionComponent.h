@@ -61,6 +61,7 @@ private:
 	void RecvInput(const ENetPacket* Packet);
 	void RecvClientMessage(const ENetPacket* Packet);
 
+	bool			Client_SendCommand(const avs::Command &avsCommand) const;
 	bool			Client_SendCommand(const FString& Cmd) const;
 	template<typename T>
 	bool			Client_SendCommand(const avs::Command &avsSetup, std::vector<T>& appendedList) const;

@@ -221,6 +221,7 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 
 			timeSinceLastGeometryStream -= TIME_BETWEEN_GEOMETRY_TICKS;
 		}
+#if 1
 		
 		if(IsStreaming && DetectionSphereInner.IsValid())
 		{
@@ -232,8 +233,8 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 			{
 				if(GeometryStreamingService.IsStreamingActor(actor))
 				{
-					return;
-	}
+					continue;
+				}
 
 				UStaticMeshComponent* staticMesh = Cast<UStaticMeshComponent>(actor->GetComponentByClass(UStaticMeshComponent::StaticClass()));
 
@@ -255,8 +256,8 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 								UE_LOG(LogRemotePlay, Verbose, TEXT("Overlapped with actor \"%s\"."), *actor->GetName());
 							}
 						}
-	else
-	{
+						else
+						{
 							UE_LOG(LogRemotePlay, Warning, TEXT("Overlapped with \"%s\", but the actor is not supported! Only use supported component types, and check collision settings!"), *actor->GetName());
 						}
 					}
@@ -264,11 +265,12 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 			}
 		
 			FBoxSphereBounds outerSphereBounds = DetectionSphereInner->CalcBounds(DetectionSphereInner->GetComponentTransform());
-			for(AActor* actor : streamedActors)
+			//for(AActor* actor : streamedActors)
 			{
 				///Remove actors when they're no longer fully encompassed by outer sphere.
 			}
 		}
+#endif
 	}
 	else
 	{
@@ -649,8 +651,9 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 	{
 		GeometryStreamingService.SetStreamingContinuously(Monitor->StreamGeometryContinuously);
 		GeometryStreamingService.StartStreaming(RemotePlayContext);
-	}	
-
+	}
+	avs::AcknowledgeHandshakeCommand ack;
+	Client_SendCommand(ack);
 	UE_LOG(LogRemotePlay, Log, TEXT("RemotePlay: Started streaming to %s:%d"), *Client_GetIPAddress(), StreamingPort);
 }
 
@@ -814,6 +817,15 @@ inline bool URemotePlaySessionComponent::Client_SendCommand(const FString& Cmd) 
 	return enet_peer_send(ClientPeer, RPCH_Control, Packet) == 0;
 }
 
+bool URemotePlaySessionComponent::Client_SendCommand(const avs::Command &avsCommand) const
+{
+	check(ClientPeer);
+	size_t commandSize = avs::GetCommandSize(avsCommand.commandPayloadType);
+	ENetPacket* Packet = enet_packet_create(&avsCommand, commandSize, ENET_PACKET_FLAG_RELIABLE);
+	check(Packet);
+	return enet_peer_send(ClientPeer, RPCH_Control, Packet) == 0;
+}
+
 template<typename T>
 bool URemotePlaySessionComponent::Client_SendCommand(const avs::Command &avsCommand, std::vector<T>& appendedList) const
 {
@@ -821,10 +833,11 @@ bool URemotePlaySessionComponent::Client_SendCommand(const avs::Command &avsComm
 	size_t commandSize = avs::GetCommandSize(avsCommand.commandPayloadType);
 	size_t listSize = sizeof(T) * appendedList.size();
 
-	ENetPacket* Packet = enet_packet_create(&avsCommand, commandSize, ENET_PACKET_FLAG_RELIABLE);
+	ENetPacket* Packet = enet_packet_create(&avsCommand, commandSize , ENET_PACKET_FLAG_RELIABLE);
+	enet_packet_resize(Packet, commandSize + listSize);
 	
 	//Copy list into packet.
-	enet_packet_resize(Packet, commandSize + listSize);
+	//enet_packet_resize(Packet, commandSize + listSize);
 	memcpy(Packet->data + commandSize, appendedList.data(), listSize);
 
 	check(Packet);

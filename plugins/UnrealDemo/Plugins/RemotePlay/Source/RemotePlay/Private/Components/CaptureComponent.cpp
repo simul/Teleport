@@ -140,7 +140,7 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 				u = Monitor->VideoEncodeFrequency;
 			}
 			else
-			{
+			{	
 				return;
 			}
 		}
