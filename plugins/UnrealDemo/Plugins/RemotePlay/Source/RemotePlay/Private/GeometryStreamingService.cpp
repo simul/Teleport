@@ -119,7 +119,7 @@ void FGeometryStreamingService::StopStreaming()
 	RemotePlayContext = nullptr;
 
 	sentResources.clear();
-	streamedActors.clear();
+	//streamedActors.clear();
 }
  
 void FGeometryStreamingService::Tick()
