@@ -320,12 +320,17 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 		return; 
 	} 
 	// Roderick: we create a DOUBLE-HEIGHT texture, and encode colour in the top half, depth in the bottom.
-	int32 streamWidth = std::max<int32>(Params.FrameWidth, Params.DepthWidth);
-	
-	int32  streamHeight= Params.FrameHeight + Params.DepthHeight;
+	int32 streamWidth;
+	int32  streamHeight;
 	if (Params.bDecomposeCube)
 	{
+		streamWidth = Params.FrameWidth;
 		streamHeight = Params.FrameHeight;
+	}
+	else
+	{
+		streamWidth = std::max<int32>(Params.FrameWidth, Params.DepthWidth);
+		streamHeight = Params.FrameHeight + Params.DepthHeight;
 	}
 	ColorSurfaceTexture.Texture = RHI.CreateSurfaceTexture(streamWidth, streamHeight, PixelFormat);
 	
