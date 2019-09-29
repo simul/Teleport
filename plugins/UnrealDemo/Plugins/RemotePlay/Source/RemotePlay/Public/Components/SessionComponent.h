@@ -59,6 +59,7 @@ private:
 	void RecvHandshake(const ENetPacket* Packet);
 	void RecvHeadPose(const ENetPacket* Packet);
 	void RecvInput(const ENetPacket* Packet);
+	void RecvClientMessage(const ENetPacket* Packet);
 
 	bool			Client_SendCommand(const FString& Cmd) const;
 	bool			Client_SendCommand(const avs::Command &avsSetup) const;

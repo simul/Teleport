@@ -96,6 +96,7 @@ enum ERemotePlaySessionChannel
 	RPCH_Control = 1,
 	RPCH_HeadPose = 2,
 	RPCH_Request = 3,
+	RPCH_ClientMessage = 4,
 	RPCH_NumChannels,
 };
 
@@ -591,6 +592,13 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 	}
 		
 		break;
+	case RPCH_ClientMessage:
+	{
+		RecvClientMessage(Event.packet);
+	}
+	break;
+	default:
+		break;
 	}
 	enet_packet_destroy(Event.packet);
 }
@@ -635,6 +643,36 @@ void URemotePlaySessionComponent::RecvHeadPose(const ENetPacket* Packet)
 	FQuat FlatPose = FQuat::MakeFromEuler(Euler);
 	check(PlayerController.IsValid());
 	PlayerController->SetControlRotation(FlatPose.Rotator());
+}
+
+void URemotePlaySessionComponent::RecvClientMessage(const ENetPacket* packet)
+{
+	avs::ClientMessagePayloadType clientMessagePayloadType = *((avs::ClientMessagePayloadType*)packet->data);
+	size_t cmdSize = avs::GetClientMessageSize(clientMessagePayloadType);
+	if (packet->dataLength != cmdSize)
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Received Client Message of length: %d"), packet->dataLength);
+		return;
+	}
+	switch (clientMessagePayloadType)
+	{
+		case avs::ClientMessagePayloadType::ActorStatus:
+		{
+			avs::ActorStatusClientMessage actorStatusClientMessage;
+			FPlatformMemory::Memcpy(&actorStatusClientMessage, packet->data, packet->dataLength);
+			if (actorStatusClientMessage.actorStatus == avs::ActorStatus::Drawn)
+			{
+				GeometryStreamingService.SetShowClientSideActor(actorStatusClientMessage.actor_uid, false);
+			}
+			else if (actorStatusClientMessage.actorStatus == avs::ActorStatus::WantToRelease)
+			{
+				GeometryStreamingService.SetShowClientSideActor(actorStatusClientMessage.actor_uid,true);
+			}
+		}
+		break;
+		default:
+			break;
+	};
 }
 
 void URemotePlaySessionComponent::RecvInput(const ENetPacket* Packet)
