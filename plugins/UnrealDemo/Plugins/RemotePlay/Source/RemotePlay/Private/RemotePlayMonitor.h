@@ -6,6 +6,8 @@
 #include "UObject/ObjectMacros.h"
 #include "GameFramework/Actor.h"
 
+#include "libavstream/common.hpp" //uid
+
 #include "RemotePlayMonitor.generated.h"
 
 // A runtime actor to enable control and monitoring of the global RemotePlay state.
@@ -82,7 +84,15 @@ public:
 	virtual void PostLoad() override;
 	virtual void PostRegisterAllComponents() override;
 	virtual void PostInitializeComponents() override;
+	virtual void BeginPlay() override;
+
+	inline avs::uid GetServerID()
+	{
+		return server_id;
+	}
 private:
 	static TMap<UWorld*, ARemotePlayMonitor*> Monitors;
+
+	avs::uid server_id = 0; //UID of the server; resets between sessions.
 };
 

@@ -413,8 +413,45 @@ void URemotePlaySessionComponent::StartStreaming()
 	setupCommand.port = StreamingPort; 
 	setupCommand.debug_stream=Monitor->DebugStream;
 	setupCommand.do_checksums = Monitor->Checksums?1:0;
-	Client_SendCommand(setupCommand);
-	//Client_SendCommand(FString::Printf(TEXT("v %d %d %d"), StreamingPort, EncodeParams.FrameWidth, EncodeParams.FrameHeight));
+	setupCommand.server_id = Monitor->GetServerID();
+
+	//Get resources the client will need to check it has.
+	std::vector<avs::MeshNodeResources> outMeshResources;
+	std::vector<avs::LightNodeResources> outLightResources;
+	GeometryStreamingService.GetResourcesToStream(outMeshResources, outLightResources);
+
+	std::vector<avs::uid> resourcesClientNeeds;
+	for(const avs::MeshNodeResources& meshResource : outMeshResources)
+	{
+		resourcesClientNeeds.push_back(meshResource.node_uid);
+		resourcesClientNeeds.push_back(meshResource.mesh_uid);
+		
+		for(const avs::MaterialResources& material : meshResource.materials)
+		{
+			resourcesClientNeeds.push_back(material.material_uid);
+
+			for(avs::uid texture_uid : material.texture_uids)
+			{
+				resourcesClientNeeds.push_back(texture_uid);
+			}
+		}
+	}
+	for(const avs::LightNodeResources& lightResource : outLightResources)
+	{
+		resourcesClientNeeds.push_back(lightResource.node_uid);
+		resourcesClientNeeds.push_back(lightResource.shadowmap_uid);
+	}
+
+	//Remove duplicates, and UIDs of 0.
+	std::sort(resourcesClientNeeds.begin(), resourcesClientNeeds.end());
+	resourcesClientNeeds.erase(std::unique(resourcesClientNeeds.begin(), resourcesClientNeeds.end()), resourcesClientNeeds.end());
+	resourcesClientNeeds.erase(std::remove(resourcesClientNeeds.begin(), resourcesClientNeeds.end(), 0), resourcesClientNeeds.end());
+
+	setupCommand.resourceCount = resourcesClientNeeds.size();
+
+	Client_SendCommand<avs::uid>(setupCommand, resourcesClientNeeds);
+
+	IsStreaming = true;
 }
 
 void URemotePlaySessionComponent::ReleasePlayerPawn()
@@ -459,39 +496,46 @@ void URemotePlaySessionComponent::StopStreaming()
 	}
 	delete RemotePlayContext;
 	RemotePlayContext = nullptr;
+	IsStreaming = false;
 }
 
 void URemotePlaySessionComponent::OnInnerSphereBeginOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	avs::uid actor_uid = GeometryStreamingService.AddActor(OtherActor);
-	if(actor_uid != 0)
+	if(IsStreaming)
 	{
-		//Don't tell the client to show an actor it has yet to receive. 
-		if(!GeometryStreamingService.HasResource(actor_uid))
+		avs::uid actor_uid = GeometryStreamingService.AddActor(OtherActor);
+		if(actor_uid != 0 && IsStreaming)
 		{
-			return;
+			//Don't tell the client to show an actor it has yet to receive. 
+			if(!GeometryStreamingService.HasResource(actor_uid))
+			{
+				return;
+			}
+
+			ActorsEnteredBounds.push_back(actor_uid);
+			ActorsLeftBounds.erase(std::remove(ActorsLeftBounds.begin(), ActorsLeftBounds.end(), actor_uid), ActorsLeftBounds.end());
+
+			UE_LOG(LogRemotePlay, Verbose, TEXT("\"%s\" overlapped with actor \"%s\"."), *OverlappedComponent->GetName(), *OtherActor->GetName());
 		}
-
-		ActorsEnteredBounds.push_back(actor_uid);
-		ActorsLeftBounds.erase(std::remove(ActorsLeftBounds.begin(), ActorsLeftBounds.end(), actor_uid), ActorsLeftBounds.end());
-
-		UE_LOG(LogRemotePlay, Verbose, TEXT("\"%s\" overlapped with actor \"%s\"."), *OverlappedComponent->GetName(), *OtherActor->GetName());
-	}
-	else
-	{
-		UE_LOG(LogRemotePlay, Warning, TEXT("Actor \"%s\" overlapped with \"%s\", but the actor is not supported! Only use supported component types, and check collision settings!"), *OverlappedComponent->GetName(), *OtherActor->GetName())
+		else
+		{
+			UE_LOG(LogRemotePlay, Warning, TEXT("Actor \"%s\" overlapped with \"%s\", but the actor is not supported! Only use supported component types, and check collision settings!"), *OverlappedComponent->GetName(), *OtherActor->GetName())
+		}
 	}
 }
 
 void URemotePlaySessionComponent::OnOuterSphereEndOverlap(UPrimitiveComponent * OverlappedComponent, AActor * OtherActor, UPrimitiveComponent * OtherComp, int32 OtherBodyIndex)
 {
-	avs::uid actor_uid = GeometryStreamingService.RemoveActor(OtherActor);
-	if(actor_uid != 0)
+	if(IsStreaming)
 	{
-		ActorsLeftBounds.push_back(actor_uid);
-		ActorsEnteredBounds.erase(std::remove(ActorsEnteredBounds.begin(), ActorsEnteredBounds.end(), actor_uid), ActorsEnteredBounds.end());
+		avs::uid actor_uid = GeometryStreamingService.RemoveActor(OtherActor);
+		if(actor_uid != 0)
+		{
+			ActorsLeftBounds.push_back(actor_uid);
+			ActorsEnteredBounds.erase(std::remove(ActorsEnteredBounds.begin(), ActorsEnteredBounds.end(), actor_uid), ActorsEnteredBounds.end());
 
-		UE_LOG(LogRemotePlay, Verbose, TEXT("\"%s\" ended overlap with actor \"%s\"."), *OverlappedComponent->GetName(), *OtherActor->GetName());
+			UE_LOG(LogRemotePlay, Verbose, TEXT("\"%s\" ended overlap with actor \"%s\"."), *OverlappedComponent->GetName(), *OtherActor->GetName());
+		}
 	}
 }
 
@@ -721,10 +765,19 @@ inline bool URemotePlaySessionComponent::Client_SendCommand(const FString& Cmd) 
 	return enet_peer_send(ClientPeer, RPCH_Control, Packet) == 0;
 }
 
-bool URemotePlaySessionComponent::Client_SendCommand(const avs::Command &avsCommand) const
+template<typename T>
+bool URemotePlaySessionComponent::Client_SendCommand(const avs::Command &avsCommand, std::vector<T>& appendedList) const
 {
 	check(ClientPeer);
-	ENetPacket* Packet = enet_packet_create(&avsCommand, avs::GetCommandSize(avsCommand.commandPayloadType), ENET_PACKET_FLAG_RELIABLE);
+	size_t commandSize = avs::GetCommandSize(avsCommand.commandPayloadType);
+	size_t listSize = sizeof(T) * appendedList.size();
+
+	ENetPacket* Packet = enet_packet_create(&avsCommand, commandSize, ENET_PACKET_FLAG_RELIABLE);
+	
+	//Copy list into packet.
+	enet_packet_resize(Packet, commandSize + listSize);
+	memcpy(Packet->data + commandSize, appendedList.data(), listSize);
+
 	check(Packet);
 	return enet_peer_send(ClientPeer, RPCH_Control, Packet) == 0;
 }

@@ -62,7 +62,8 @@ private:
 	void RecvClientMessage(const ENetPacket* Packet);
 
 	bool			Client_SendCommand(const FString& Cmd) const;
-	bool			Client_SendCommand(const avs::Command &avsSetup) const;
+	template<typename T>
+	bool			Client_SendCommand(const avs::Command &avsSetup, std::vector<T>& appendedList) const;
 	inline FString	Client_GetIPAddress() const;
 	inline uint16	Client_GetPort() const;
 	
@@ -95,6 +96,8 @@ private:
 
 	ENetHost* ServerHost;
 	ENetPeer* ClientPeer;
+
+	bool IsStreaming = false;
 
 	FRemotePlayDiscoveryService DiscoveryService;
 	FGeometryStreamingService GeometryStreamingService;

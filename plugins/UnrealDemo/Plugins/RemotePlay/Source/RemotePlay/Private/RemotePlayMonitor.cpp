@@ -91,3 +91,8 @@ void ARemotePlayMonitor::PostInitializeComponents()
 {
 	Super::PostInitializeComponents();
 }
+
+void ARemotePlayMonitor::BeginPlay()
+{
+	server_id = avs::GenerateUid();
+}
