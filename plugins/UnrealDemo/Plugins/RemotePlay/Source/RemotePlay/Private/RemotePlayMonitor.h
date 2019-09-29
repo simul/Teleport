@@ -58,6 +58,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	int32 GeometryBufferCutoffSize;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	uint32 bUseAsyncEncoding : 1;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
 	int32 DebugStream;
 
@@ -75,6 +78,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Compression)
 	uint8 CompressionLevel;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Rendering)
+	uint32 bDisableMainCamera : 1;
 
 
 	// In order:

@@ -1,4 +1,4 @@
-// Copyright 2018 Simul.co
+ // Copyright 2018 Simul.co
 #define WIN32_LEAN_AND_MEAN
 
 #include "EncodePipelineMonoscopic.h"
@@ -385,12 +385,13 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	
 	avs::EncoderParams EncoderParams = {};
 	EncoderParams.codec  = avs::VideoCodec::HEVC;
-	EncoderParams.preset = avs::VideoPreset::Default;
-	EncoderParams.idrInterval = Params.IDRInterval;
-	EncoderParams.targetFrameRate = Params.TargetFPS;
-	EncoderParams.averageBitrate = Params.AverageBitrate;
-	EncoderParams.maxBitrate = Params.MaxBitrate;
+	EncoderParams.preset = avs::VideoPreset::HighQuality;
+	EncoderParams.idrInterval = Params.IDRInterval * 1 / Monitor->VideoEncodeFrequency;
+	EncoderParams.targetFrameRate = Params.TargetFPS * 1 / Monitor->VideoEncodeFrequency;
+	EncoderParams.averageBitrate = Params.AverageBitrate * 1 / Monitor->VideoEncodeFrequency;
+	EncoderParams.maxBitrate = Params.MaxBitrate * 1 / Monitor->VideoEncodeFrequency;
 	EncoderParams.deferOutput = Params.bDeferOutput;
+	EncoderParams.asyncEncoding = Monitor->bUseAsyncEncoding;
 
 	Pipeline.Reset(new avs::Pipeline);
 	Encoders.SetNum(NumStreams);
