@@ -76,6 +76,12 @@ void URemotePlayCaptureComponent::EndPlay(const EEndPlayReason::Type Reason)
 void URemotePlayCaptureComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+	ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
+	if (Monitor->bDisableMainCamera)
+	{
+		CaptureScene();
+}
 }
 
 const FRemotePlayEncodeParameters &URemotePlayCaptureComponent::GetEncodeParams()
@@ -163,11 +169,13 @@ void URemotePlayCaptureComponent::StartStreaming(FRemotePlayContext *Context)
 {
 	RemotePlayContext = Context;
 
+	ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
 	if (!ViewportDrawnDelegateHandle.IsValid())
 	{
 		if (UGameViewportClient* GameViewport = GEngine->GameViewport)
 		{
 			ViewportDrawnDelegateHandle = GameViewport->OnDrawn().AddUObject(this, &URemotePlayCaptureComponent::OnViewportDrawn);
+			GameViewport->bDisableWorldRendering = Monitor->bDisableMainCamera;
 		}
 	}
 

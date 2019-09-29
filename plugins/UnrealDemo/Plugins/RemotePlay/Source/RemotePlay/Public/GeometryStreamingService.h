@@ -63,6 +63,8 @@ public:
 	//Returns uid of actor the client is no longer responsible for, or 0 if the actor was never being streamed.
 	avs::uid RemoveActor(AActor *oldActor);
 
+	bool IsStreamingActor(AActor* actor);
+
 	void SetShowClientSideActor(avs::uid actor_uid, bool show);
 
 	//Causes the controllers to be added to the list of streamed actors.

@@ -16,6 +16,7 @@
 DECLARE_STATS_GROUP(TEXT("RemotePlay_Game"), STATGROUP_RemotePlay, STATCAT_Advanced);
 
 #include "Engine/Classes/Components/SphereComponent.h"
+#include "Engine/Classes/Components/StaticMeshComponent.h"
 #include "TimerManager.h"
 
 #include <algorithm> //std::remove
@@ -220,6 +221,54 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 
 			timeSinceLastGeometryStream -= TIME_BETWEEN_GEOMETRY_TICKS;
 		}
+		
+		if(IsStreaming && DetectionSphereInner.IsValid())
+		{
+			TSet<AActor*> overlappingActors;
+			DetectionSphereInner->GetOverlappingActors(overlappingActors);
+
+			FBoxSphereBounds innerSphereBounds = DetectionSphereInner->CalcBounds(DetectionSphereInner->GetComponentTransform());
+			for(AActor* actor : overlappingActors)
+			{
+				if(GeometryStreamingService.IsStreamingActor(actor))
+				{
+					return;
+	}
+
+				UStaticMeshComponent* staticMesh = Cast<UStaticMeshComponent>(actor->GetComponentByClass(UStaticMeshComponent::StaticClass()));
+
+				if(staticMesh)
+				{
+					FBoxSphereBounds actorBounds = staticMesh->CalcBounds(staticMesh->GetComponentTransform());
+					
+					if(actorBounds.GetSphere().IsInside(innerSphereBounds.GetSphere()))
+					{
+						avs::uid actor_uid = GeometryStreamingService.AddActor(actor);
+						if(actor_uid != 0)
+						{
+							//Only tell the client to show an actor it been sent. 
+							if(GeometryStreamingService.HasResource(actor_uid))
+							{
+								ActorsEnteredBounds.push_back(actor_uid);
+								ActorsLeftBounds.erase(std::remove(ActorsLeftBounds.begin(), ActorsLeftBounds.end(), actor_uid), ActorsLeftBounds.end());
+
+								UE_LOG(LogRemotePlay, Verbose, TEXT("Overlapped with actor \"%s\"."), *actor->GetName());
+							}
+						}
+	else
+	{
+							UE_LOG(LogRemotePlay, Warning, TEXT("Overlapped with \"%s\", but the actor is not supported! Only use supported component types, and check collision settings!"), *actor->GetName());
+						}
+					}
+				}
+			}
+		
+			FBoxSphereBounds outerSphereBounds = DetectionSphereInner->CalcBounds(DetectionSphereInner->GetComponentTransform());
+			for(AActor* actor : streamedActors)
+			{
+				///Remove actors when they're no longer fully encompassed by outer sphere.
+			}
+		}
 	}
 	else
 	{
@@ -349,7 +398,7 @@ void URemotePlaySessionComponent::SwitchPlayerPawn(APawn* NewPawn)
 		//Attach streamable geometry detection spheres to player pawn.
 		{
 			DetectionSphereInner = NewObject<USphereComponent>(PlayerPawn.Get(), "InnerSphere");
-			DetectionSphereInner->OnComponentBeginOverlap.AddDynamic(this, &URemotePlaySessionComponent::OnInnerSphereBeginOverlap);
+			//DetectionSphereInner->OnComponentBeginOverlap.AddDynamic(this, &URemotePlaySessionComponent::OnInnerSphereBeginOverlap);
 			DetectionSphereInner->SetCollisionProfileName("RemotePlaySensor");
 			DetectionSphereInner->SetGenerateOverlapEvents(true);
 			DetectionSphereInner->SetSphereRadius(0); //Set to zero, so it doesn't clear the actor list on creation.

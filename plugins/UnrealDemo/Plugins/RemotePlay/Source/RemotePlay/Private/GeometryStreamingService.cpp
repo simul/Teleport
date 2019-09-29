@@ -187,6 +187,11 @@ avs::uid FGeometryStreamingService::RemoveActor(AActor *oldActor)
 	return actor_uid;
 }
 
+bool FGeometryStreamingService::IsStreamingActor(AActor* actor)
+{
+	return actorUids.find(GetLevelUniqueActorName(actor)) != actorUids.end();
+}
+
 void FGeometryStreamingService::AddControllersToStream()
 {
 	const std::vector<avs::uid>& handUIDs = geometrySource->GetHandActorUIDs();

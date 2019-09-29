@@ -1,3 +1,4 @@
+
 #include "RemotePlayMonitor.h"
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
@@ -37,6 +38,10 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 	CompressionLevel = 1;
 
 	ExpectedLag = 1;
+
+	bUseAsyncEncoding = true;
+
+	bDisableMainCamera = false;
 }
 
 
