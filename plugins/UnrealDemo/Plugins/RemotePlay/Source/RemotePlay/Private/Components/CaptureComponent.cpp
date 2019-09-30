@@ -13,6 +13,7 @@
 #include "RemotePlaySettings.h"
 #include "RemotePlayMonitor.h"
 #include "RemotePlayReflectionCaptureComponent.h"
+#include "ContentStreaming.h"
 
 URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 	: bRenderOwner(false)
@@ -21,7 +22,7 @@ URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 	, bIsStreaming(false)
 {
 	PrimaryComponentTick.bCanEverTick = true;
-	bCaptureEveryFrame = false;
+	bCaptureEveryFrame = true;
 	bCaptureOnMovement = false; 
 
 	EncodeParams.FrameWidth = 3840;
@@ -46,6 +47,12 @@ URemotePlayCaptureComponent::~URemotePlayCaptureComponent()
 
 void URemotePlayCaptureComponent::BeginPlay()
 {
+	// Make sure that there is enough time in the render queue.
+	UKismetSystemLibrary::ExecuteConsoleCommand(GetWorld(), FString("g.TimeoutForBlockOnRenderFence 300000"));
+
+	ShowFlags.EnableAdvancedFeatures();
+	ShowFlags.SetAntiAliasing(true);
+
 	if (TextureTarget && !TextureTarget->bCanCreateUAV)
 	{
 		TextureTarget->bCanCreateUAV = true;
@@ -77,8 +84,15 @@ void URemotePlayCaptureComponent::TickComponent(float DeltaTime, ELevelTick Tick
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
+	// Aidan: Below allows the capture to avail of Unreal's texture streaming
+	// Add the view information every tick because its only used for one tick and then
+	// removed by the streaming manager.
+	int32 W = TextureTarget->GetSurfaceWidth();
+	float FOV = 90.0f;
+	IStreamingManager::Get().AddViewInformation(GetComponentLocation(), W, W / FMath::Tan(FOV));
+
 	ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
-	if (Monitor->bDisableMainCamera)
+	if (bCaptureEveryFrame && Monitor && Monitor->bDisableMainCamera)
 	{
 		CaptureScene();
 	}
@@ -201,6 +215,7 @@ void URemotePlayCaptureComponent::StopStreaming()
 	}
 
 	RemotePlayContext = nullptr;
+
 	bCaptureEveryFrame = false;
 	UE_LOG(LogRemotePlay, Log, TEXT("Capture: Stopped streaming"));
 }
