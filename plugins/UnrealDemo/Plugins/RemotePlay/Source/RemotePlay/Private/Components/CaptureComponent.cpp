@@ -48,7 +48,7 @@ URemotePlayCaptureComponent::~URemotePlayCaptureComponent()
 void URemotePlayCaptureComponent::BeginPlay()
 {
 	// Make sure that there is enough time in the render queue.
-	UKismetSystemLibrary::ExecuteConsoleCommand(GetWorld(), FString("g.TimeoutForBlockOnRenderFence 300000"));
+	//UKismetSystemLibrary::ExecuteConsoleCommand(GetWorld(), FString("g.TimeoutForBlockOnRenderFence 300000"));
 
 	ShowFlags.EnableAdvancedFeatures();
 	ShowFlags.SetAntiAliasing(true);
@@ -118,6 +118,22 @@ const FRemotePlayEncodeParameters &URemotePlayCaptureComponent::GetEncodeParams(
 
 void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Scene)
 {
+
+	ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
+	if (Monitor&&Monitor->VideoEncodeFrequency > 1)
+	{
+		static int u = 1;
+		u--;
+		u = std::min(Monitor->VideoEncodeFrequency, u);
+		if (!u)
+		{
+			u = Monitor->VideoEncodeFrequency;
+		}
+		else
+		{
+			return;
+		}
+	}
 	// Aidan: The parent function belongs to SceneCaptureComponentCube and is located in SceneCaptureComponent.cpp. 
 	// The parent function calls UpdateSceneCaptureContents function in SceneCaptureRendering.cpp.
 	// UpdateSceneCaptureContents enqueues the rendering commands to render to the scene capture cube's render target.
@@ -129,8 +145,6 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 
 	if (TextureTarget&&RemotePlayContext)
 	{
-
-		ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
 		if (!RemotePlayContext->EncodePipeline.IsValid())
 		{
 			EncodeParams.bDeferOutput = Monitor->DeferOutput;
@@ -143,24 +157,9 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 				RemotePlayReflectionCaptureComponent->bAttached = true;
 			}
 		}
-
-		if (Monitor&&Monitor->VideoEncodeFrequency > 1)
-		{
-			static int u = 1;
-			u--; 
-			u = std::min(Monitor->VideoEncodeFrequency, u); 
-			if (!u)
-			{
-				u = Monitor->VideoEncodeFrequency;
-			}
-			else
-			{	
-				return;
-			}
-		}
 		FTransform Transform = GetComponentTransform();
 		 
-		RemotePlayContext->EncodePipeline->PrepareFrame(Scene, TextureTarget);
+		RemotePlayContext->EncodePipeline->PrepareFrame(Scene, TextureTarget, Transform);
 		if (RemotePlayReflectionCaptureComponent && EncodeParams.bDecomposeCube)
 		{
 			RemotePlayReflectionCaptureComponent->UpdateContents(
@@ -177,7 +176,6 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 		RemotePlayContext->EncodePipeline->EncodeFrame(Scene, TextureTarget, Transform);
 	}
 }
-
 
 void URemotePlayCaptureComponent::StartStreaming(FRemotePlayContext *Context)
 {
