@@ -204,7 +204,7 @@ void FEncodePipelineMonoscopic::PrepareFrame(FSceneInterface* InScene, UTexture*
 		[this, CameraTransform, TargetResource, FeatureLevel](FRHICommandListImmediate& RHICmdList)
 		{
 			SCOPED_DRAW_EVENT(RHICmdList, RemotePlayEncodePipelineMonoscopicPrepare);
-			PrepareFrame_RenderThread(RHICmdList, TargetResource, FeatureLevel, CameraTransform.GetTranslation()*0.01f);
+			PrepareFrame_RenderThread(RHICmdList, TargetResource, FeatureLevel, CameraTransform.GetTranslation());
 		}
 	);
 }
@@ -401,7 +401,7 @@ void FEncodePipelineMonoscopic::PrepareFrame_RenderThread(
 	FRHICommandListImmediate& RHICmdList,
 	FTextureRenderTargetResource* TargetResource,
 	ERHIFeatureLevel::Type FeatureLevel,
-	FVector CameraPositionMetres)
+	FVector CameraPosition)
 {
 	if (!UnorderedAccessViewRHIRef || !UnorderedAccessViewRHIRef->IsValid() || TargetResource->TextureRHI != SourceCubemapRHI)
 	{
@@ -411,7 +411,7 @@ void FEncodePipelineMonoscopic::PrepareFrame_RenderThread(
 	{
 		if (Params.bDecomposeCube)
 		{
-			DispatchDecomposeCubemapShader(RHICmdList, TargetResource->TextureRHI, UnorderedAccessViewRHIRef, FeatureLevel, CameraPositionMetres);
+			DispatchDecomposeCubemapShader(RHICmdList, TargetResource->TextureRHI, UnorderedAccessViewRHIRef, FeatureLevel, CameraPosition);
 		}
 	}
 }
@@ -457,8 +457,12 @@ void FEncodePipelineMonoscopic::DispatchProjectCubemapShader(FRHICommandListImme
 
 void FEncodePipelineMonoscopic::DispatchDecomposeCubemapShader(FRHICommandListImmediate& RHICmdList, FTextureRHIRef TextureRHI
 	, FUnorderedAccessViewRHIRef TextureUAVRHI, ERHIFeatureLevel::Type FeatureLevel
-	,FVector CameraPositionMetres)
+	,FVector CameraPosition)
 {
+	FVector  t = CameraPosition *0.01f;
+	avs::vec3 pos_m ={t.X,t.Y,t.Z};
+	avs::ConvertPosition(avs::AxesStandard::UnrealStyle, RemotePlayContext->axesStandard, pos_m);
+	const FVector &CameraPositionMetres =*((const FVector*)&pos_m);
 	TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 	typedef FProjectCubemapCS<EProjectCubemapVariant::DecomposeCubemaps> ShaderType;
 	typedef FProjectCubemapCS<EProjectCubemapVariant::DecomposeDepth> DepthShaderType;
@@ -473,7 +477,7 @@ void FEncodePipelineMonoscopic::DispatchDecomposeCubemapShader(FRHICommandListIm
 		TShaderMapRef<ShaderType> ComputeShader(GlobalShaderMap);
 		ComputeShader->SetInputsAndOutputs(RHICmdList, TextureRHI, TextureUAVRHI,
 			ColorSurfaceTexture.Texture, ColorSurfaceTexture.UAV);
-		ComputeShader->SetParameters(RHICmdList, FIntPoint(0, 0),CameraPositionMetres);
+		ComputeShader->SetParameters(RHICmdList, FIntPoint(0, 0), CameraPositionMetres);
 		SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*ComputeShader));
 		DispatchComputeShader(RHICmdList, *ComputeShader, NumThreadGroupsX, NumThreadGroupsY, NumThreadGroupsZ);
 		ComputeShader->UnsetParameters(RHICmdList);
