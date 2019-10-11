@@ -31,11 +31,7 @@ DECLARE_FLOAT_COUNTER_STAT(TEXT("RemotePlayEncodePipelineMonoscopic"), Stat_GPU_
 
 enum class EProjectCubemapVariant
 {
-	Color,
-	ColorAndDepth,
-	ColorAndLinearDepth,
-	ColorAndLinearDepthToTexture,
-	ColorAndLinearDepthStacked,
+	EncodeCameraPosition,
 	DecomposeCubemaps,
 	DecomposeDepth
 };
@@ -56,7 +52,6 @@ public:
 		OutEnvironment.SetDefine(TEXT("THREADGROUP_SIZEY"), kThreadGroupSize);
 		OutEnvironment.SetDefine(TEXT("WRITE_DEPTH"), bWriteDepth ? 1 : 0);
 		OutEnvironment.SetDefine(TEXT("WRITE_DEPTH_LINEAR"), bWriteLinearDepth ? 1 : 0);
-		OutEnvironment.SetDefine(TEXT("DEPTH_STACKED"), bWriteStacked ? 1 : 0);
 	}
 
 	FProjectCubemapCS() = default;
@@ -67,71 +62,42 @@ public:
 		RWInputCubeAsArray.Bind(Initializer.ParameterMap, TEXT("InputCubeAsArray"));
 		DefaultSampler.Bind(Initializer.ParameterMap, TEXT("DefaultSampler"));
 		OutputColorTexture.Bind(Initializer.ParameterMap, TEXT("OutputColorTexture"));
-
-		if(bWriteDepth)
-		{
-			OutputDepthTexture.Bind(Initializer.ParameterMap, TEXT("OutputDepthTexture"));
-		}
-		if(bWriteLinearDepth)
-		{
-			WorldZToDeviceZTransform.Bind(Initializer.ParameterMap, TEXT("WorldZToDeviceZTransform"));
-		}
-		if (bWriteStacked)
-		{
-			DepthPos.Bind(Initializer.ParameterMap, TEXT("DepthPos"));
-		}
-		if (bDecomposeCubemaps)
-		{
-			Offset.Bind(Initializer.ParameterMap, TEXT("Offset"));
-		}
+		Offset.Bind(Initializer.ParameterMap, TEXT("Offset"));
+		CubemapCameraPositionMetres.Bind(Initializer.ParameterMap, TEXT("CubemapCameraPositionMetres"));
 	}
 	 
-	void SetParameters(
+	void SetInputsAndOutputs(
 		FRHICommandList& RHICmdList,
 		FTextureRHIRef InputCubeMapTextureRef,
 		FUnorderedAccessViewRHIRef InputCubeMapTextureUAVRef,
 		FTexture2DRHIRef OutputColorTextureRef,
-		FUnorderedAccessViewRHIRef OutputColorTextureUAVRef,
-		FTexture2DRHIRef OutputDepthTextureRef,
-		FUnorderedAccessViewRHIRef OutputDepthTextureUAVRef,
-		const FVector2D& InWorldZToDeviceZTransform,
-		const FIntPoint& InOffset,
-		uint32_t InDepthPos)
+		FUnorderedAccessViewRHIRef OutputColorTextureUAVRef)
 	{
 		FComputeShaderRHIParamRef ShaderRHI = GetComputeShader();
 		if (bDecomposeCubemaps)
 		{
 			RWInputCubeAsArray.SetTexture(RHICmdList, ShaderRHI, InputCubeMapTextureRef, InputCubeMapTextureUAVRef);
 			check(RWInputCubeAsArray.IsUAVBound());
-			SetShaderValue(RHICmdList, ShaderRHI, Offset, InOffset);
 		}
 		else
 		{
 			SetTextureParameter(RHICmdList, ShaderRHI, InputCubeMap, DefaultSampler, TStaticSamplerState<SF_Bilinear>::GetRHI(), InputCubeMapTextureRef);
 		}
 		OutputColorTexture.SetTexture(RHICmdList, ShaderRHI, OutputColorTextureRef, OutputColorTextureUAVRef);
-		if(bWriteDepthTexture)
-		{
-			OutputDepthTexture.SetTexture(RHICmdList, ShaderRHI, OutputDepthTextureRef, OutputDepthTextureUAVRef);
-		}
-		if(bWriteLinearDepth)
-		{
-			SetShaderValue(RHICmdList, ShaderRHI, WorldZToDeviceZTransform, InWorldZToDeviceZTransform);
-		}
-		if (bWriteStacked)
-		{
-			SetShaderValue(RHICmdList, ShaderRHI, DepthPos, InDepthPos);
-		}
+	}
+	void SetParameters(
+		FRHICommandList& RHICmdList,const FIntPoint& InOffset,
+		const FVector& InCubemapCameraPositionMetres)
+	{
+		FComputeShaderRHIParamRef ShaderRHI = GetComputeShader();
+		SetShaderValue(RHICmdList, ShaderRHI, Offset, InOffset);
+		SetShaderValue(RHICmdList, ShaderRHI, CubemapCameraPositionMetres, InCubemapCameraPositionMetres);
 	}
 
 	void UnsetParameters(FRHICommandList& RHICmdList)
 	{
 		FComputeShaderRHIParamRef ShaderRHI = GetComputeShader();
 		OutputColorTexture.UnsetUAV(RHICmdList, ShaderRHI);
-		if(bWriteDepth)
-		{
-			OutputDepthTexture.UnsetUAV(RHICmdList, ShaderRHI);
-		}
 		RWInputCubeAsArray.UnsetUAV(RHICmdList, ShaderRHI);
 	}
 
@@ -142,27 +108,14 @@ public:
 		Ar << RWInputCubeAsArray;
 		Ar << DefaultSampler;
 		Ar << OutputColorTexture;
-		if(bWriteDepthTexture)
-		{
-			Ar << OutputDepthTexture;
-		}
-		if(bWriteLinearDepth)
-		{
-			Ar << WorldZToDeviceZTransform;
-		}
-		if (bWriteStacked)
-		{
-			Ar << DepthPos;
-		}
 		Ar << Offset;
+		Ar << CubemapCameraPositionMetres;
 		return bShaderHasOutdatedParameters;
 	}
 
 	static const uint32 kThreadGroupSize = 16;
-	static const bool bWriteDepth = (Variant != EProjectCubemapVariant::Color);
-	static const bool bWriteLinearDepth = (Variant == EProjectCubemapVariant::ColorAndLinearDepth || Variant == EProjectCubemapVariant::ColorAndLinearDepthToTexture || Variant == EProjectCubemapVariant::ColorAndLinearDepthStacked);
-	static const bool bWriteDepthTexture = (Variant == EProjectCubemapVariant::ColorAndLinearDepthToTexture);
-	static const bool bWriteStacked = (Variant == EProjectCubemapVariant::ColorAndLinearDepthStacked);
+	static const bool bWriteDepth = true;
+	static const bool bWriteLinearDepth =true;
 	static const bool bDecomposeCubemaps = (Variant == EProjectCubemapVariant::DecomposeCubemaps||Variant==EProjectCubemapVariant::DecomposeDepth);
 
 private:
@@ -170,17 +123,11 @@ private:
 	FRWShaderParameter RWInputCubeAsArray;
 	FShaderResourceParameter DefaultSampler;
 	FRWShaderParameter OutputColorTexture; 
-	FRWShaderParameter OutputDepthTexture;
-	FShaderParameter WorldZToDeviceZTransform;
-	FShaderParameter DepthPos;
-	FShaderParameter Offset;
+	FShaderParameter CubemapCameraPositionMetres;
+	FShaderParameter Offset; 
 };
 
-IMPLEMENT_SHADER_TYPE(, FProjectCubemapCS<EProjectCubemapVariant::Color>, TEXT("/Plugin/RemotePlay/Private/ProjectCubemap.usf"), TEXT("MainCS"), SF_Compute)
-IMPLEMENT_SHADER_TYPE(, FProjectCubemapCS<EProjectCubemapVariant::ColorAndDepth>,  TEXT("/Plugin/RemotePlay/Private/ProjectCubemap.usf"), TEXT("MainCS"), SF_Compute)
-IMPLEMENT_SHADER_TYPE(, FProjectCubemapCS<EProjectCubemapVariant::ColorAndLinearDepth>,  TEXT("/Plugin/RemotePlay/Private/ProjectCubemap.usf"), TEXT("MainCS"), SF_Compute)
-IMPLEMENT_SHADER_TYPE(, FProjectCubemapCS<EProjectCubemapVariant::ColorAndLinearDepthStacked>, TEXT("/Plugin/RemotePlay/Private/ProjectCubemap.usf"), TEXT("MainCS"), SF_Compute)
-IMPLEMENT_SHADER_TYPE(, FProjectCubemapCS<EProjectCubemapVariant::ColorAndLinearDepthToTexture>, TEXT("/Plugin/RemotePlay/Private/ProjectCubemap.usf"), TEXT("MainCS"), SF_Compute)
+IMPLEMENT_SHADER_TYPE(, FProjectCubemapCS<EProjectCubemapVariant::EncodeCameraPosition>, TEXT("/Plugin/RemotePlay/Private/ProjectCubemap.usf"), TEXT("EncodeCameraPositionCS"), SF_Compute)
 IMPLEMENT_SHADER_TYPE(, FProjectCubemapCS<EProjectCubemapVariant::DecomposeCubemaps>, TEXT("/Plugin/RemotePlay/Private/ProjectCubemap.usf"), TEXT("DecomposeCS"), SF_Compute)
 IMPLEMENT_SHADER_TYPE(, FProjectCubemapCS<EProjectCubemapVariant::DecomposeDepth>, TEXT("/Plugin/RemotePlay/Private/ProjectCubemap.usf"), TEXT("DecomposeDepthCS"), SF_Compute)
 
@@ -242,7 +189,7 @@ void FEncodePipelineMonoscopic::Release()
 	DepthQueue = nullptr;
 }
 
-void FEncodePipelineMonoscopic::PrepareFrame(FSceneInterface* InScene, UTexture* InSourceTexture)
+void FEncodePipelineMonoscopic::PrepareFrame(FSceneInterface* InScene, UTexture* InSourceTexture, FTransform& CameraTransform)
 {
 	if (!InScene || !InSourceTexture)
 	{
@@ -254,10 +201,10 @@ void FEncodePipelineMonoscopic::PrepareFrame(FSceneInterface* InScene, UTexture*
 	auto SourceTarget = CastChecked<UTextureRenderTargetCube>(InSourceTexture);
 	FTextureRenderTargetResource* TargetResource = SourceTarget->GameThread_GetRenderTargetResource();
 	ENQUEUE_RENDER_COMMAND(RemotePlayPrepareFrame)(
-		[this, TargetResource, FeatureLevel](FRHICommandListImmediate& RHICmdList)
+		[this, CameraTransform, TargetResource, FeatureLevel](FRHICommandListImmediate& RHICmdList)
 		{
 			SCOPED_DRAW_EVENT(RHICmdList, RemotePlayEncodePipelineMonoscopicPrepare);
-			PrepareFrame_RenderThread(RHICmdList, TargetResource, FeatureLevel);
+			PrepareFrame_RenderThread(RHICmdList, TargetResource, FeatureLevel, CameraTransform.GetTranslation());
 		}
 	);
 }
@@ -320,12 +267,17 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 		return; 
 	} 
 	// Roderick: we create a DOUBLE-HEIGHT texture, and encode colour in the top half, depth in the bottom.
-	int32 streamWidth = std::max<int32>(Params.FrameWidth, Params.DepthWidth);
-	
-	int32  streamHeight= Params.FrameHeight + Params.DepthHeight;
+	int32 streamWidth;
+	int32  streamHeight;
 	if (Params.bDecomposeCube)
 	{
+		streamWidth = Params.FrameWidth;
 		streamHeight = Params.FrameHeight;
+	}
+	else
+	{
+		streamWidth = std::max<int32>(Params.FrameWidth, Params.DepthWidth);
+		streamHeight = Params.FrameHeight + Params.DepthHeight;
 	}
 	ColorSurfaceTexture.Texture = RHI.CreateSurfaceTexture(streamWidth, streamHeight, PixelFormat);
 	
@@ -385,12 +337,21 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	
 	avs::EncoderParams EncoderParams = {};
 	EncoderParams.codec  = avs::VideoCodec::HEVC;
-	EncoderParams.preset = avs::VideoPreset::Default;
+#if 0//def AIDAN_NEW
+	EncoderParams.preset = avs::VideoPreset::HighPerformance;
+	EncoderParams.idrInterval = Params.IDRInterval * 1 / Monitor->VideoEncodeFrequency;
+	EncoderParams.targetFrameRate = Params.TargetFPS * 1 / Monitor->VideoEncodeFrequency;
+	EncoderParams.averageBitrate = Params.AverageBitrate * 1 / Monitor->VideoEncodeFrequency;
+	EncoderParams.maxBitrate = Params.MaxBitrate * 1 / Monitor->VideoEncodeFrequency;
+#else
+	EncoderParams.preset = avs::VideoPreset::HighPerformance;
 	EncoderParams.idrInterval = Params.IDRInterval;
 	EncoderParams.targetFrameRate = Params.TargetFPS;
 	EncoderParams.averageBitrate = Params.AverageBitrate;
 	EncoderParams.maxBitrate = Params.MaxBitrate;
+#endif
 	EncoderParams.deferOutput = Params.bDeferOutput;
+	EncoderParams.asyncEncoding = Monitor->bUseAsyncEncoding;
 
 	Pipeline.Reset(new avs::Pipeline);
 	Encoders.SetNum(NumStreams);
@@ -420,7 +381,7 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 		{
 			Encoders[i].setCameraTransform(Transform);
 		}
-}
+	}
 }
 	
 void FEncodePipelineMonoscopic::Release_RenderThread(FRHICommandListImmediate& RHICmdList)
@@ -439,32 +400,18 @@ void FEncodePipelineMonoscopic::Release_RenderThread(FRHICommandListImmediate& R
 void FEncodePipelineMonoscopic::PrepareFrame_RenderThread(
 	FRHICommandListImmediate& RHICmdList,
 	FTextureRenderTargetResource* TargetResource,
-	ERHIFeatureLevel::Type FeatureLevel)
+	ERHIFeatureLevel::Type FeatureLevel,
+	FVector CameraPosition)
 {
 	if (!UnorderedAccessViewRHIRef || !UnorderedAccessViewRHIRef->IsValid() || TargetResource->TextureRHI != SourceCubemapRHI)
 	{
 		UnorderedAccessViewRHIRef =  RHICmdList.CreateUnorderedAccessView(TargetResource->TextureRHI, 0);
 		SourceCubemapRHI = TargetResource->TextureRHI;
 	}
-	if(DepthQueue)
-	{
-		{
-			DispatchProjectCubemapShader<FProjectCubemapCS<EProjectCubemapVariant::ColorAndLinearDepthToTexture>>(RHICmdList, TargetResource->TextureRHI, UnorderedAccessViewRHIRef, FeatureLevel);
-		}
-	}
-	else
 	{
 		if (Params.bDecomposeCube)
 		{
-			DispatchDecomposeCubemapShader(RHICmdList, TargetResource->TextureRHI, UnorderedAccessViewRHIRef, FeatureLevel);
-		}
-		else if (Params.bStackDepth)
-		{
-			DispatchProjectCubemapShader<FProjectCubemapCS<EProjectCubemapVariant::ColorAndLinearDepthStacked>>(RHICmdList, TargetResource->TextureRHI, UnorderedAccessViewRHIRef, FeatureLevel);
-		}
-		else
-		{
-			DispatchProjectCubemapShader<FProjectCubemapCS<EProjectCubemapVariant::ColorAndDepth>>(RHICmdList, TargetResource->TextureRHI, UnorderedAccessViewRHIRef, FeatureLevel);
+			DispatchDecomposeCubemapShader(RHICmdList, TargetResource->TextureRHI, UnorderedAccessViewRHIRef, FeatureLevel, CameraPosition);
 		}
 	}
 }
@@ -501,19 +448,26 @@ void FEncodePipelineMonoscopic::DispatchProjectCubemapShader(FRHICommandListImme
 	TShaderMapRef<ShaderType> ComputeShader(GlobalShaderMap);
 	ComputeShader->SetParameters(RHICmdList, TextureRHI, TextureUAVRHI,
 		ColorSurfaceTexture.Texture, ColorSurfaceTexture.UAV,
-		DepthSurfaceTexture.Texture, DepthSurfaceTexture.UAV,
-		WorldZToDeviceZTransform, FIntPoint(0, 0), Params.FrameHeight);
+		 FIntPoint(0, 0));
 	SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*ComputeShader));
 	DispatchComputeShader(RHICmdList, *ComputeShader, NumThreadGroupsX, NumThreadGroupsY, NumThreadGroupsZ);
 
 	ComputeShader->UnsetParameters(RHICmdList);
 }
 
-void FEncodePipelineMonoscopic::DispatchDecomposeCubemapShader(FRHICommandListImmediate& RHICmdList, FTextureRHIRef TextureRHI, FUnorderedAccessViewRHIRef TextureUAVRHI, ERHIFeatureLevel::Type FeatureLevel)
+void FEncodePipelineMonoscopic::DispatchDecomposeCubemapShader(FRHICommandListImmediate& RHICmdList, FTextureRHIRef TextureRHI
+	, FUnorderedAccessViewRHIRef TextureUAVRHI, ERHIFeatureLevel::Type FeatureLevel
+	,FVector CameraPosition)
 {
+	FVector  t = CameraPosition *0.01f;
+	avs::vec3 pos_m ={t.X,t.Y,t.Z};
+	avs::ConvertPosition(avs::AxesStandard::UnrealStyle, RemotePlayContext->axesStandard, pos_m);
+	const FVector &CameraPositionMetres =*((const FVector*)&pos_m);
 	TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 	typedef FProjectCubemapCS<EProjectCubemapVariant::DecomposeCubemaps> ShaderType;
 	typedef FProjectCubemapCS<EProjectCubemapVariant::DecomposeDepth> DepthShaderType;
+	typedef FProjectCubemapCS<EProjectCubemapVariant::EncodeCameraPosition> EncodeCameraPositionShaderType;
+	
 	int W = SourceCubemapRHI->GetSizeXYZ().X;
 	{
 		const uint32 NumThreadGroupsX = W / ShaderType::kThreadGroupSize;
@@ -521,10 +475,9 @@ void FEncodePipelineMonoscopic::DispatchDecomposeCubemapShader(FRHICommandListIm
 		const uint32 NumThreadGroupsZ = CubeFace_MAX;
 
 		TShaderMapRef<ShaderType> ComputeShader(GlobalShaderMap);
-		ComputeShader->SetParameters(RHICmdList, TextureRHI, TextureUAVRHI,
-			ColorSurfaceTexture.Texture, ColorSurfaceTexture.UAV,
-			DepthSurfaceTexture.Texture, DepthSurfaceTexture.UAV,
-			WorldZToDeviceZTransform, FIntPoint(0, 0), Params.FrameHeight);
+		ComputeShader->SetInputsAndOutputs(RHICmdList, TextureRHI, TextureUAVRHI,
+			ColorSurfaceTexture.Texture, ColorSurfaceTexture.UAV);
+		ComputeShader->SetParameters(RHICmdList, FIntPoint(0, 0), CameraPositionMetres);
 		SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*ComputeShader));
 		DispatchComputeShader(RHICmdList, *ComputeShader, NumThreadGroupsX, NumThreadGroupsY, NumThreadGroupsZ);
 		ComputeShader->UnsetParameters(RHICmdList);
@@ -535,15 +488,27 @@ void FEncodePipelineMonoscopic::DispatchDecomposeCubemapShader(FRHICommandListIm
 		const uint32 NumThreadGroupsY = W/2 / ShaderType::kThreadGroupSize;
 		const uint32 NumThreadGroupsZ = CubeFace_MAX;
 		TShaderMapRef<DepthShaderType> DepthShader(GlobalShaderMap);
-		DepthShader->SetParameters(RHICmdList, TextureRHI, TextureUAVRHI,
-			ColorSurfaceTexture.Texture, ColorSurfaceTexture.UAV,
-			DepthSurfaceTexture.Texture, DepthSurfaceTexture.UAV,
-			WorldZToDeviceZTransform, FIntPoint(0, W*2), W*2);
+		DepthShader->SetInputsAndOutputs(RHICmdList, TextureRHI, TextureUAVRHI,
+			ColorSurfaceTexture.Texture, ColorSurfaceTexture.UAV);
+		DepthShader->SetParameters(RHICmdList, FIntPoint(0, W * 2), CameraPositionMetres);
 		SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*DepthShader));
 		DispatchComputeShader(RHICmdList, *DepthShader, NumThreadGroupsX, NumThreadGroupsY, NumThreadGroupsZ);
 		DepthShader->UnsetParameters(RHICmdList);
 	}
-	
 
+
+	{
+		const uint32 NumThreadGroupsX = 4;
+		const uint32 NumThreadGroupsY = 1;
+		const uint32 NumThreadGroupsZ = 1;
+		TShaderMapRef<EncodeCameraPositionShaderType> EncodePosShader(GlobalShaderMap);
+		EncodePosShader->SetInputsAndOutputs(RHICmdList, TextureRHI, TextureUAVRHI,
+			ColorSurfaceTexture.Texture, ColorSurfaceTexture.UAV);
+		EncodePosShader->SetParameters(RHICmdList, FIntPoint(W*3-(32*4), W * 3-(3*8)), CameraPositionMetres);
+		SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*EncodePosShader));
+		DispatchComputeShader(RHICmdList, *EncodePosShader, NumThreadGroupsX, NumThreadGroupsY, NumThreadGroupsZ);
+		EncodePosShader->UnsetParameters(RHICmdList);
+	}
+	
 }
 

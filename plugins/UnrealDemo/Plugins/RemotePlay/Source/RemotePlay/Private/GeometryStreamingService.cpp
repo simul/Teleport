@@ -119,6 +119,12 @@ void FGeometryStreamingService::StopStreaming()
 	RemotePlayContext = nullptr;
 
 	sentResources.clear();
+	actorUids.clear();
+	for (auto i : streamedActors)
+	{
+		if (i.second)
+			i.second->SetActorHiddenInGame(false);
+	}
 	streamedActors.clear();
 }
  
@@ -143,6 +149,14 @@ void FGeometryStreamingService::Reset()
 {
 	sentResources.clear();
 	streamedActors.clear();
+	actorUids.clear();
+}
+
+void FGeometryStreamingService::SetShowClientSideActor(avs::uid actor_uid,bool show)
+{
+	AActor *a = streamedActors[actor_uid];
+	if (a)
+		a->SetActorHiddenInGame(!show);
 }
 
 avs::uid FGeometryStreamingService::AddActor(AActor *newActor)
@@ -151,7 +165,8 @@ avs::uid FGeometryStreamingService::AddActor(AActor *newActor)
 	
 	if(actor_uid != 0)
 	{
-		streamedActors[GetLevelUniqueActorName(newActor)] = actor_uid;
+		actorUids[GetLevelUniqueActorName(newActor)] = actor_uid;
+		streamedActors[actor_uid] = newActor;
 	}
 
 	return actor_uid;
@@ -162,10 +177,19 @@ avs::uid FGeometryStreamingService::RemoveActor(AActor *oldActor)
 	FName levelUniqueName = GetLevelUniqueActorName(oldActor);
 	//This will cause the actor to be added if it doesn't exist, but it gets removed next line anyway.
 	//Checking before hand would cause two searches for the same effect on an existing actor.
-	avs::uid actor_uid = streamedActors[levelUniqueName];
-	streamedActors.erase(levelUniqueName);
+	avs::uid actor_uid = actorUids[GetLevelUniqueActorName(oldActor)];
+	actorUids.erase(GetLevelUniqueActorName(oldActor));
+	AActor *a = streamedActors[actor_uid];
+	if (a)
+		a->SetActorHiddenInGame(false);
+	streamedActors.erase(actor_uid);
 
 	return actor_uid;
+}
+
+bool FGeometryStreamingService::IsStreamingActor(AActor* actor)
+{
+	return actorUids.find(GetLevelUniqueActorName(actor)) != actorUids.end();
 }
 
 void FGeometryStreamingService::AddControllersToStream()
@@ -174,8 +198,9 @@ void FGeometryStreamingService::AddControllersToStream()
 
 	if(handUIDs.size() != 0)
 	{
-		streamedActors["RemotePlayHandActor1"] = handUIDs[0];
-		streamedActors["RemotePlayHandActor2"] = handUIDs[1];
+		actorUids["RemotePlayHandActor1"] = handUIDs[0];
+		actorUids["RemotePlayHandActor2"] = handUIDs[1];
+	
 	}
 }
 
@@ -292,7 +317,7 @@ void FGeometryStreamingService::GetResourcesClientNeeds(
 	outShadowIds.empty();
 	outNodeIds.empty();
 
-	for(auto nodePair : streamedActors)
+	for(auto nodePair : actorUids)
 	{
 		outNodeIds.push_back(nodePair.second);
 		GetNodeResourceUIDs(nodePair.second, outMeshIds, outTextureIds, outMaterialIds, outNodeIds);
@@ -319,7 +344,7 @@ void FGeometryStreamingService::GetResourcesClientNeeds(
 
 void FGeometryStreamingService::GetResourcesToStream(std::vector<avs::MeshNodeResources>& outMeshResources, std::vector<avs::LightNodeResources>& outLightResources)
 {
-	for(auto nodePair : streamedActors)
+	for(auto nodePair : actorUids)
 	{
 		GetMeshNodeResources(nodePair.second, outMeshResources);
 	}

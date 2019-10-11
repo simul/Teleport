@@ -848,6 +848,7 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 
 				if(basisCompressor.init(basisCompressorParams))
 				{
+					UE_LOG(LogRemotePlay, Warning, TEXT("Basis compressing %s"),*uniqueName);
 					basisu::basis_compressor::error_code result = basisCompressor.process();
 
 					if(result == basisu::basis_compressor::error_code::cECSuccess)

@@ -1,3 +1,4 @@
+
 #include "RemotePlayMonitor.h"
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
@@ -21,6 +22,8 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 	{
 		VideoEncodeFrequency = 2;
 		StreamGeometry = true;
+		StreamGeometryContinuously = true;
+		StreamGeometryContinuously = false;
 	}
 	DeferOutput = false;
 	DetectionSphereRadius = 500;
@@ -35,6 +38,10 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 	CompressionLevel = 1;
 
 	ExpectedLag = 1;
+
+	bUseAsyncEncoding = true;
+
+	bDisableMainCamera = false;
 }
 
 
@@ -88,4 +95,9 @@ void ARemotePlayMonitor::PostRegisterAllComponents()
 void ARemotePlayMonitor::PostInitializeComponents()
 {
 	Super::PostInitializeComponents();
+}
+
+void ARemotePlayMonitor::BeginPlay()
+{
+	server_id = avs::GenerateUid();
 }

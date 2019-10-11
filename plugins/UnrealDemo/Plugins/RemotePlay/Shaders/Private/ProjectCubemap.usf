@@ -14,63 +14,29 @@ RWTexture2DArray<float4> RWInputCubeAsArray;
 RWTexture2D<float4> RWOutputColorTexture;
 
 int2 Offset;
+float3 CubemapCameraPositionMetres;
 
-#if DEPTH_STACKED
-uint DepthPos;
-#endif
-#if WRITE_DEPTH
-RWTexture2D<float> RWOutputDepthTexture;
-#if WRITE_DEPTH_LINEAR
-float2 WorldZToDeviceZTransform;
-float ConvertToDeviceZ(float SceneDepth)
-{
-	return 1.0f / ((SceneDepth + WorldZToDeviceZTransform.y) * WorldZToDeviceZTransform.x);
-}
-#endif // WRITE_DEPTH_LINEAR
-
-#endif // WRITE_DEPTH
-
-[numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
-void MainCS(uint2 ThreadID : SV_DispatchThreadID)
+// Here. we will encode the camera position CubemapCameraPositionMetres in blocks of monochrome colour.
+[numthreads(32, 4, 1)]
+void EncodeCameraPositionCS(uint2 ThreadID : SV_DispatchThreadID)
 {
 	uint OutputW, OutputH;
 	RWOutputColorTexture.GetDimensions(OutputW, OutputH);
-#if DEPTH_STACKED
-	float2 UV = float2(ThreadID.x / float(OutputW), ThreadID.y / float(DepthPos));
-#else
-	float2 UV  = float2(ThreadID.x / float(OutputW), ThreadID.y / float(OutputH));
-#endif
-	float Phi   = UV.x * TwoPI;
-	float Theta = UV.y * PI;
 
-	float3 CubeSampleVec = float3(
-		sin(Theta) * cos(Phi),
-		sin(Theta) * sin(Phi),
-		cos(Theta)
-	);
-	float4 SceneColor = InputCubeMap.SampleLevel(DefaultSampler, CubeSampleVec, 0);
-#if WRITE_DEPTH
-#if 0//WRITE_DEPTH_LINEAR
-	float DepthValue = ConvertToDeviceZ(SceneColor.a);
-#else
-	float DepthValue = SceneColor.a / 100.0 / 50.0;
-#endif // WRITE_DEPTH_LINEAR
-#else
-	float DepthValue = 0.0;
-#endif
+	// We want to encode three 32-bit numbers with the minimum possible loss.
+	// Therefore we will encode them in...
+	// Binary.
+	uint3 raw_uint		= asuint(CubemapCameraPositionMetres);
 
-	RWOutputColorTexture[int2(ThreadID.x, ThreadID.y)] = float4(PrepareTonemap(SceneColor).rgb, 0);
-#if DEPTH_STACKED
-	//DepthValue goes from 0 to 1.
-	float4 d4 = float4(DepthValue, DepthValue, DepthValue, DepthValue);
-	RWOutputColorTexture[int2(ThreadID.x/2,ThreadID.y/2+ DepthPos)] = d4;
-	RWOutputColorTexture[int2(OutputW/2+ThreadID.x / 2, ThreadID.y / 2 + DepthPos)] = d4;;
-#endif
-
-
-#if WRITE_DEPTH_TEXTURE
-	RWOutputDepthTexture[int2(ThreadID.x, ThreadID.y)] = DepthValue;
-#endif // WRITE_DEPTH
+	// We will use the thread x as the bit index.
+	uint3 masked_bits	= (raw_uint >> (ThreadID.x/4))&uint(1);		// 1 or 0, 1 or 0, 1 or 0
+	int2 Pos			= Offset + int2(ThreadID);
+	float4 X			= masked_bits.xxxx;
+	float4 Y			= masked_bits.yyyy;
+	float4 Z			= masked_bits.zzzz;
+	RWOutputColorTexture[Pos]				= X;
+	RWOutputColorTexture[Pos + int2(0,8)]	= Y;
+	RWOutputColorTexture[Pos + int2(0,16)]	= Z;
 }
 
 [numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
@@ -88,6 +54,21 @@ void DecomposeCS(uint3 ThreadID : SV_DispatchThreadID)
 	RWOutputColorTexture[int2(ThreadID.x , ThreadID.y ) + Offset + InputW * FaceOffsets[pos.z]] = SceneColor;
 }
 
+float PosToDistanceMultiplier(int2 pos, int w)
+{
+	float h = (w +1.0) / 2.0;
+	vec2 diff = (vec2(pos) - vec2(h, h)) *2.0/ vec2(w, w);
+	return sqrt(1.0 + dot(diff, diff));
+}
+
+float GetDepth(int3 pos, int w)
+{
+	float m = PosToDistanceMultiplier(pos.xy,w);
+	float d = RWInputCubeAsArray[pos].a;
+	d *= m;
+	return d;
+}
+
 [numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
 void DecomposeDepthCS(uint3 ThreadID : SV_DispatchThreadID)
 {
@@ -100,9 +81,10 @@ void DecomposeDepthCS(uint3 ThreadID : SV_DispatchThreadID)
 	int3 pos = int3(ThreadID);
 	pos.xy *= 2;
 	int2 FaceOffsets[] = { {0,0},{1,0},{2,0},{0,1},{1,1},{2,1} };
-	float4 SceneColor = RWInputCubeAsArray[pos];
-	float DepthValue =  SceneColor.a / 100.0 / 20.0;
-	float4 d4 = float4(DepthValue, DepthValue, DepthValue, DepthValue);
+	float d00 = GetDepth(pos,InputW);
+	float d01 = GetDepth(pos+int3(1,0,0), InputW);
+	float d10 = GetDepth(pos+int3(0,1,0), InputW);
+	float4 DepthValue =  float4(d00, d01, d10, 1.0) / 100.0 / 20.0;
 
-	RWOutputColorTexture[int2(ThreadID.x, ThreadID.y) + Offset + InputW * FaceOffsets[pos.z]/2] = d4;
+	RWOutputColorTexture[int2(ThreadID.x, ThreadID.y) + Offset + InputW * FaceOffsets[pos.z]/2] = DepthValue;
 }

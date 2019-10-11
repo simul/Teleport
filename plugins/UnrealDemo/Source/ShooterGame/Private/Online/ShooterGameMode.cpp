@@ -28,7 +28,7 @@ AShooterGameMode::AShooterGameMode(const FObjectInitializer& ObjectInitializer) 
 	SpectatorClass = SpectatorPawnOb.Class;
 	/* End RemotePlay */
 
-	HUDClass = AShooterHUD::StaticClass();
+	//HUDClass = AShooterHUD::StaticClass();
 	/* Begin RemotePlay */
 	//PlayerControllerClass = AShooterPlayerController::StaticClass();
 	/* End RemotePlay */

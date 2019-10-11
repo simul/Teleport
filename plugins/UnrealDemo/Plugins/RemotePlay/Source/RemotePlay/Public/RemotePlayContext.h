@@ -8,5 +8,5 @@ struct FRemotePlayContext
 	TUniquePtr<avs::Queue> DepthQueue;
 	TUniquePtr<avs::Queue> GeometryQueue;
 	bool bCaptureDepth = false;
-	avs::AxesStandard axesStandard;
+	avs::AxesStandard axesStandard=avs::AxesStandard::NotInitialized;
 };

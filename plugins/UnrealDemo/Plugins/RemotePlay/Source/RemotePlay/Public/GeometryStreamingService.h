@@ -63,6 +63,10 @@ public:
 	//Returns uid of actor the client is no longer responsible for, or 0 if the actor was never being streamed.
 	avs::uid RemoveActor(AActor *oldActor);
 
+	bool IsStreamingActor(AActor* actor);
+
+	void SetShowClientSideActor(avs::uid actor_uid, bool show);
+
 	//Causes the controllers to be added to the list of streamed actors.
 	void AddControllersToStream();
 
@@ -83,7 +87,8 @@ private:
 
 	bool bStreamingContinuously = false;
 	std::unordered_map<avs::uid, bool> sentResources; //Tracks the resources sent to the user; <resource identifier, doesClientHave>.
-	std::map<FName, avs::uid> streamedActors; //Actors that the client needs to draw, and should be sent to them; <Level Unique Name, Node UID of root mesh>.
+	std::map<FName, avs::uid> actorUids; //Actors that the client needs to draw, and should be sent to them; <Level Unique Name, Node UID of root mesh>.
+	std::unordered_map<avs::uid, AActor*> streamedActors;
 
 	//Recursive function to retrieve the resource UIDs from a node, and its child nodes.
 	void GetNodeResourceUIDs(

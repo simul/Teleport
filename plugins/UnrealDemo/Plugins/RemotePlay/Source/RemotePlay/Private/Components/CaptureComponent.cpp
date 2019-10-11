@@ -13,6 +13,7 @@
 #include "RemotePlaySettings.h"
 #include "RemotePlayMonitor.h"
 #include "RemotePlayReflectionCaptureComponent.h"
+#include "ContentStreaming.h"
 
 URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 	: bRenderOwner(false)
@@ -21,7 +22,7 @@ URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 	, bIsStreaming(false)
 {
 	PrimaryComponentTick.bCanEverTick = true;
-	bCaptureEveryFrame = false;
+	bCaptureEveryFrame = true;
 	bCaptureOnMovement = false; 
 
 	EncodeParams.FrameWidth = 3840;
@@ -46,6 +47,12 @@ URemotePlayCaptureComponent::~URemotePlayCaptureComponent()
 
 void URemotePlayCaptureComponent::BeginPlay()
 {
+	// Make sure that there is enough time in the render queue.
+	//UKismetSystemLibrary::ExecuteConsoleCommand(GetWorld(), FString("g.TimeoutForBlockOnRenderFence 300000"));
+
+	ShowFlags.EnableAdvancedFeatures();
+	ShowFlags.SetAntiAliasing(true);
+
 	if (TextureTarget && !TextureTarget->bCanCreateUAV)
 	{
 		TextureTarget->bCanCreateUAV = true;
@@ -76,6 +83,19 @@ void URemotePlayCaptureComponent::EndPlay(const EEndPlayReason::Type Reason)
 void URemotePlayCaptureComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+	// Aidan: Below allows the capture to avail of Unreal's texture streaming
+	// Add the view information every tick because its only used for one tick and then
+	// removed by the streaming manager.
+	int32 W = TextureTarget->GetSurfaceWidth();
+	float FOV = 90.0f;
+	IStreamingManager::Get().AddViewInformation(GetComponentLocation(), W, W / FMath::Tan(FOV));
+
+	ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
+	if (bCaptureEveryFrame && Monitor && Monitor->bDisableMainCamera)
+	{
+		CaptureScene();
+}
 }
 
 const FRemotePlayEncodeParameters &URemotePlayCaptureComponent::GetEncodeParams()
@@ -98,6 +118,22 @@ const FRemotePlayEncodeParameters &URemotePlayCaptureComponent::GetEncodeParams(
 
 void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Scene)
 {
+
+	ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
+	if (Monitor&&Monitor->VideoEncodeFrequency > 1)
+	{
+		static int u = 1;
+		u--;
+		u = std::min(Monitor->VideoEncodeFrequency, u);
+		if (!u)
+		{
+			u = Monitor->VideoEncodeFrequency;
+		}
+		else
+		{
+			return;
+		}
+	}
 	// Aidan: The parent function belongs to SceneCaptureComponentCube and is located in SceneCaptureComponent.cpp. 
 	// The parent function calls UpdateSceneCaptureContents function in SceneCaptureRendering.cpp.
 	// UpdateSceneCaptureContents enqueues the rendering commands to render to the scene capture cube's render target.
@@ -109,8 +145,6 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 
 	if (TextureTarget&&RemotePlayContext)
 	{
-
-		ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
 		if (!RemotePlayContext->EncodePipeline.IsValid())
 		{
 			EncodeParams.bDeferOutput = Monitor->DeferOutput;
@@ -123,24 +157,9 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 				RemotePlayReflectionCaptureComponent->bAttached = true;
 			}
 		}
-
-		if (Monitor&&Monitor->VideoEncodeFrequency > 1)
-		{
-			static int u = 1;
-			u--; 
-			u = std::min(Monitor->VideoEncodeFrequency, u); 
-			if (!u)
-			{
-				u = Monitor->VideoEncodeFrequency;
-			}
-			else
-			{
-				return;
-			}
-		}
 		FTransform Transform = GetComponentTransform();
 		 
-		RemotePlayContext->EncodePipeline->PrepareFrame(Scene, TextureTarget);
+		RemotePlayContext->EncodePipeline->PrepareFrame(Scene, TextureTarget, Transform);
 		if (RemotePlayReflectionCaptureComponent && EncodeParams.bDecomposeCube)
 		{
 			RemotePlayReflectionCaptureComponent->UpdateContents(
@@ -158,16 +177,17 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 	}
 }
 
-
 void URemotePlayCaptureComponent::StartStreaming(FRemotePlayContext *Context)
 {
 	RemotePlayContext = Context;
 
+	ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
 	if (!ViewportDrawnDelegateHandle.IsValid())
 	{
 		if (UGameViewportClient* GameViewport = GEngine->GameViewport)
 		{
 			ViewportDrawnDelegateHandle = GameViewport->OnDrawn().AddUObject(this, &URemotePlayCaptureComponent::OnViewportDrawn);
+			GameViewport->bDisableWorldRendering = Monitor->bDisableMainCamera;
 		}
 	}
 
@@ -193,6 +213,7 @@ void URemotePlayCaptureComponent::StopStreaming()
 	}
 
 	RemotePlayContext = nullptr;
+
 	bCaptureEveryFrame = false;
 	UE_LOG(LogRemotePlay, Log, TEXT("Capture: Stopped streaming"));
 }
