@@ -45,6 +45,9 @@ public:
 	int32 ExpectedLag;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
+	int64 ThrottleKpS;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
 	UBlueprint* HandActor;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)

@@ -638,7 +638,7 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 		NetworkParams.RemoteIP = Client_GetIPAddress();
 		NetworkParams.LocalPort = StreamingPort;
 		NetworkParams.RemotePort = NetworkParams.LocalPort + 1;
-		NetworkParams.ClientBandwidthLimit = handshake.maxBandwidth;
+		NetworkParams.ClientBandwidthLimit = handshake.maxBandwidthKpS;
 		NetworkParams.ClientBufferSize = handshake.udpBufferSize;
 
 		RemotePlayContext->NetworkPipeline.Reset(new FNetworkPipeline);

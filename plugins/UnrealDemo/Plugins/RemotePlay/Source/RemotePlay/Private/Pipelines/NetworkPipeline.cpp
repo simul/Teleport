@@ -37,7 +37,7 @@ void FNetworkPipeline::Initialize(ARemotePlayMonitor *m,const FRemotePlayNetwork
 	int NumInputs = VideoPipes.Num() + GeometryPipes.Num();
 	avs::NetworkSinkParams SinkParams = {};
 	SinkParams.socketBufferSize = GNetworkPipelineSocketBufferSize;
-	SinkParams.throttleToRate = (InParams.ClientBandwidthLimit);// Assuming 60Hz on the other size. k per sec
+	SinkParams.throttleRateKpS = std::min(m->ThrottleKpS,(int64)InParams.ClientBandwidthLimit);// Assuming 60Hz on the other size. k per sec
 	//InParams.ClientBufferSize = handshake.udpBufferSize;
 	if (!NetworkSink->configure(NumInputs, InParams.LocalPort, TCHAR_TO_UTF8(*InParams.RemoteIP), InParams.RemotePort, SinkParams))
 	{

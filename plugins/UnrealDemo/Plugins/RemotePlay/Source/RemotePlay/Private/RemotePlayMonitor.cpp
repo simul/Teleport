@@ -39,6 +39,8 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 
 	ExpectedLag = 1;
 
+	ThrottleKpS=10000;
+
 	bUseAsyncEncoding = true;
 
 	bDisableMainCamera = false;

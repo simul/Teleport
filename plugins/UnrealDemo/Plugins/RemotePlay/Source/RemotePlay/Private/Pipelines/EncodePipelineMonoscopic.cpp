@@ -344,7 +344,7 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	EncoderParams.averageBitrate = Params.AverageBitrate * 1 / Monitor->VideoEncodeFrequency;
 	EncoderParams.maxBitrate = Params.MaxBitrate * 1 / Monitor->VideoEncodeFrequency;
 #else
-	EncoderParams.preset = avs::VideoPreset::HighPerformance;
+	EncoderParams.preset = avs::VideoPreset::HighQuality;
 	EncoderParams.idrInterval = Params.IDRInterval;
 	EncoderParams.targetFrameRate = Params.TargetFPS;
 	EncoderParams.averageBitrate = Params.AverageBitrate;
