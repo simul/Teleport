@@ -30,12 +30,6 @@ public:
 	FString ClientIP;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
-	int32 VideoEncodeFrequency;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
-	uint32 DeferOutput : 1;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
 	int32 DetectionSphereRadius;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
@@ -47,20 +41,44 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
 	UBlueprint* HandActor;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Geometry)
 	uint32 StreamGeometry : 1;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Geometry)
 	uint32 StreamGeometryContinuously : 1;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Geometry)
 	uint8 GeometryTicksPerSecond;
 
-	//Size we stop encoding nodes at.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	// Size we stop encoding nodes at.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Geometry)
 	int32 GeometryBufferCutoffSize;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	int32 VideoEncodeFrequency;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	uint32 bDeferOutput : 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	int32 IDRInterval;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	int32 TargetFPS;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	int32 AverageBitrate;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	int32 MaxBitrate;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	uint32 bAutoBitRate : 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	int32 vbvBufferSizeInFrames;
+
+	UPROPERTY(EditInstanceOnly, BlueprintReadWrite, Category = Encoding)
 	uint32 bUseAsyncEncoding : 1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
@@ -81,7 +99,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Compression)
 	uint8 CompressionLevel;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Rendering)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = Camera)
 	uint32 bDisableMainCamera : 1;
 
 
