@@ -24,21 +24,6 @@ URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 	PrimaryComponentTick.bCanEverTick = true;
 	bCaptureEveryFrame = true;
 	bCaptureOnMovement = false; 
-
-	EncodeParams.FrameWidth = 3840;
-	EncodeParams.FrameHeight = 1920;
-
-	EncodeParams.DepthWidth = 1920;
-	EncodeParams.DepthHeight = 960;
-
-	EncodeParams.IDRInterval = 120;
-	EncodeParams.TargetFPS = 60; 
-	EncodeParams.bDeferOutput = true;
-
-	EncodeParams.bWriteDepthTexture = false;
-	EncodeParams.bStackDepth = true;
-	EncodeParams.bDecomposeCube = true;
-	EncodeParams.MaxDepth = 10000.0f; 
 }
 
 URemotePlayCaptureComponent::~URemotePlayCaptureComponent()
@@ -95,7 +80,7 @@ void URemotePlayCaptureComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	if (bCaptureEveryFrame && Monitor && Monitor->bDisableMainCamera)
 	{
 		CaptureScene();
-}
+	}
 }
 
 const FRemotePlayEncodeParameters &URemotePlayCaptureComponent::GetEncodeParams()
@@ -147,7 +132,6 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 	{
 		if (!RemotePlayContext->EncodePipeline.IsValid())
 		{
-			EncodeParams.bDeferOutput = Monitor->DeferOutput;
 			RemotePlayContext->EncodePipeline.Reset(new FEncodePipelineMonoscopic);
 			RemotePlayContext->EncodePipeline->Initialize(EncodeParams, RemotePlayContext, Monitor, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get());
 

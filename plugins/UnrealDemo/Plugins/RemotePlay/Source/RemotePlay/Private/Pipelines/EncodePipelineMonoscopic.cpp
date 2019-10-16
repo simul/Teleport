@@ -337,20 +337,15 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	
 	avs::EncoderParams EncoderParams = {};
 	EncoderParams.codec  = avs::VideoCodec::HEVC;
-#if 0//def AIDAN_NEW
-	EncoderParams.preset = avs::VideoPreset::HighPerformance;
-	EncoderParams.idrInterval = Params.IDRInterval * 1 / Monitor->VideoEncodeFrequency;
-	EncoderParams.targetFrameRate = Params.TargetFPS * 1 / Monitor->VideoEncodeFrequency;
-	EncoderParams.averageBitrate = Params.AverageBitrate * 1 / Monitor->VideoEncodeFrequency;
-	EncoderParams.maxBitrate = Params.MaxBitrate * 1 / Monitor->VideoEncodeFrequency;
-#else
-	EncoderParams.preset = avs::VideoPreset::HighPerformance;
-	EncoderParams.idrInterval = Params.IDRInterval;
-	EncoderParams.targetFrameRate = Params.TargetFPS;
-	EncoderParams.averageBitrate = Params.AverageBitrate;
-	EncoderParams.maxBitrate = Params.MaxBitrate;
-#endif
-	EncoderParams.deferOutput = Params.bDeferOutput;
+
+	EncoderParams.preset = avs::VideoPreset::HighQuality;
+	EncoderParams.idrInterval = Monitor->IDRInterval;
+	EncoderParams.targetFrameRate = Monitor->TargetFPS;
+	EncoderParams.averageBitrate = Monitor->AverageBitrate;
+	EncoderParams.maxBitrate = Monitor->MaxBitrate;
+	EncoderParams.autoBitRate = Monitor->bAutoBitRate;
+	EncoderParams.vbvBufferSizeInFrames = Monitor->vbvBufferSizeInFrames;
+	EncoderParams.deferOutput = Monitor->bDeferOutput;
 	EncoderParams.asyncEncoding = Monitor->bUseAsyncEncoding;
 
 	Pipeline.Reset(new avs::Pipeline);

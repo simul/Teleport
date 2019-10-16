@@ -23,9 +23,16 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 		VideoEncodeFrequency = 2;
 		StreamGeometry = true;
 		StreamGeometryContinuously = true;
-		StreamGeometryContinuously = false;
 	}
-	DeferOutput = false;
+	bDeferOutput = false;
+	IDRInterval = 60;
+	TargetFPS = 60;
+	AverageBitrate = 0; 
+	MaxBitrate = 0;
+	bAutoBitRate = true;
+	vbvBufferSizeInFrames = 2;
+	bUseAsyncEncoding = true;
+
 	DetectionSphereRadius = 500;
 	DetectionSphereBufferDistance = 200;
 
@@ -38,8 +45,6 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 	CompressionLevel = 1;
 
 	ExpectedLag = 1;
-
-	bUseAsyncEncoding = true;
 
 	bDisableMainCamera = false;
 }
