@@ -78,7 +78,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	int32 vbvBufferSizeInFrames;
 
-	UPROPERTY(EditInstanceOnly, BlueprintReadWrite, Category = Encoding)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	uint32 bUseAsyncEncoding : 1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
@@ -99,7 +99,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Compression)
 	uint8 CompressionLevel;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = Camera)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Camera)
 	uint32 bDisableMainCamera : 1;
 
 
