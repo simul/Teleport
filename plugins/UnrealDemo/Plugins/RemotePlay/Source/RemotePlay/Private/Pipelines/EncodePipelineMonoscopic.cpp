@@ -243,12 +243,13 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	avs::DeviceType avsDeviceType;
 	avs::SurfaceBackendInterface* avsSurfaceBackends[2] = { nullptr };
 
+	avs::SurfaceFormat ColorFormat = Monitor->bUse10BitEncoding ? avs::SurfaceFormat::ARGB10 : avs::SurfaceFormat::ARGB;
 	const avs::SurfaceFormat avsInputFormats[2] = {
-		avs::SurfaceFormat::Unknown, // Any suitable for color (preferably ARGB or ABGR)
+		ColorFormat,
 		avs::SurfaceFormat::NV12 // NV12 is needed for depth encoding
 	};
 
-	EPixelFormat PixelFormat = EPixelFormat::PF_R8G8B8A8;
+	EPixelFormat PixelFormat = Monitor->bUse10BitEncoding ? EPixelFormat::PF_A2B10G10R10 : EPixelFormat::PF_R8G8B8A8;
 
 	switch(DeviceType)
 	{
@@ -257,7 +258,6 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 		break;
 	case FRemotePlayRHI::EDeviceType::Direct3D12:
 		avsDeviceType = avs::DeviceType::Direct3D12;
-		PixelFormat = EPixelFormat::PF_B8G8R8A8;
 		break;
 	case FRemotePlayRHI::EDeviceType::OpenGL:
 		avsDeviceType = avs::DeviceType::OpenGL;
@@ -268,7 +268,7 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	} 
 	// Roderick: we create a DOUBLE-HEIGHT texture, and encode colour in the top half, depth in the bottom.
 	int32 streamWidth;
-	int32  streamHeight;
+	int32 streamHeight;
 	if (Params.bDecomposeCube)
 	{
 		streamWidth = Params.FrameWidth;
@@ -280,7 +280,7 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 		streamHeight = Params.FrameHeight + Params.DepthHeight;
 	}
 	ColorSurfaceTexture.Texture = RHI.CreateSurfaceTexture(streamWidth, streamHeight, PixelFormat);
-	
+	D3D12_RESOURCE_DESC desc = ((ID3D12Resource*)ColorSurfaceTexture.Texture->GetNativeResource())->GetDesc();
 	if(ColorSurfaceTexture.Texture.IsValid())
 	{
 		ColorSurfaceTexture.UAV = RHI.CreateSurfaceUAV(ColorSurfaceTexture.Texture);
@@ -304,7 +304,7 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 		UE_LOG(LogRemotePlay, Error, TEXT("Failed to create encoder color input surface texture"));
 		return;
 	}
-
+	const avs::SurfaceFormat surfaceFormat = avsSurfaceBackends[0]->getFormat();
 	if(DepthQueue)
 	{
 		DepthSurfaceTexture.Texture = RHI.CreateSurfaceTexture(Params.FrameWidth, Params.FrameHeight, EPixelFormat::PF_R16F);
@@ -337,7 +337,6 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	
 	avs::EncoderParams EncoderParams = {};
 	EncoderParams.codec  = avs::VideoCodec::HEVC;
-
 	EncoderParams.preset = avs::VideoPreset::HighQuality;
 	EncoderParams.idrInterval = Monitor->IDRInterval;
 	EncoderParams.targetFrameRate = Monitor->TargetFPS;
@@ -346,7 +345,8 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	EncoderParams.autoBitRate = Monitor->bAutoBitRate;
 	EncoderParams.vbvBufferSizeInFrames = Monitor->vbvBufferSizeInFrames;
 	EncoderParams.deferOutput = Monitor->bDeferOutput;
-	EncoderParams.asyncEncoding = Monitor->bUseAsyncEncoding;
+	EncoderParams.useAsyncEncoding = Monitor->bUseAsyncEncoding;
+	EncoderParams.use10BitEncoding = Monitor->bUse10BitEncoding;
 
 	Pipeline.Reset(new avs::Pipeline);
 	Encoders.SetNum(NumStreams);

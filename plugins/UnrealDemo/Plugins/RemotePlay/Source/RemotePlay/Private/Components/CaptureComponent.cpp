@@ -36,6 +36,7 @@ void URemotePlayCaptureComponent::BeginPlay()
 	//UKismetSystemLibrary::ExecuteConsoleCommand(GetWorld(), FString("g.TimeoutForBlockOnRenderFence 300000"));
 
 	ShowFlags.EnableAdvancedFeatures();
+	ShowFlags.SetTemporalAA(false);
 	ShowFlags.SetAntiAliasing(true);
 
 	if (TextureTarget && !TextureTarget->bCanCreateUAV)

@@ -32,6 +32,7 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 	bAutoBitRate = true;
 	vbvBufferSizeInFrames = 2;
 	bUseAsyncEncoding = true;
+	bUse10BitEncoding = true;
 
 	DetectionSphereRadius = 500;
 	DetectionSphereBufferDistance = 200;
