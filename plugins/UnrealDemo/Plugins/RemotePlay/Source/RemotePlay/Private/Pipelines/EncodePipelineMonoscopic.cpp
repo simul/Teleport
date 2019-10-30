@@ -243,13 +243,23 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	avs::DeviceType avsDeviceType;
 	avs::SurfaceBackendInterface* avsSurfaceBackends[2] = { nullptr };
 
-	avs::SurfaceFormat ColorFormat = Monitor->bUse10BitEncoding ? avs::SurfaceFormat::ARGB10 : avs::SurfaceFormat::ARGB;
+	avs::SurfaceFormat ColorFormat;
+	EPixelFormat PixelFormat;
+	if (Monitor->bUse10BitEncoding)
+	{
+		ColorFormat = avs::SurfaceFormat::ARGB10; 
+		PixelFormat = EPixelFormat::PF_A2B10G10R10;
+	}
+	else
+	{
+		ColorFormat = avs::SurfaceFormat::ARGB;
+		PixelFormat = EPixelFormat::PF_R8G8B8A8;
+	}
+
 	const avs::SurfaceFormat avsInputFormats[2] = {
 		ColorFormat,
 		avs::SurfaceFormat::NV12 // NV12 is needed for depth encoding
 	};
-
-	EPixelFormat PixelFormat = Monitor->bUse10BitEncoding ? EPixelFormat::PF_A2B10G10R10 : EPixelFormat::PF_R8G8B8A8;
 
 	switch(DeviceType)
 	{
@@ -338,8 +348,9 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	avs::EncoderParams EncoderParams = {};
 	EncoderParams.codec  = avs::VideoCodec::HEVC;
 	EncoderParams.preset = avs::VideoPreset::HighQuality;
-	EncoderParams.idrInterval = Monitor->IDRInterval;
 	EncoderParams.targetFrameRate = Monitor->TargetFPS;
+	EncoderParams.idrInterval = Monitor->IDRInterval;
+	EncoderParams.rateControlMode = static_cast<avs::RateControlMode>(Monitor->RateControlMode);
 	EncoderParams.averageBitrate = Monitor->AverageBitrate;
 	EncoderParams.maxBitrate = Monitor->MaxBitrate;
 	EncoderParams.autoBitRate = Monitor->bAutoBitRate;

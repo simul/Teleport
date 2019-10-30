@@ -2,6 +2,7 @@
 #include "RemotePlayMonitor.h"
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
+#include "Engine/TextureRenderTarget.h"
 #include "RemotePlaySettings.h"
 
 TMap<UWorld*, ARemotePlayMonitor*> ARemotePlayMonitor::Monitors;
@@ -24,16 +25,18 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 		StreamGeometry = true;
 		StreamGeometryContinuously = true;
 	}
+	bOverrideTextureTarget = false;
+	SceneCaptureTextureTarget = nullptr;
 	bDeferOutput = false;
-	IDRInterval = 60;
 	TargetFPS = 60;
+	IDRInterval = 60;
+	RateControlMode = EncoderRateControlMode::RC_CBR_LOWDELAY_HQ;
 	AverageBitrate = 0; 
 	MaxBitrate = 0;
 	bAutoBitRate = true;
 	vbvBufferSizeInFrames = 2;
 	bUseAsyncEncoding = true;
 	bUse10BitEncoding = true;
-
 	DetectionSphereRadius = 500;
 	DetectionSphereBufferDistance = 200;
 

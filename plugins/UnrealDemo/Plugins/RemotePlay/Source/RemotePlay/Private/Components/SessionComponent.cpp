@@ -465,6 +465,7 @@ void URemotePlaySessionComponent::StartStreaming()
 	setupCommand.debug_stream=Monitor->DebugStream;
 	setupCommand.do_checksums = Monitor->Checksums?1:0;
 	setupCommand.server_id = Monitor->GetServerID();
+	setupCommand.use_10_bit_decoding = Monitor->bUse10BitEncoding;
 
 	//Get resources the client will need to check it has.
 	std::vector<avs::MeshNodeResources> outMeshResources;

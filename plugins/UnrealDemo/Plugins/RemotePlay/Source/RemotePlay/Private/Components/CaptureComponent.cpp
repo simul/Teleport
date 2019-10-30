@@ -31,10 +31,7 @@ URemotePlayCaptureComponent::~URemotePlayCaptureComponent()
 }
 
 void URemotePlayCaptureComponent::BeginPlay()
-{
-	// Make sure that there is enough time in the render queue.
-	//UKismetSystemLibrary::ExecuteConsoleCommand(GetWorld(), FString("g.TimeoutForBlockOnRenderFence 300000"));
-
+{	
 	ShowFlags.EnableAdvancedFeatures();
 	ShowFlags.SetTemporalAA(false);
 	ShowFlags.SetAntiAliasing(true);
@@ -43,7 +40,20 @@ void URemotePlayCaptureComponent::BeginPlay()
 	{
 		TextureTarget->bCanCreateUAV = true;
 	}
-	Super::BeginPlay();
+
+	ARemotePlayMonitor* Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
+	FString rhiName = GDynamicRHI->GetName();
+	Monitor->bUse10BitEncoding &= (rhiName != "D3D11");
+	if (Monitor->bOverrideTextureTarget && Monitor->SceneCaptureTextureTarget)
+	{
+		TextureTarget = Monitor->SceneCaptureTextureTarget;
+	}
+
+	// Make sure that there is enough time in the render queue.
+	UKismetSystemLibrary::ExecuteConsoleCommand(GetWorld(), FString("g.TimeoutForBlockOnRenderFence 300000"));
+
+	Super::BeginPlay();	
+
 	AActor* OwnerActor = GetTypedOuter<AActor>();
 	if (bRenderOwner)
 	{
