@@ -42,8 +42,6 @@ void URemotePlayCaptureComponent::BeginPlay()
 	}
 
 	ARemotePlayMonitor* Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
-	FString rhiName = GDynamicRHI->GetName();
-	Monitor->bUse10BitEncoding &= (rhiName != "D3D11");
 	if (Monitor->bOverrideTextureTarget && Monitor->SceneCaptureTextureTarget)
 	{
 		TextureTarget = Monitor->SceneCaptureTextureTarget;

@@ -248,7 +248,8 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	if (Monitor->bUse10BitEncoding)
 	{
 		ColorFormat = avs::SurfaceFormat::ARGB10; 
-		PixelFormat = EPixelFormat::PF_A2B10G10R10;
+		//PixelFormat = EPixelFormat::PF_A2B10G10R10;
+		PixelFormat = EPixelFormat::PF_R16G16B16A16_UNORM;
 	}
 	else
 	{
