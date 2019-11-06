@@ -100,7 +100,7 @@ const FRemotePlayEncodeParameters &URemotePlayCaptureComponent::GetEncodeParams(
 		// 3 across...
 		EncodeParams.FrameWidth = 3 * W;
 		// and 2 down... for the colour, depth, and light cubes.
-		EncodeParams.FrameHeight = 2 * (W + W / 2);
+		EncodeParams.FrameHeight = 3 * W; // (W + W / 2);
 	}
 	else
 	{
