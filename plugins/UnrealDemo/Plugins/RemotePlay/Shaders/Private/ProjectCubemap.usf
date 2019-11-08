@@ -51,7 +51,10 @@ void DecomposeCS(uint3 ThreadID : SV_DispatchThreadID)
 	int3 pos = int3(ThreadID);
 	int2 FaceOffsets[] = { {0,0},{1,0},{2,0},{0,1},{1,1},{2,1} };
 	float4 SceneColor = RWInputCubeAsArray[pos];
-	RWOutputColorTexture[int2(ThreadID.x , ThreadID.y ) + Offset + InputW * FaceOffsets[pos.z]] = SceneColor;
+	SceneColor.x = sqrt(SceneColor.x);
+	SceneColor.y = sqrt(SceneColor.y);
+	SceneColor.z = sqrt(SceneColor.z);
+	RWOutputColorTexture[int2(ThreadID.x, ThreadID.y ) + Offset + InputW * FaceOffsets[pos.z]] = SceneColor;
 }
 
 float PosToDistanceMultiplier(int2 pos, int w)

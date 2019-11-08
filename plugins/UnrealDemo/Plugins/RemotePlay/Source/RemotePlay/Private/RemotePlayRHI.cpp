@@ -59,10 +59,6 @@ FTexture2DRHIRef FRemotePlayRHI::CreateSurfaceTexture(uint32 Width, uint32 Heigh
 	{
 		FormatInfo.PlatformFormat = DXGI_FORMAT_R8G8B8A8_UNORM;	
 	}
-	else if (PixelFormat == EPixelFormat::PF_A2B10G10R10)
-	{
-		FormatInfo.PlatformFormat = DXGI_FORMAT_R10G10B10A2_UNORM;
-	}
 	
 	SurfaceRHI = RHICmdList.CreateTexture2D(Width, Height, PixelFormat, 1, 1, TexFlags, CreateInfo);
 	FormatInfo.PlatformFormat = OldPlatformFormat;
