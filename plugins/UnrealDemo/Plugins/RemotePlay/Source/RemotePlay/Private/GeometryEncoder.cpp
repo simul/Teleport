@@ -84,6 +84,7 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp, avs::GeometrySourceBacke
 			encodeNodes(src, req, {meshResourceInfo.node_uid});
 		}
 
+		//Stop encoding actors, if the buffer size is too large.
 		if(buffer.size() >= Monitor->GeometryBufferCutoffSize)
 		{
 			break;
@@ -105,13 +106,13 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp, avs::GeometrySourceBacke
 				encodeNodes(src, req, {lightResourceInfo.node_uid});
 			}
 
+			//Stop encoding light nodes, if the buffer size is too large.
 			if(buffer.size() >= Monitor->GeometryBufferCutoffSize)
 			{
 				break;
 			}
 		}
 	}
-
 
 	// GALU to end.
 	buffer.push_back(GALU_code[0]);

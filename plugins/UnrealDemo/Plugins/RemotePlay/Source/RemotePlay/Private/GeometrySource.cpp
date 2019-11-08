@@ -482,16 +482,23 @@ avs::uid GeometrySource::AddNode(avs::uid parent_uid, USceneComponent* component
 				UE_LOG(LogRemotePlay, Warning, TEXT("FAILED TO ADD MESH"));
 				return 0;
 			}
-			// the material/s that this particular instance of the mesh has applied to its slots...
-			TArray<UMaterialInterface *> mats = meshComponent->GetMaterials();
+			//Materials that this component has applied to its material slots.
+			TArray<UMaterialInterface*> materials = meshComponent->GetMaterials();
 
 			std::vector<avs::uid> mat_uids;
 			//Add material, and textures, for streaming to clients.
-			int32 num_mats = mats.Num();
-			for(int32 i = 0; i < num_mats; i++)
+			for(int32 i = 0; i < materials.Num(); i++)
 			{
-				UMaterialInterface *materialInterface = mats[i];
-				mat_uids.push_back(AddMaterial(materialInterface));
+				avs::uid material_uid = AddMaterial(materials[i]);
+
+				if(material_uid != 0)
+				{
+					mat_uids.push_back(material_uid);
+				}
+				else
+				{
+					UE_LOG(LogRemotePlay, Warning, TEXT("Actor \"%s\" has no material applied to material slot %d."), *component->GetOuter()->GetName(), i);
+				}
 			}
 
 			node_uid = CreateNode(component, mesh_uid, avs::NodeDataType::Mesh, mat_uids);

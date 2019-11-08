@@ -68,6 +68,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Geometry)
 	int32 GeometryBufferCutoffSize;
 
+	//Seconds to wait before resending a resource.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Geometry, meta = (ClampMin = "0.5", ClampMax = "300.0"))
+	float ConfirmationWaitTime;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	uint32 bOverrideTextureTarget : 1;
 

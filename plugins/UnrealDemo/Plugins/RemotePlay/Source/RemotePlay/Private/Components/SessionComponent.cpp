@@ -195,7 +195,7 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 		//Only tick the geometry streaming service a set amount of times per second.
 		if(timeSinceLastGeometryStream >= TIME_BETWEEN_GEOMETRY_TICKS)
 		{
-			GeometryStreamingService.Tick();
+			GeometryStreamingService.Tick(TIME_BETWEEN_GEOMETRY_TICKS);
 
 			//Tell the client to change the visibility of actors that have changed whether they are within streamable bounds.
 			if(!ActorsEnteredBounds.empty() || !ActorsLeftBounds.empty())
@@ -695,26 +695,48 @@ void URemotePlaySessionComponent::RecvHeadPose(const ENetPacket* Packet)
 void URemotePlaySessionComponent::RecvClientMessage(const ENetPacket* packet)
 {
 	avs::ClientMessagePayloadType clientMessagePayloadType = *((avs::ClientMessagePayloadType*)packet->data);
-	size_t cmdSize = avs::GetClientMessageSize(clientMessagePayloadType);
-	if (packet->dataLength != cmdSize)
-	{
-		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Received Client Message of length: %d"), packet->dataLength);
-		return;
-	}
 	switch (clientMessagePayloadType)
 	{
 		case avs::ClientMessagePayloadType::ActorStatus:
 		{
-			avs::ActorStatusClientMessage actorStatusClientMessage;
-			FPlatformMemory::Memcpy(&actorStatusClientMessage, packet->data, packet->dataLength);
-			if (actorStatusClientMessage.actorStatus == avs::ActorStatus::Drawn)
+			size_t messageSize = sizeof(avs::ActorStatusMessage);
+			avs::ActorStatusMessage message;
+			memcpy(&message, packet->data, messageSize);
+
+			size_t drawnSize = sizeof(avs::uid) * message.actorsDrawnAmount;
+			std::vector<avs::uid> drawn(message.actorsDrawnAmount);
+			memcpy(drawn.data(), packet->data + messageSize, drawnSize);
+
+			size_t toReleaseSize = sizeof(avs::uid) * message.actorsWantToReleaseAmount;
+			std::vector<avs::uid> toRelease(message.actorsWantToReleaseAmount);
+			memcpy(toRelease.data(), packet->data + messageSize + drawnSize, toReleaseSize);
+
+			for(avs::uid actor_uid : drawn)
 			{
-				GeometryStreamingService.SetShowClientSideActor(actorStatusClientMessage.actor_uid, false);
+				GeometryStreamingService.HideActor(actor_uid);
 			}
-			else if (actorStatusClientMessage.actorStatus == avs::ActorStatus::WantToRelease)
+
+			for(avs::uid actor_uid : toRelease)
 			{
-				GeometryStreamingService.SetShowClientSideActor(actorStatusClientMessage.actor_uid,true);
+				GeometryStreamingService.ShowActor(actor_uid);
 			}
+		}
+		case avs::ClientMessagePayloadType::ReceivedResources:
+		{
+			size_t messageSize = sizeof(avs::ReceivedResourcesMessage);
+			avs::ReceivedResourcesMessage message;
+			memcpy(&message, packet->data, messageSize);
+
+			size_t confirmedResourcesSize = sizeof(avs::uid) * message.receivedResourcesAmount;
+			std::vector<avs::uid> confirmedResources(message.receivedResourcesAmount);
+			memcpy(confirmedResources.data(), packet->data + messageSize, confirmedResourcesSize);
+
+			for(avs::uid uid : confirmedResources)
+			{
+				GeometryStreamingService.ConfirmResource(uid);
+			}
+
+			break;
 		}
 		break;
 		default:
