@@ -78,69 +78,67 @@ void GeometrySource::Initialize(ARemotePlayMonitor* monitor, UWorld* world)
 {
 	Monitor = monitor;
 
-	if (Monitor)
+	if(Monitor)
 	{
-		if (Monitor->ResetCache)
+		if(Monitor->ResetCache)
 		{
 			clearData();
 		}
 	}
 	//0 == No item. First generated UID will be 1.
-	rootNodeUid = CreateNode(nullptr, 0, avs::NodeDataType::Scene,std::vector<avs::uid>());
+	rootNodeUid = CreateNode(nullptr, 0, avs::NodeDataType::Scene, std::vector<avs::uid>());
 
-	//Create the hand nodes, but only if we have not already done so.
-	if(handUIDs.size() == 0)
+	UStaticMeshComponent* handMeshComponent = nullptr;
+	//Use the hand actor blueprint set in the monitor.
+	if(Monitor->HandActor)
 	{
-		UStaticMeshComponent* handMeshComponent = nullptr;
-		//Use the hand actor blueprint set in the monitor.
-		if(Monitor->HandActor)
+		AActor* handActor = world->SpawnActor(Monitor->HandActor->GeneratedClass);
+		handMeshComponent = Cast<UStaticMeshComponent>(handActor->GetComponentByClass(UStaticMeshComponent::StaticClass()));
+
+		if(!handMeshComponent)
 		{
-			AActor* handActor = world->SpawnActor(Monitor->HandActor->GeneratedClass);
+			UE_LOG(LogRemotePlay, Warning, TEXT("Hand actor set in RemotePlayMonitor has no static mesh component."));
+		}
+	}
+	else
+	{
+		UE_LOG(LogRemotePlay, Log, TEXT("No hand actor set in RemotePlayMonitor."));
+	}
+
+	//If we can not use a set blueprint, then we use the default one.
+	if(!handMeshComponent)
+	{
+		FString defaultHandLocation("Blueprint'/Game/RemotePlay/RemotePlayHand.RemotePlayHand'");
+		UBlueprint* defaultHandBlueprint = Cast<UBlueprint>(StaticLoadObject(UBlueprint::StaticClass(), nullptr, *defaultHandLocation));
+
+		if(defaultHandBlueprint)
+		{
+			AActor* handActor = world->SpawnActor(defaultHandBlueprint->GeneratedClass);
 			handMeshComponent = Cast<UStaticMeshComponent>(handActor->GetComponentByClass(UStaticMeshComponent::StaticClass()));
 
 			if(!handMeshComponent)
 			{
-				UE_LOG(LogRemotePlay, Warning, TEXT("Hand actor set in RemotePlayMonitor has no static mesh component."));
-}
+				UE_LOG(LogRemotePlay, Warning, TEXT("Default hand actor in <%s> has no static mesh component."), *defaultHandLocation);
+			}
 		}
 		else
 		{
-			UE_LOG(LogRemotePlay, Log, TEXT("No hand actor set in RemotePlayMonitor."));
+			UE_LOG(LogRemotePlay, Warning, TEXT("Could not find default hand actor in <%s>."), *defaultHandLocation);
 		}
+	}
 
-		//If we can not use a set blueprint, then we use the default one.
-		if(!handMeshComponent)
-		{
-			FString defaultHandLocation("Blueprint'/Game/RemotePlay/RemotePlayHand.RemotePlayHand'");
-			UBlueprint* defaultHandBlueprint = Cast<UBlueprint>(StaticLoadObject(UBlueprint::StaticClass(), nullptr, *defaultHandLocation));
+	//Add the hand actors, and their resources, to the geometry source.
+	if(handMeshComponent)
+	{
+		avs::uid firstHandUID = AddNode(rootNodeUid, handMeshComponent);
+		nodes[firstHandUID]->data_type = avs::NodeDataType::Hand;
 
-			if(defaultHandBlueprint)
-			{
-				AActor* handActor = world->SpawnActor(defaultHandBlueprint->GeneratedClass);
-				handMeshComponent = Cast<UStaticMeshComponent>(handActor->GetComponentByClass(UStaticMeshComponent::StaticClass()));
+		//Whether we created a new node for the hand model, or it already existed; i.e whether the hand actor has changed.
+		bool isSameHandNode = handUIDs.size() != 0 && firstHandUID == handUIDs[0];
+		avs::uid secondHandUID = isSameHandNode ? handUIDs[1] : avs::GenerateUid();
+		nodes[secondHandUID] = nodes[firstHandUID];
 
-				if(!handMeshComponent)
-				{
-					UE_LOG(LogRemotePlay, Warning, TEXT("Default hand actor in <%s> has no static mesh component."), *defaultHandLocation);
-				}
-			}
-			else
-			{
-				UE_LOG(LogRemotePlay, Warning, TEXT("Could not find default hand actor in <%s>."), *defaultHandLocation);
-			}
-		}
-
-		//Add the hand actors, and their resources, to the geometry source.
-		if(handMeshComponent)
-		{
-			avs::uid firstHandUID = AddNode(rootNodeUid, handMeshComponent);
-			nodes[firstHandUID]->data_type = avs::NodeDataType::Hand;
-
-			avs::uid secondHandUID = avs::GenerateUid();
-			nodes[secondHandUID] = nodes[firstHandUID];
-
-			handUIDs = {firstHandUID, secondHandUID};
-		}
+		handUIDs = {firstHandUID, secondHandUID};
 	}
 }
 

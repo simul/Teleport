@@ -114,6 +114,12 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp, avs::GeometrySourceBacke
 		}
 	}
 
+	if(buffer.size() > Monitor->GeometryBufferCutoffSize)
+	{
+		float sizeDifference = (buffer.size() - Monitor->GeometryBufferCutoffSize) / 1048576.0f;
+		UE_CLOG(sizeDifference > 0.5f, LogRemotePlay, Warning, TEXT("Buffer size was %.2fMB; %.2fMB more than the cutoff(%.2fMB)."), buffer.size() / 1048576.0f, sizeDifference, Monitor->GeometryBufferCutoffSize / 1048576.0f);
+	}
+
 	// GALU to end.
 	buffer.push_back(GALU_code[0]);
 	buffer.push_back(GALU_code[1]);
@@ -140,6 +146,8 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 {
 	for(size_t h = 0; h < missingUIDs.size(); h++)
 	{
+		size_t oldBufferSize = buffer.size();
+
 		std::vector<avs::uid> accessors;
 		putPayload(avs::GeometryPayloadType::Mesh);
 		put((size_t)1);
@@ -201,6 +209,9 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 			put(b.data, b.byteLength);
 		}
 
+		float sizeDifference = (buffer.size() - oldBufferSize) / 1048576.0f;
+		float reportSize = 0.1f;
+		UE_CLOG(sizeDifference > reportSize, LogRemotePlay, Warning, TEXT("Mesh(%llu) was more than %.2fMB large. Was %.2fMB"), uid, reportSize, sizeDifference);
 	}
 	return avs::Result::OK;
 }
@@ -381,6 +392,8 @@ avs::Result GeometryEncoder::encodeTexturesBackend(avs::GeometrySourceBackendInt
 
 		if(textureIsFound)
 		{
+			size_t oldBufferSize = buffer.size();
+
 			//Place payload type onto the buffer.
 			putPayload(avs::GeometryPayloadType::Texture);
 			//Push amount of textures we are sending.
@@ -418,6 +431,10 @@ avs::Result GeometryEncoder::encodeTexturesBackend(avs::GeometrySourceBackendInt
 
 			//Flag we have encoded the texture.
 			req->EncodedResource(uid);
+
+			float sizeDifference = (buffer.size() - oldBufferSize) / 1048576.0f;
+			float reportSize = 0.1f;
+			UE_CLOG(sizeDifference > reportSize, LogRemotePlay, Warning, TEXT("Texture \"%s\"(%llu) was more than %.2fMB large. Was %.2fMB"), ANSI_TO_TCHAR(outTexture.name.data()), uid, reportSize, sizeDifference);
 		}
 	}
 
