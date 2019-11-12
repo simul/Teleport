@@ -437,6 +437,7 @@ avs::uid GeometrySource::AddStreamableMeshComponent(UMeshComponent *MeshComponen
 		{
 			already_got_mesh = true;
 			mesh_uid = i.Key;
+			break;
 		}
 	}
 	if (!already_got_mesh)

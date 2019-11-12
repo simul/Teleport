@@ -1,6 +1,7 @@
 #include "GeometryEncoder.h"
 
 #include <algorithm>
+#include <set>
 
 #include "libavstream/common.hpp"
 
@@ -148,14 +149,15 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 	{
 		size_t oldBufferSize = buffer.size();
 
-		std::vector<avs::uid> accessors;
 		putPayload(avs::GeometryPayloadType::Mesh);
 		put((size_t)1);
+
 		avs::uid uid = missingUIDs[h];
 		put(uid);
-		// Requester doesn't have this mesh, and needs it, so we will encode the mesh for transport.
+
 		size_t prims = src->getMeshPrimitiveArrayCount(uid);
 		put(prims);
+		std::set<avs::uid> accessors;
 		for(size_t j = 0; j < prims; j++)
 		{
 			avs::PrimitiveArray primitiveArray;
@@ -164,47 +166,50 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 			put(primitiveArray.indices_accessor);
 			put(primitiveArray.material);
 			put(primitiveArray.primitiveMode);
-			accessors.push_back(primitiveArray.indices_accessor);
+			accessors.insert(primitiveArray.indices_accessor);
 			for(size_t k = 0; k < primitiveArray.attributeCount; k++)
 			{
 				put(primitiveArray.attributes[k]);
-				accessors.push_back(primitiveArray.attributes[k].accessor);
+				accessors.insert(primitiveArray.attributes[k].accessor);
 			}
 		}
 		req->EncodedResource(uid);
+
 		put(accessors.size());
-		std::vector<avs::uid> bufferViews;
-		for(size_t i = 0; i < accessors.size(); i++)
+		std::set<avs::uid> bufferViews;
+		for(avs::uid accessorID : accessors)
 		{
 			avs::Accessor accessor;
-			src->getAccessor(accessors[i], accessor);
-			put(accessors[i]);
+			src->getAccessor(accessorID, accessor);
+			put(accessorID);
 			put(accessor.type);
 			put(accessor.componentType);
 			put(accessor.count);
 			put(accessor.bufferView);
-			bufferViews.push_back(accessor.bufferView);
+			bufferViews.insert(accessor.bufferView);
 			put(accessor.byteOffset);
 		}
+
 		put(bufferViews.size());
-		std::vector<avs::uid> buffers;
-		for(size_t i = 0; i < bufferViews.size(); i++)
+		std::set<avs::uid> buffers;
+		for(avs::uid bufferViewID : bufferViews)
 		{
 			avs::BufferView bufferView;
-			src->getBufferView(bufferViews[i], bufferView);
-			put(bufferViews[i]);
+			src->getBufferView(bufferViewID, bufferView);
+			put(bufferViewID);
 			put(bufferView.buffer);
 			put(bufferView.byteOffset);
 			put(bufferView.byteLength);
 			put(bufferView.byteStride);
-			buffers.push_back(bufferView.buffer);
+			buffers.insert(bufferView.buffer);
 		}
+
 		put(buffers.size());
-		for(size_t i = 0; i < buffers.size(); i++)
+		for(avs::uid bufferID : buffers)
 		{
 			avs::GeometryBuffer b;
-			src->getBuffer(buffers[i], b);
-			put(buffers[i]);
+			src->getBuffer(bufferID, b);
+			put(bufferID);
 			put(b.byteLength);
 			put(b.data, b.byteLength);
 		}
