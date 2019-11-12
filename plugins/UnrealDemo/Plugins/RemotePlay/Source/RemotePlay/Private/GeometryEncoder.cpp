@@ -117,8 +117,8 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp, avs::GeometrySourceBacke
 
 	if(buffer.size() > Monitor->GeometryBufferCutoffSize)
 	{
-		float sizeDifference = (buffer.size() - Monitor->GeometryBufferCutoffSize) / 1048576.0f;
-		UE_CLOG(sizeDifference > 0.5f, LogRemotePlay, Warning, TEXT("Buffer size was %.2fMB; %.2fMB more than the cutoff(%.2fMB)."), buffer.size() / 1048576.0f, sizeDifference, Monitor->GeometryBufferCutoffSize / 1048576.0f);
+		float cutoffDifference = buffer.size() - Monitor->GeometryBufferCutoffSize;
+		UE_CLOG(cutoffDifference > Monitor->GeometryBufferCutoffSize * 2, LogRemotePlay, Warning, TEXT("Buffer size was %.2fMB; %.2fMB more than the cutoff(%.2fMB)."), buffer.size() / 1048576.0f, cutoffDifference / 1048576.0f, Monitor->GeometryBufferCutoffSize / 1048576.0f);
 	}
 
 	// GALU to end.
@@ -214,9 +214,8 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 			put(b.data, b.byteLength);
 		}
 
-		float sizeDifference = (buffer.size() - oldBufferSize) / 1048576.0f;
-		float reportSize = 0.1f;
-		UE_CLOG(sizeDifference > reportSize, LogRemotePlay, Warning, TEXT("Mesh(%llu) was more than %.2fMB large. Was %.2fMB"), uid, reportSize, sizeDifference);
+		float sizeDifference = buffer.size() - oldBufferSize;
+		UE_CLOG(sizeDifference > Monitor->GeometryBufferCutoffSize, LogRemotePlay, Warning, TEXT("Mesh(%llu) was encoded as %.2fMB. Cutoff is: %.2fMB"), uid, sizeDifference / 1048576.0f, Monitor->GeometryBufferCutoffSize / 1048576.0f);
 	}
 	return avs::Result::OK;
 }
@@ -437,9 +436,8 @@ avs::Result GeometryEncoder::encodeTexturesBackend(avs::GeometrySourceBackendInt
 			//Flag we have encoded the texture.
 			req->EncodedResource(uid);
 
-			float sizeDifference = (buffer.size() - oldBufferSize) / 1048576.0f;
-			float reportSize = 0.1f;
-			UE_CLOG(sizeDifference > reportSize, LogRemotePlay, Warning, TEXT("Texture \"%s\"(%llu) was more than %.2fMB large. Was %.2fMB"), ANSI_TO_TCHAR(outTexture.name.data()), uid, reportSize, sizeDifference);
+			float sizeDifference = buffer.size() - oldBufferSize;
+			UE_CLOG(sizeDifference > Monitor->GeometryBufferCutoffSize, LogRemotePlay, Warning, TEXT("Texture \"%s\"(%llu) was encoded as %.2fMB. Cutoff is: %.2fMB"), ANSI_TO_TCHAR(outTexture.name.data()), uid, sizeDifference / 1048576.0f, Monitor->GeometryBufferCutoffSize / 1048576.0f);
 		}
 	}
 
