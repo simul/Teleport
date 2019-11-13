@@ -63,7 +63,7 @@ public:
 
 	virtual std::vector<avs::uid> getShadowMapUIDs() const override;
 	virtual bool getShadowMap(avs::uid shadow_uid, avs::Texture& outShadowMap) const override;
-
+	virtual const std::vector<avs::LightNodeResources>& getLightNodes() const;
 
 protected:
 	struct Mesh;
@@ -86,6 +86,8 @@ protected:
 	std::map<avs::uid, avs::Texture> textures;
 	std::map<avs::uid, avs::Material> materials;
 	std::map<avs::uid, avs::Texture> shadowMaps;
+
+	std::vector<avs::LightNodeResources> lightNodes; //List of all light nodes; prevents having to search for them every geometry tick.
 	
 	mutable std::map<avs::uid, std::vector<avs::vec3>> scaledPositionBuffers;
 	mutable std::map<avs::uid, std::vector<FVector2D>> processedUVs;

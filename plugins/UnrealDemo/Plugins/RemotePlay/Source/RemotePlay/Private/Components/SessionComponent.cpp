@@ -352,7 +352,7 @@ void URemotePlaySessionComponent::SwitchPlayerPawn(APawn* NewPawn)
 			DetectionSphereInner->OnComponentBeginOverlap.AddDynamic(this, &URemotePlaySessionComponent::OnInnerSphereBeginOverlap);
 			DetectionSphereInner->SetCollisionProfileName("RemotePlaySensor");
 			DetectionSphereInner->SetGenerateOverlapEvents(true);
-			DetectionSphereInner->SetSphereRadius(0); //Set to zero, so it doesn't clear the actor list on creation.
+			DetectionSphereInner->SetSphereRadius(Monitor->DetectionSphereRadius);
 
 			DetectionSphereInner->RegisterComponent();
 			DetectionSphereInner->AttachToComponent(PlayerPawn->GetRootComponent(), transformRules);
@@ -363,7 +363,7 @@ void URemotePlaySessionComponent::SwitchPlayerPawn(APawn* NewPawn)
 			DetectionSphereOuter->OnComponentEndOverlap.AddDynamic(this, &URemotePlaySessionComponent::OnOuterSphereEndOverlap);
 			DetectionSphereOuter->SetCollisionProfileName("RemotePlaySensor");
 			DetectionSphereOuter->SetGenerateOverlapEvents(true);
-			DetectionSphereOuter->SetSphereRadius(0); //Set to zero, so it doesn't clear the actor list on creation.
+			DetectionSphereOuter->SetSphereRadius(Monitor->DetectionSphereRadius + Monitor->DetectionSphereBufferDistance);
 
 			DetectionSphereOuter->RegisterComponent();
 			DetectionSphereOuter->AttachToComponent(PlayerPawn->GetRootComponent(), transformRules);
@@ -417,6 +417,14 @@ void URemotePlaySessionComponent::StartStreaming()
 	setupCommand.use_10_bit_decoding = Monitor->bUse10BitEncoding;
 	setupCommand.use_yuv_444_decoding = Monitor->bUseYUV444Decoding;
 
+	//Fill the list of streamed actors, so a reconnecting client will not have to download geometry it already has.
+	TSet<AActor*> actorsOverlappingOnStart;
+	DetectionSphereInner->GetOverlappingActors(actorsOverlappingOnStart);
+	for(AActor* actor : actorsOverlappingOnStart)
+	{
+		GeometryStreamingService.AddActor(actor);
+	}
+
 	//Get resources the client will need to check it has.
 	std::vector<avs::MeshNodeResources> outMeshResources;
 	std::vector<avs::LightNodeResources> outLightResources;
@@ -452,6 +460,12 @@ void URemotePlaySessionComponent::StartStreaming()
 	setupCommand.resourceCount = resourcesClientNeeds.size();
 
 	Client_SendCommand<avs::uid>(setupCommand, resourcesClientNeeds);
+
+	//If the client needs a resource it will tell us; we don't want to stream the data if the client already has it.
+	for(avs::uid resourceID : resourcesClientNeeds)
+	{
+		GeometryStreamingService.ConfirmResource(resourceID);
+	}
 
 	IsStreaming = true;
 }

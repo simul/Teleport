@@ -528,6 +528,8 @@ avs::uid GeometrySource::AddNode(avs::uid parent_uid, USceneComponent* component
 			node_uid = CreateNode(component, shadow_uid, avs::NodeDataType::ShadowMap, {});
 			decomposedNodes[levelUniqueNodeName] = node_uid;
 
+			lightNodes.emplace_back(avs::LightNodeResources{node_uid, shadow_uid});
+
 			//This node is a Terminus. i.e. no children.
 		}
 		else
@@ -1344,4 +1346,9 @@ bool GeometrySource::getShadowMap(avs::uid shadow_uid, avs::Texture& outShadowMa
 		UE_LOG(LogRemotePlay, Warning, TEXT("Failed to find shadow map with UID: %d"), shadow_uid)
 			return false;
 	}
+}
+
+const std::vector<avs::LightNodeResources>& GeometrySource::getLightNodes() const
+{
+	return lightNodes;
 }

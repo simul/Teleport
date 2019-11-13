@@ -411,18 +411,5 @@ void FGeometryStreamingService::GetResourcesToStream(std::vector<avs::MeshNodeRe
 		GetMeshNodeResources(nodePair.second, outMeshResources);
 	}
 
-	///GGMP: If we're sending all shadowmaps anyway, can't we just store a list of all light datanodes?
-	std::vector<avs::uid> shadowIDs = geometrySource->getShadowMapUIDs();
-	const std::map<avs::uid, std::shared_ptr<avs::DataNode>>& nodes = geometrySource->getNodes();
-	for(auto& shadowUID : shadowIDs)
-	{
-		for(auto& node : nodes)
-		{
-			if(node.second->data_uid == shadowUID)
-			{
-				shadowIDs.push_back(node.first);
-				break;
-			}
-		}
-	}
+	outLightResources = geometrySource->getLightNodes();
 }
