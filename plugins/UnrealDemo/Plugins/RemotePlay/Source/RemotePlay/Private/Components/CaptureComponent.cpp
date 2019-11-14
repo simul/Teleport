@@ -20,6 +20,7 @@ URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 	, RemotePlayContext(nullptr)
 	, RemotePlayReflectionCaptureComponent(nullptr)
 	, bIsStreaming(false)
+	, bSendKeyframe(false)
 {
 	PrimaryComponentTick.bCanEverTick = true;
 	bCaptureEveryFrame = true;
@@ -166,7 +167,9 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 				RemotePlayContext->EncodePipeline->GetSurfaceTexture(),
 				Scene->GetFeatureLevel(),Offset0);
 		}
-		RemotePlayContext->EncodePipeline->EncodeFrame(Scene, TextureTarget, Transform);
+		RemotePlayContext->EncodePipeline->EncodeFrame(Scene, TextureTarget, Transform, bSendKeyframe);
+		// The client must request it again if it needs it
+		bSendKeyframe = false;
 	}
 }
 
@@ -186,6 +189,7 @@ void URemotePlayCaptureComponent::StartStreaming(FRemotePlayContext *Context)
 
 	bIsStreaming = true;
 	bCaptureEveryFrame = true;
+	bSendKeyframe = false;
 }
 
 void URemotePlayCaptureComponent::StopStreaming()
@@ -209,6 +213,11 @@ void URemotePlayCaptureComponent::StopStreaming()
 
 	bCaptureEveryFrame = false;
 	UE_LOG(LogRemotePlay, Log, TEXT("Capture: Stopped streaming"));
+}
+
+void URemotePlayCaptureComponent::RequestKeyframe()
+{
+
 }
 
 void URemotePlayCaptureComponent::OnViewportDrawn()

@@ -210,7 +210,7 @@ void FEncodePipelineMonoscopic::PrepareFrame(FSceneInterface* InScene, UTexture*
 }
 
 
-void FEncodePipelineMonoscopic::EncodeFrame(FSceneInterface* InScene, UTexture* InSourceTexture, FTransform& CameraTransform)
+void FEncodePipelineMonoscopic::EncodeFrame(FSceneInterface* InScene, UTexture* InSourceTexture, FTransform& CameraTransform, bool forceIDR)
 {
 	if(!InScene || !InSourceTexture)
 	{
@@ -223,10 +223,10 @@ void FEncodePipelineMonoscopic::EncodeFrame(FSceneInterface* InScene, UTexture* 
 	FTextureRenderTargetResource* TargetResource = SourceTarget->GameThread_GetRenderTargetResource();
 
 	ENQUEUE_RENDER_COMMAND(RemotePlayEncodeFrame)(
-		[this, CameraTransform](FRHICommandListImmediate& RHICmdList)
+		[this, CameraTransform, forceIDR](FRHICommandListImmediate& RHICmdList)
 		{
 			SCOPED_DRAW_EVENT(RHICmdList, RemotePlayEncodePipelineMonoscopic);
-			EncodeFrame_RenderThread(RHICmdList, CameraTransform);
+			EncodeFrame_RenderThread(RHICmdList, CameraTransform, forceIDR);
 		}
 	);
 }
@@ -423,7 +423,7 @@ void FEncodePipelineMonoscopic::PrepareFrame_RenderThread(
 	}
 }
 	
-void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediate& RHICmdList, FTransform CameraTransform)
+void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediate& RHICmdList, FTransform CameraTransform, bool forceIDR)
 {
 	check(Pipeline.IsValid());
 	// The transform of the capture component needs to be sent with the image
@@ -435,6 +435,7 @@ void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediat
 	for (auto& Encoder : Encoders)
 	{
 		Encoder.setCameraTransform(CamTransform);
+		Encoder.setForceIDR(forceIDR);
 	}
 
 	if (!Pipeline->process())

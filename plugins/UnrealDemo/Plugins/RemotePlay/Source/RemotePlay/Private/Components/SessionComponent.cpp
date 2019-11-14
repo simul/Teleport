@@ -95,8 +95,9 @@ enum ERemotePlaySessionChannel
 	RPCH_HANDSHAKE = 0,
 	RPCH_Control = 1,
 	RPCH_HeadPose = 2,
-	RPCH_Request = 3,
-	RPCH_ClientMessage = 4,
+	RPCH_Resource_Request = 3,
+	RPCH_Keyframe_Request = 4,
+	RPCH_ClientMessage = 5,
 	RPCH_NumChannels,
 };
 
@@ -624,7 +625,7 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 	case RPCH_HeadPose:
 		RecvHeadPose(Event.packet);
 		break;
-	case RPCH_Request:
+	case RPCH_Resource_Request:
 	{
 		size_t resourceAmount;
 		memcpy(&resourceAmount, Event.packet->data, sizeof(size_t));
@@ -636,14 +637,22 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 		{
 			GeometryStreamingService.RequestResource(uid);
 		}
-	}
-		
 		break;
+	}
+	case RPCH_Keyframe_Request:
+	{
+		URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
+		if (CaptureComponent)
+		{
+			CaptureComponent->RequestKeyframe();
+		}
+		break;
+	}
 	case RPCH_ClientMessage:
 	{
 		RecvClientMessage(Event.packet);
+		break;
 	}
-	break;
 	default:
 		break;
 	}

@@ -22,6 +22,6 @@ public:
 	virtual void Initialize(const FRemotePlayEncodeParameters& InParams, struct FRemotePlayContext *context, class ARemotePlayMonitor* InMonitor, avs::Queue* InColorQueue, avs::Queue* InDepthQueue) = 0;
 	virtual void Release() = 0;
 	virtual void PrepareFrame(FSceneInterface* InScene, UTexture* InSourceTexture, FTransform& CameraTransform) =0;
-	virtual void EncodeFrame(FSceneInterface* InScene, UTexture* InSourceTexture, FTransform& CameraTransform) = 0;
+	virtual void EncodeFrame(FSceneInterface* InScene, UTexture* InSourceTexture, FTransform& CameraTransform, bool forceIDR) = 0;
 	virtual FSurfaceTexture *GetSurfaceTexture() = 0;
 };
