@@ -217,7 +217,7 @@ void URemotePlayCaptureComponent::StopStreaming()
 
 void URemotePlayCaptureComponent::RequestKeyframe()
 {
-
+	bSendKeyframe = true;
 }
 
 void URemotePlayCaptureComponent::OnViewportDrawn()
