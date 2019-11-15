@@ -31,8 +31,8 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 	TargetFPS = 60;
 	IDRInterval = 0; // Value of 0 means only first frame will be IDR
 	RateControlMode = EncoderRateControlMode::RC_CBR_LOWDELAY_HQ;
-	AverageBitrate = 40000000; // 40ms
-	MaxBitrate = 80000000; // 80ms
+	AverageBitrate = 40000000; // 40mb/s
+	MaxBitrate = 80000000; // 80mb/s
 	bAutoBitRate = false;
 	vbvBufferSizeInFrames = 3;
 	bUseAsyncEncoding = true;

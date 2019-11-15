@@ -611,6 +611,8 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 		RemotePlayContext->NetworkPipeline->Initialize(Monitor, NetworkParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get(), RemotePlayContext->GeometryQueue.Get());
 	}
 
+	CaptureComponent->SetFOV(handshake.FOV);
+
 	CaptureComponent->StartStreaming(RemotePlayContext);
 
 	if (Monitor&&Monitor->StreamGeometry)
@@ -706,6 +708,9 @@ void URemotePlaySessionComponent::RecvHeadPose(const ENetPacket* Packet)
 	PlayerController->GetPawn()->SetActorLocation(pos);
 	const FQuat HeadPoseUE{ headPose.OrientationQuat.x, headPose.OrientationQuat.y, headPose.OrientationQuat.z, headPose.OrientationQuat.w };
 	
+	URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
+	CaptureComponent->SetCameraInfo({HeadPoseUE, pos});
+
 	FVector Euler = HeadPoseUE.Euler();
 	Euler.X = Euler.Y = 0.0f;
 	// Unreal thinks the Euler angle starts from facing X, but actually it's Y.

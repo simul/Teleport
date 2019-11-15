@@ -224,3 +224,13 @@ void URemotePlayCaptureComponent::OnViewportDrawn()
 {
 }
 
+void URemotePlayCaptureComponent::SetFOV(float InFOV)
+{
+	FOV = InFOV;
+}
+
+void URemotePlayCaptureComponent::SetCameraInfo(FCameraInfo InCameraInfo)
+{
+	CameraInfo = InCameraInfo;
+}
+
