@@ -482,13 +482,13 @@ avs::uid GeometrySource::AddNode(avs::uid parent_uid, USceneComponent* component
 				return 0;
 			}
 			//Materials that this component has applied to its material slots.
-			TArray<UMaterialInterface*> materials = meshComponent->GetMaterials();
+			TArray<UMaterialInterface*> mats = meshComponent->GetMaterials();
 
 			std::vector<avs::uid> mat_uids;
 			//Add material, and textures, for streaming to clients.
-			for(int32 i = 0; i < materials.Num(); i++)
+			for(int32 i = 0; i < mats.Num(); i++)
 			{
-				avs::uid material_uid = AddMaterial(materials[i]);
+				avs::uid material_uid = AddMaterial(mats[i]);
 
 				if(material_uid != 0)
 				{

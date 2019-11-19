@@ -656,14 +656,20 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 		break;
 	}
 	case RPCH_Keyframe_Request:
-	{
-		URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
-		if (CaptureComponent)
+		if(PlayerPawn.IsValid())
 		{
-			CaptureComponent->RequestKeyframe();
+			URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
+			if(CaptureComponent)
+			{
+				CaptureComponent->RequestKeyframe();
+			}
 		}
+		else
+		{
+			UE_LOG(LogRemotePlay, Warning, TEXT("Received keyframe request; but player pawn, and thus the CaptureComponent, isn't set."))
+		}
+
 		break;
-	}
 	case RPCH_ClientMessage:
 	{
 		RecvClientMessage(Event.packet);

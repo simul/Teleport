@@ -115,10 +115,10 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp, avs::GeometrySourceBacke
 		}
 	}
 
-	if(buffer.size() > Monitor->GeometryBufferCutoffSize)
+	if(buffer.size() > Monitor->GeometryBufferCutoffSize + 10240)
 	{
 		float cutoffDifference = buffer.size() - Monitor->GeometryBufferCutoffSize;
-		UE_CLOG(cutoffDifference > Monitor->GeometryBufferCutoffSize * 2, LogRemotePlay, Warning, TEXT("Buffer size was %.2fMB; %.2fMB more than the cutoff(%.2fMB)."), buffer.size() / 1048576.0f, cutoffDifference / 1048576.0f, Monitor->GeometryBufferCutoffSize / 1048576.0f);
+		UE_LOG(LogRemotePlay, Warning, TEXT("Buffer size was %.2fMB; %.2fMB more than the cutoff(%.2fMB)."), buffer.size() / 1048576.0f, cutoffDifference / 1048576.0f, Monitor->GeometryBufferCutoffSize / 1048576.0f);
 	}
 
 	// GALU to end.
