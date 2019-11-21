@@ -15,7 +15,8 @@ public:
 	avs::Result mapOutputBuffer(void *& bufferPtr, size_t & bufferSizeInBytes) override;
 	avs::Result unmapOutputBuffer() override;
 protected:
-	std::vector<char> buffer;
+	std::vector<char> buffer; //Buffer used to encode data before checking it can be sent.
+	std::vector<char> queuedBuffer; //Buffer given to the pipeline to be sent to the client.
 	template<typename T> size_t put(const T&data)
 	{
 		size_t pos = buffer.size();
@@ -52,4 +53,10 @@ private:
 
 	//The actual implementation of encode textures that can be used by encodeMaterials to package textures with it.
 	avs::Result encodeTexturesBackend(avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req, std::vector<avs::uid> missingUIDs, bool isShadowMap = false);
+
+	//Moves the data from buffer into queuedBuffer; keeping in mind the recommended buffer cutoff size.
+	//Data will usually not be queued if it would cause it to exceed the recommended size, but the data may have been queued anyway.
+	//This happens when not queueing it would have left queuedBuffer empty.
+	//Returns whether the queue attempt did not exceed the recommended buffer size.
+	bool attemptQueueData();
 };
