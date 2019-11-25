@@ -49,13 +49,13 @@ public:
 	const FRemotePlayEncodeParameters &GetEncodeParams();
 
 	void SetFOV(float InFOV);
-	void SetCameraInfo(FCameraInfo InCameraInfo);
+	void SetClientCameraInfo(FCameraInfo InClientCamInfo);
 
 private: 
 	void OnViewportDrawn();
 	FDelegateHandle ViewportDrawnDelegateHandle;
 
-	FCameraInfo CameraInfo;
+	FCameraInfo ClientCamInfo;
 	float FOV;
 
 	struct FRemotePlayContext* RemotePlayContext;

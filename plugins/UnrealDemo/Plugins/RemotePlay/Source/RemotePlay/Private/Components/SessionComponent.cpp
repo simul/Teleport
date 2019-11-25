@@ -94,11 +94,12 @@ enum ERemotePlaySessionChannel
 {
 	RPCH_HANDSHAKE = 0,
 	RPCH_Control = 1,
-	RPCH_HeadPose = 2,
-	RPCH_Resource_Request = 3,
-	RPCH_Keyframe_Request = 4,
-	RPCH_ClientMessage = 5,
-	RPCH_NumChannels,
+	RPCH_DisplayInfo = 2,
+	RPCH_HeadPose = 3,
+	RPCH_Resource_Request = 4,
+	RPCH_Keyframe_Request = 5,
+	RPCH_ClientMessage = 6,
+	RPCH_NumChannels
 };
 
 URemotePlaySessionComponent::URemotePlaySessionComponent()
@@ -709,13 +710,13 @@ void URemotePlaySessionComponent::RecvHeadPose(const ENetPacket* Packet)
 	pos *= 100.0f;
 	static FVector offset(0, 0, 1.5f);
 	FVector oldPos = PlayerController->GetPawn()->GetActorLocation();
-	pos += offset;
-	pos.Z = oldPos.Z;
-	PlayerController->GetPawn()->SetActorLocation(pos);
+	FVector newPos = pos + offset;
+	newPos.Z = oldPos.Z;
+	PlayerController->GetPawn()->SetActorLocation(newPos);
 	const FQuat HeadPoseUE{ headPose.OrientationQuat.x, headPose.OrientationQuat.y, headPose.OrientationQuat.z, headPose.OrientationQuat.w };
 	
 	URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
-	CaptureComponent->SetCameraInfo({HeadPoseUE, pos});
+	CaptureComponent->SetClientCameraInfo({HeadPoseUE, pos});
 
 	FVector Euler = HeadPoseUE.Euler();
 	Euler.X = Euler.Y = 0.0f;
