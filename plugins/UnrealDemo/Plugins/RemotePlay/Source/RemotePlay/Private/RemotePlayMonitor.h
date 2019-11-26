@@ -123,6 +123,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
 	uint32 ResetCache : 1;
 
+	//An estimate of how frequently the client will decode the packets sent to it; used by throttling.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
+	uint8 EstimatedDecodingFrequency;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Compression)
 	bool UseCompressedTextures;
 	
