@@ -57,6 +57,7 @@ private:
 
 	void DispatchEvent(const ENetEvent& Event);
 	void RecvHandshake(const ENetPacket* Packet);
+	void RecvDisplayInfo(const ENetPacket* Packet);
 	void RecvHeadPose(const ENetPacket* Packet);
 	void RecvInput(const ENetPacket* Packet);
 	void RecvClientMessage(const ENetPacket* Packet);

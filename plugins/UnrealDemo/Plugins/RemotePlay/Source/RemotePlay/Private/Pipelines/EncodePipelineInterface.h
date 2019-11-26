@@ -14,6 +14,16 @@ struct FSurfaceTexture
 	FUnorderedAccessViewRHIRef UAV;
 };
 
+struct FCameraInfo
+{
+	FQuat Orientation;
+	FVector Position;
+	float FOV;
+	float Width;
+	float Height;
+	bool isVR;
+};
+
 class IEncodePipeline
 {
 public:

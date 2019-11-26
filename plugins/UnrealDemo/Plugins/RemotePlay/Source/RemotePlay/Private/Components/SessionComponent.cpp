@@ -600,7 +600,9 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 		RemotePlayContext->NetworkPipeline->Initialize(Monitor, NetworkParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get(), RemotePlayContext->GeometryQueue.Get());
 	}
 
-	CaptureComponent->SetFOV(handshake.FOV);
+	FCameraInfo& ClientCamInfo = CaptureComponent->GetClientCameraInfo();
+	ClientCamInfo.FOV = handshake.FOV;
+	ClientCamInfo.isVR = handshake.isVR;
 
 	CaptureComponent->StartStreaming(RemotePlayContext);
 
@@ -624,6 +626,9 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 		break;
 	case static_cast<enet_uint8>(avs::RemotePlaySessionChannel::RPCH_Control):
 		RecvInput(Event.packet);
+		break;
+	case static_cast<enet_uint8>(avs::RemotePlaySessionChannel::RPCH_DisplayInfo):
+		RecvDisplayInfo(Event.packet);
 		break;
 	case static_cast<enet_uint8>(avs::RemotePlaySessionChannel::RPCH_HeadPose):
 		RecvHeadPose(Event.packet);
@@ -669,6 +674,30 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 	enet_packet_destroy(Event.packet);
 }
 
+void URemotePlaySessionComponent::RecvDisplayInfo(const ENetPacket* Packet)
+{
+	struct DisplayInfo
+	{
+		uint32 Width;
+		uint32 Height;
+	};
+	if (Packet->dataLength != sizeof(DisplayInfo))
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Received malformed display info packet of length: %d"), Packet->dataLength);
+		return;
+	}
+	if (!RemotePlayContext)
+		return;
+
+	DisplayInfo displayInfo;
+	FPlatformMemory::Memcpy(&displayInfo, Packet->data, Packet->dataLength);
+
+	URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
+	FCameraInfo& ClientCamInfo = CaptureComponent->GetClientCameraInfo();
+	ClientCamInfo.Width = displayInfo.Width;
+	ClientCamInfo.Height = displayInfo.Height;
+}
+
 void URemotePlaySessionComponent::RecvHeadPose(const ENetPacket* Packet)
 {
 	struct HeadPose
@@ -703,7 +732,9 @@ void URemotePlaySessionComponent::RecvHeadPose(const ENetPacket* Packet)
 	const FQuat HeadPoseUE{ headPose.OrientationQuat.x, headPose.OrientationQuat.y, headPose.OrientationQuat.z, headPose.OrientationQuat.w };
 	
 	URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
-	CaptureComponent->SetClientCameraInfo({HeadPoseUE, pos});
+	FCameraInfo& ClientCamInfo = CaptureComponent->GetClientCameraInfo();
+	ClientCamInfo.Orientation = HeadPoseUE;
+	ClientCamInfo.Position = pos;
 
 	FVector Euler = HeadPoseUE.Euler();
 	Euler.X = Euler.Y = 0.0f;
