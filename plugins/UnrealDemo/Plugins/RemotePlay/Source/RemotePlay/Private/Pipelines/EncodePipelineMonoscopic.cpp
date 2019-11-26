@@ -189,6 +189,19 @@ void FEncodePipelineMonoscopic::Release()
 	DepthQueue = nullptr;
 }
 
+void FEncodePipelineMonoscopic::CullHiddenCubeSegments(FSceneInterface* InScene, FCameraInfo& CameraInfo, int32 FaceSize, uint32 Divisor)
+{
+	const ERHIFeatureLevel::Type FeatureLevel = InScene->GetFeatureLevel();
+
+	ENQUEUE_RENDER_COMMAND(RemotePlayCullHiddenCubeSegments)(
+		[this, CameraInfo, FeatureLevel, FaceSize, Divisor](FRHICommandListImmediate& RHICmdList)
+		{
+			SCOPED_DRAW_EVENT(RHICmdList, RemotePlayEncodePipelineCullHiddenCubeSegments);
+			CullHiddenCubeSegments_RenderThread(RHICmdList, FeatureLevel, CameraInfo, FaceSize, Divisor);
+		}
+	);
+}
+
 void FEncodePipelineMonoscopic::PrepareFrame(FSceneInterface* InScene, UTexture* InSourceTexture, FTransform& CameraTransform)
 {
 	if (!InScene || !InSourceTexture)
@@ -403,6 +416,22 @@ void FEncodePipelineMonoscopic::Release_RenderThread(FRHICommandListImmediate& R
 	DepthSurfaceTexture.Texture.SafeRelease();
 	DepthSurfaceTexture.UAV.SafeRelease();
 } 
+
+void FEncodePipelineMonoscopic::CullHiddenCubeSegments_RenderThread(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, FCameraInfo CameraInfo, int32 FaceSize, uint32 Divisor)
+{
+	FLookAtMatrix ViewMatrix = FLookAtMatrix(FVector::ZeroVector, CameraInfo.Orientation.GetForwardVector(), CameraInfo.Orientation.GetUpVector());
+
+	float FOV = FMath::DegreesToRadians(CameraInfo.FOV);
+	FMatrix ProjectionMatrix;
+	if (static_cast<int32>(ERHIZBuffer::IsInverted) == 1)
+	{
+		ProjectionMatrix = FReversedZPerspectiveMatrix(FOV, (float)CameraInfo.Width, (float)CameraInfo.Height, GNearClippingPlane, GNearClippingPlane);
+	}
+	else
+	{
+		ProjectionMatrix = FPerspectiveMatrix(FOV, (float)CameraInfo.Width, (float)CameraInfo.Height, GNearClippingPlane, GNearClippingPlane);
+	}
+}
 
 void FEncodePipelineMonoscopic::PrepareFrame_RenderThread(
 	FRHICommandListImmediate& RHICmdList,
