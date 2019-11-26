@@ -38,7 +38,7 @@ void FNetworkPipeline::Initialize(ARemotePlayMonitor *m,const FRemotePlayNetwork
 	avs::NetworkSinkParams SinkParams = {};
 	SinkParams.socketBufferSize = GNetworkPipelineSocketBufferSize;
 	SinkParams.throttleToRate = (InParams.ClientBandwidthLimit);// Assuming 60Hz on the other size. k per sec
-	//InParams.ClientBufferSize = handshake.udpBufferSize;
+	SinkParams.socketBufferSize = InParams.ClientBufferSize;
 	if (!NetworkSink->configure(NumInputs, InParams.LocalPort, TCHAR_TO_UTF8(*InParams.RemoteIP), InParams.RemotePort, SinkParams))
 	{
 		UE_LOG(LogRemotePlay, Error, TEXT("Failed to configure network sink"));
@@ -108,6 +108,7 @@ void FNetworkPipeline::Process()
 	}
 	NetworkSink->setDebugStream(Monitor->DebugStream);
 	NetworkSink->setDoChecksums(Monitor->Checksums);
+	NetworkSink->setEstimatedDecodingFrequency(Monitor->EstimatedDecodingFrequency);
 #endif // WITH_REMOTEPLAY_STATS
 }
 
