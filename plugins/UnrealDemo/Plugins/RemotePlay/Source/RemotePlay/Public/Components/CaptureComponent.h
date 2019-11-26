@@ -33,6 +33,8 @@ public:
 
 	void StopStreaming();
 
+	void RequestKeyframe();
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = RemotePlay)
 	FRemotePlayEncodeParameters EncodeParams;
 
@@ -46,4 +48,5 @@ private:
 	struct FRemotePlayContext* RemotePlayContext;
 	class URemotePlayReflectionCaptureComponent *RemotePlayReflectionCaptureComponent;
 	bool bIsStreaming;
+	bool bSendKeyframe;
 };

@@ -2,12 +2,13 @@
 #include "RemotePlayMonitor.h"
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
+#include "Engine/TextureRenderTarget.h"
 #include "RemotePlaySettings.h"
 
 TMap<UWorld*, ARemotePlayMonitor*> ARemotePlayMonitor::Monitors;
 
 ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectInitializer)
-	: Super(ObjectInitializer), HandActor(nullptr), GeometryTicksPerSecond(2), GeometryBufferCutoffSize(102400) /*100MB*/
+	: Super(ObjectInitializer), HandActor(nullptr), GeometryTicksPerSecond(2), GeometryBufferCutoffSize(102400) /*100MB*/, ConfirmationWaitTime(5.0f)
 {
 	// Defaults from settings class.
 	const URemotePlaySettings *RemotePlaySettings = GetDefault<URemotePlaySettings>();
@@ -23,9 +24,20 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 		VideoEncodeFrequency = 2;
 		StreamGeometry = true;
 		StreamGeometryContinuously = true;
-		StreamGeometryContinuously = false;
 	}
-	DeferOutput = false;
+	bOverrideTextureTarget = false;
+	SceneCaptureTextureTarget = nullptr;
+	bDeferOutput = false;
+	TargetFPS = 60;
+	IDRInterval = 0; // Value of 0 means only first frame will be IDR
+	RateControlMode = EncoderRateControlMode::RC_CBR_LOWDELAY_HQ;
+	AverageBitrate = 40000000; // 40ms
+	MaxBitrate = 80000000; // 80ms
+	bAutoBitRate = false;
+	vbvBufferSizeInFrames = 3;
+	bUseAsyncEncoding = true;
+	bUse10BitEncoding = false;
+	bUseYUV444Decoding = false;
 	DetectionSphereRadius = 500;
 	DetectionSphereBufferDistance = 200;
 
@@ -38,10 +50,6 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 	CompressionLevel = 1;
 
 	ExpectedLag = 1;
-
-	ThrottleKpS=10000;
-
-	bUseAsyncEncoding = true;
 
 	bDisableMainCamera = false;
 }

@@ -20,25 +20,11 @@ URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 	, RemotePlayContext(nullptr)
 	, RemotePlayReflectionCaptureComponent(nullptr)
 	, bIsStreaming(false)
+	, bSendKeyframe(false)
 {
 	PrimaryComponentTick.bCanEverTick = true;
 	bCaptureEveryFrame = true;
 	bCaptureOnMovement = false; 
-
-	EncodeParams.FrameWidth = 3840;
-	EncodeParams.FrameHeight = 1920;
-
-	EncodeParams.DepthWidth = 1920;
-	EncodeParams.DepthHeight = 960;
-
-	EncodeParams.IDRInterval = 120;
-	EncodeParams.TargetFPS = 60; 
-	EncodeParams.bDeferOutput = true;
-
-	EncodeParams.bWriteDepthTexture = false;
-	EncodeParams.bStackDepth = true;
-	EncodeParams.bDecomposeCube = true;
-	EncodeParams.MaxDepth = 10000.0f; 
 }
 
 URemotePlayCaptureComponent::~URemotePlayCaptureComponent()
@@ -46,18 +32,27 @@ URemotePlayCaptureComponent::~URemotePlayCaptureComponent()
 }
 
 void URemotePlayCaptureComponent::BeginPlay()
-{
-	// Make sure that there is enough time in the render queue.
-	//UKismetSystemLibrary::ExecuteConsoleCommand(GetWorld(), FString("g.TimeoutForBlockOnRenderFence 300000"));
-
+{	
 	ShowFlags.EnableAdvancedFeatures();
+	ShowFlags.SetTemporalAA(false);
 	ShowFlags.SetAntiAliasing(true);
 
 	if (TextureTarget && !TextureTarget->bCanCreateUAV)
 	{
 		TextureTarget->bCanCreateUAV = true;
 	}
-	Super::BeginPlay();
+
+	ARemotePlayMonitor* Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
+	if (Monitor->bOverrideTextureTarget && Monitor->SceneCaptureTextureTarget)
+	{
+		TextureTarget = Monitor->SceneCaptureTextureTarget;
+	}
+
+	// Make sure that there is enough time in the render queue.
+	UKismetSystemLibrary::ExecuteConsoleCommand(GetWorld(), FString("g.TimeoutForBlockOnRenderFence 300000"));
+
+	Super::BeginPlay();	
+
 	AActor* OwnerActor = GetTypedOuter<AActor>();
 	if (bRenderOwner)
 	{
@@ -95,7 +90,7 @@ void URemotePlayCaptureComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	if (bCaptureEveryFrame && Monitor && Monitor->bDisableMainCamera)
 	{
 		CaptureScene();
-}
+	}
 }
 
 const FRemotePlayEncodeParameters &URemotePlayCaptureComponent::GetEncodeParams()
@@ -106,7 +101,7 @@ const FRemotePlayEncodeParameters &URemotePlayCaptureComponent::GetEncodeParams(
 		// 3 across...
 		EncodeParams.FrameWidth = 3 * W;
 		// and 2 down... for the colour, depth, and light cubes.
-		EncodeParams.FrameHeight = 2 * (W + W / 2);
+		EncodeParams.FrameHeight = 3 * W; // (W + W / 2);
 	}
 	else
 	{
@@ -147,7 +142,6 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 	{
 		if (!RemotePlayContext->EncodePipeline.IsValid())
 		{
-			EncodeParams.bDeferOutput = Monitor->DeferOutput;
 			RemotePlayContext->EncodePipeline.Reset(new FEncodePipelineMonoscopic);
 			RemotePlayContext->EncodePipeline->Initialize(EncodeParams, RemotePlayContext, Monitor, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get());
 
@@ -173,7 +167,9 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 				RemotePlayContext->EncodePipeline->GetSurfaceTexture(),
 				Scene->GetFeatureLevel(),Offset0);
 		}
-		RemotePlayContext->EncodePipeline->EncodeFrame(Scene, TextureTarget, Transform);
+		RemotePlayContext->EncodePipeline->EncodeFrame(Scene, TextureTarget, Transform, bSendKeyframe);
+		// The client must request it again if it needs it
+		bSendKeyframe = false;
 	}
 }
 
@@ -193,6 +189,7 @@ void URemotePlayCaptureComponent::StartStreaming(FRemotePlayContext *Context)
 
 	bIsStreaming = true;
 	bCaptureEveryFrame = true;
+	bSendKeyframe = false;
 }
 
 void URemotePlayCaptureComponent::StopStreaming()
@@ -216,6 +213,11 @@ void URemotePlayCaptureComponent::StopStreaming()
 
 	bCaptureEveryFrame = false;
 	UE_LOG(LogRemotePlay, Log, TEXT("Capture: Stopped streaming"));
+}
+
+void URemotePlayCaptureComponent::RequestKeyframe()
+{
+	bSendKeyframe = true;
 }
 
 void URemotePlayCaptureComponent::OnViewportDrawn()

@@ -16,7 +16,6 @@
 DECLARE_STATS_GROUP(TEXT("RemotePlay_Game"), STATGROUP_RemotePlay, STATCAT_Advanced);
 
 #include "Engine/Classes/Components/SphereComponent.h"
-#include "Engine/Classes/Components/StaticMeshComponent.h"
 #include "TimerManager.h"
 
 #include <algorithm> //std::remove
@@ -96,8 +95,9 @@ enum ERemotePlaySessionChannel
 	RPCH_HANDSHAKE = 0,
 	RPCH_Control = 1,
 	RPCH_HeadPose = 2,
-	RPCH_Request = 3,
-	RPCH_ClientMessage = 4,
+	RPCH_Resource_Request = 3,
+	RPCH_Keyframe_Request = 4,
+	RPCH_ClientMessage = 5,
 	RPCH_NumChannels,
 };
 
@@ -196,7 +196,7 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 		//Only tick the geometry streaming service a set amount of times per second.
 		if(timeSinceLastGeometryStream >= TIME_BETWEEN_GEOMETRY_TICKS)
 		{
-			GeometryStreamingService.Tick();
+			GeometryStreamingService.Tick(TIME_BETWEEN_GEOMETRY_TICKS);
 
 			//Tell the client to change the visibility of actors that have changed whether they are within streamable bounds.
 			if(!ActorsEnteredBounds.empty() || !ActorsLeftBounds.empty())
@@ -221,56 +221,6 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 
 			timeSinceLastGeometryStream -= TIME_BETWEEN_GEOMETRY_TICKS;
 		}
-#if 1
-		
-		if(IsStreaming && DetectionSphereInner.IsValid())
-		{
-			TSet<AActor*> overlappingActors;
-			DetectionSphereInner->GetOverlappingActors(overlappingActors);
-
-			FBoxSphereBounds innerSphereBounds = DetectionSphereInner->CalcBounds(DetectionSphereInner->GetComponentTransform());
-			for(AActor* actor : overlappingActors)
-			{
-				if(GeometryStreamingService.IsStreamingActor(actor))
-				{
-					continue;
-				}
-
-				UStaticMeshComponent* staticMesh = Cast<UStaticMeshComponent>(actor->GetComponentByClass(UStaticMeshComponent::StaticClass()));
-
-				if(staticMesh)
-				{
-					FBoxSphereBounds actorBounds = staticMesh->CalcBounds(staticMesh->GetComponentTransform());
-					
-					if(actorBounds.GetSphere().IsInside(innerSphereBounds.GetSphere()))
-					{
-						avs::uid actor_uid = GeometryStreamingService.AddActor(actor);
-						if(actor_uid != 0)
-						{
-							//Only tell the client to show an actor it been sent. 
-							if(GeometryStreamingService.HasResource(actor_uid))
-							{
-								ActorsEnteredBounds.push_back(actor_uid);
-								ActorsLeftBounds.erase(std::remove(ActorsLeftBounds.begin(), ActorsLeftBounds.end(), actor_uid), ActorsLeftBounds.end());
-
-								UE_LOG(LogRemotePlay, Verbose, TEXT("Overlapped with actor \"%s\"."), *actor->GetName());
-							}
-						}
-						else
-						{
-							UE_LOG(LogRemotePlay, Warning, TEXT("Overlapped with \"%s\", but the actor is not supported! Only use supported component types, and check collision settings!"), *actor->GetName());
-						}
-					}
-				}
-			}
-		
-			FBoxSphereBounds outerSphereBounds = DetectionSphereInner->CalcBounds(DetectionSphereInner->GetComponentTransform());
-			//for(AActor* actor : streamedActors)
-			{
-				///Remove actors when they're no longer fully encompassed by outer sphere.
-			}
-		}
-#endif
 	}
 	else
 	{
@@ -400,10 +350,10 @@ void URemotePlaySessionComponent::SwitchPlayerPawn(APawn* NewPawn)
 		//Attach streamable geometry detection spheres to player pawn.
 		{
 			DetectionSphereInner = NewObject<USphereComponent>(PlayerPawn.Get(), "InnerSphere");
-			//DetectionSphereInner->OnComponentBeginOverlap.AddDynamic(this, &URemotePlaySessionComponent::OnInnerSphereBeginOverlap);
+			DetectionSphereInner->OnComponentBeginOverlap.AddDynamic(this, &URemotePlaySessionComponent::OnInnerSphereBeginOverlap);
 			DetectionSphereInner->SetCollisionProfileName("RemotePlaySensor");
 			DetectionSphereInner->SetGenerateOverlapEvents(true);
-			DetectionSphereInner->SetSphereRadius(0); //Set to zero, so it doesn't clear the actor list on creation.
+			DetectionSphereInner->SetSphereRadius(Monitor->DetectionSphereRadius);
 
 			DetectionSphereInner->RegisterComponent();
 			DetectionSphereInner->AttachToComponent(PlayerPawn->GetRootComponent(), transformRules);
@@ -414,7 +364,7 @@ void URemotePlaySessionComponent::SwitchPlayerPawn(APawn* NewPawn)
 			DetectionSphereOuter->OnComponentEndOverlap.AddDynamic(this, &URemotePlaySessionComponent::OnOuterSphereEndOverlap);
 			DetectionSphereOuter->SetCollisionProfileName("RemotePlaySensor");
 			DetectionSphereOuter->SetGenerateOverlapEvents(true);
-			DetectionSphereOuter->SetSphereRadius(0); //Set to zero, so it doesn't clear the actor list on creation.
+			DetectionSphereOuter->SetSphereRadius(Monitor->DetectionSphereRadius + Monitor->DetectionSphereBufferDistance);
 
 			DetectionSphereOuter->RegisterComponent();
 			DetectionSphereOuter->AttachToComponent(PlayerPawn->GetRootComponent(), transformRules);
@@ -465,6 +415,16 @@ void URemotePlaySessionComponent::StartStreaming()
 	setupCommand.debug_stream=Monitor->DebugStream;
 	setupCommand.do_checksums = Monitor->Checksums?1:0;
 	setupCommand.server_id = Monitor->GetServerID();
+	setupCommand.use_10_bit_decoding = Monitor->bUse10BitEncoding;
+	setupCommand.use_yuv_444_decoding = Monitor->bUseYUV444Decoding;
+
+	//Fill the list of streamed actors, so a reconnecting client will not have to download geometry it already has.
+	TSet<AActor*> actorsOverlappingOnStart;
+	DetectionSphereInner->GetOverlappingActors(actorsOverlappingOnStart);
+	for(AActor* actor : actorsOverlappingOnStart)
+	{
+		GeometryStreamingService.AddActor(actor);
+	}
 
 	//Get resources the client will need to check it has.
 	std::vector<avs::MeshNodeResources> outMeshResources;
@@ -501,6 +461,12 @@ void URemotePlaySessionComponent::StartStreaming()
 	setupCommand.resourceCount = resourcesClientNeeds.size();
 
 	Client_SendCommand<avs::uid>(setupCommand, resourcesClientNeeds);
+
+	//If the client needs a resource it will tell us; we don't want to stream the data if the client already has it.
+	for(avs::uid resourceID : resourcesClientNeeds)
+	{
+		GeometryStreamingService.ConfirmResource(resourceID);
+	}
 
 	IsStreaming = true;
 }
@@ -557,7 +523,7 @@ void URemotePlaySessionComponent::OnInnerSphereBeginOverlap(UPrimitiveComponent*
 		avs::uid actor_uid = GeometryStreamingService.AddActor(OtherActor);
 		if(actor_uid != 0 && IsStreaming)
 		{
-			//Don't tell the client to show an actor it has yet to receive. 
+			//Don't tell the client to show an actor it has yet to receive.
 			if(!GeometryStreamingService.HasResource(actor_uid))
 			{
 				return;
@@ -673,7 +639,7 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 	case RPCH_HeadPose:
 		RecvHeadPose(Event.packet);
 		break;
-	case RPCH_Request:
+	case RPCH_Resource_Request:
 	{
 		size_t resourceAmount;
 		memcpy(&resourceAmount, Event.packet->data, sizeof(size_t));
@@ -685,14 +651,25 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 		{
 			GeometryStreamingService.RequestResource(uid);
 		}
-	}
-		
 		break;
+	}
+	case RPCH_Keyframe_Request:
+	{
+		if(PlayerPawn.Get())
+		{
+			URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
+			if (CaptureComponent)
+			{
+				CaptureComponent->RequestKeyframe();
+			}
+		}
+		break;
+	}
 	case RPCH_ClientMessage:
 	{
 		RecvClientMessage(Event.packet);
+		break;
 	}
-	break;
 	default:
 		break;
 	}
@@ -744,26 +721,48 @@ void URemotePlaySessionComponent::RecvHeadPose(const ENetPacket* Packet)
 void URemotePlaySessionComponent::RecvClientMessage(const ENetPacket* packet)
 {
 	avs::ClientMessagePayloadType clientMessagePayloadType = *((avs::ClientMessagePayloadType*)packet->data);
-	size_t cmdSize = avs::GetClientMessageSize(clientMessagePayloadType);
-	if (packet->dataLength != cmdSize)
-	{
-		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Received Client Message of length: %d"), packet->dataLength);
-		return;
-	}
 	switch (clientMessagePayloadType)
 	{
 		case avs::ClientMessagePayloadType::ActorStatus:
 		{
-			avs::ActorStatusClientMessage actorStatusClientMessage;
-			FPlatformMemory::Memcpy(&actorStatusClientMessage, packet->data, packet->dataLength);
-			if (actorStatusClientMessage.actorStatus == avs::ActorStatus::Drawn)
+			size_t messageSize = sizeof(avs::ActorStatusMessage);
+			avs::ActorStatusMessage message;
+			memcpy(&message, packet->data, messageSize);
+
+			size_t drawnSize = sizeof(avs::uid) * message.actorsDrawnAmount;
+			std::vector<avs::uid> drawn(message.actorsDrawnAmount);
+			memcpy(drawn.data(), packet->data + messageSize, drawnSize);
+
+			size_t toReleaseSize = sizeof(avs::uid) * message.actorsWantToReleaseAmount;
+			std::vector<avs::uid> toRelease(message.actorsWantToReleaseAmount);
+			memcpy(toRelease.data(), packet->data + messageSize + drawnSize, toReleaseSize);
+
+			for(avs::uid actor_uid : drawn)
 			{
-				GeometryStreamingService.SetShowClientSideActor(actorStatusClientMessage.actor_uid, false);
+				GeometryStreamingService.HideActor(actor_uid);
 			}
-			else if (actorStatusClientMessage.actorStatus == avs::ActorStatus::WantToRelease)
+
+			for(avs::uid actor_uid : toRelease)
 			{
-				GeometryStreamingService.SetShowClientSideActor(actorStatusClientMessage.actor_uid,true);
+				GeometryStreamingService.ShowActor(actor_uid);
 			}
+		}
+		case avs::ClientMessagePayloadType::ReceivedResources:
+		{
+			size_t messageSize = sizeof(avs::ReceivedResourcesMessage);
+			avs::ReceivedResourcesMessage message;
+			memcpy(&message, packet->data, messageSize);
+
+			size_t confirmedResourcesSize = sizeof(avs::uid) * message.receivedResourcesAmount;
+			std::vector<avs::uid> confirmedResources(message.receivedResourcesAmount);
+			memcpy(confirmedResources.data(), packet->data + messageSize, confirmedResourcesSize);
+
+			for(avs::uid uid : confirmedResources)
+			{
+				GeometryStreamingService.ConfirmResource(uid);
+			}
+
+			break;
 		}
 		break;
 		default:

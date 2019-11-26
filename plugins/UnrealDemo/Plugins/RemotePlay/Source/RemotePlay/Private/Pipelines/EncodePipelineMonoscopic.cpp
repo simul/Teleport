@@ -210,7 +210,7 @@ void FEncodePipelineMonoscopic::PrepareFrame(FSceneInterface* InScene, UTexture*
 }
 
 
-void FEncodePipelineMonoscopic::EncodeFrame(FSceneInterface* InScene, UTexture* InSourceTexture, FTransform& CameraTransform)
+void FEncodePipelineMonoscopic::EncodeFrame(FSceneInterface* InScene, UTexture* InSourceTexture, FTransform& CameraTransform, bool forceIDR)
 {
 	if(!InScene || !InSourceTexture)
 	{
@@ -223,10 +223,10 @@ void FEncodePipelineMonoscopic::EncodeFrame(FSceneInterface* InScene, UTexture* 
 	FTextureRenderTargetResource* TargetResource = SourceTarget->GameThread_GetRenderTargetResource();
 
 	ENQUEUE_RENDER_COMMAND(RemotePlayEncodeFrame)(
-		[this, CameraTransform](FRHICommandListImmediate& RHICmdList)
+		[this, CameraTransform, forceIDR](FRHICommandListImmediate& RHICmdList)
 		{
 			SCOPED_DRAW_EVENT(RHICmdList, RemotePlayEncodePipelineMonoscopic);
-			EncodeFrame_RenderThread(RHICmdList, CameraTransform);
+			EncodeFrame_RenderThread(RHICmdList, CameraTransform, forceIDR);
 		}
 	);
 }
@@ -243,12 +243,24 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	avs::DeviceType avsDeviceType;
 	avs::SurfaceBackendInterface* avsSurfaceBackends[2] = { nullptr };
 
+	avs::SurfaceFormat ColorFormat;
+	EPixelFormat PixelFormat;
+	if (Monitor->bUse10BitEncoding)
+	{
+		ColorFormat = avs::SurfaceFormat::ARGB10; 
+		//PixelFormat = EPixelFormat::PF_A2B10G10R10;
+		PixelFormat = EPixelFormat::PF_R16G16B16A16_UNORM;
+	}
+	else
+	{
+		ColorFormat = avs::SurfaceFormat::ARGB;
+		PixelFormat = EPixelFormat::PF_R8G8B8A8;
+	}
+
 	const avs::SurfaceFormat avsInputFormats[2] = {
-		avs::SurfaceFormat::Unknown, // Any suitable for color (preferably ARGB or ABGR)
+		ColorFormat,
 		avs::SurfaceFormat::NV12 // NV12 is needed for depth encoding
 	};
-
-	EPixelFormat PixelFormat = EPixelFormat::PF_R8G8B8A8;
 
 	switch(DeviceType)
 	{
@@ -257,7 +269,6 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 		break;
 	case FRemotePlayRHI::EDeviceType::Direct3D12:
 		avsDeviceType = avs::DeviceType::Direct3D12;
-		PixelFormat = EPixelFormat::PF_B8G8R8A8;
 		break;
 	case FRemotePlayRHI::EDeviceType::OpenGL:
 		avsDeviceType = avs::DeviceType::OpenGL;
@@ -280,7 +291,7 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 		streamHeight = Params.FrameHeight + Params.DepthHeight;
 	}
 	ColorSurfaceTexture.Texture = RHI.CreateSurfaceTexture(streamWidth, streamHeight, PixelFormat);
-	
+	D3D12_RESOURCE_DESC desc = ((ID3D12Resource*)ColorSurfaceTexture.Texture->GetNativeResource())->GetDesc();
 	if(ColorSurfaceTexture.Texture.IsValid())
 	{
 		ColorSurfaceTexture.UAV = RHI.CreateSurfaceUAV(ColorSurfaceTexture.Texture);
@@ -304,7 +315,7 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 		UE_LOG(LogRemotePlay, Error, TEXT("Failed to create encoder color input surface texture"));
 		return;
 	}
-
+	const avs::SurfaceFormat surfaceFormat = avsSurfaceBackends[0]->getFormat();
 	if(DepthQueue)
 	{
 		DepthSurfaceTexture.Texture = RHI.CreateSurfaceTexture(Params.FrameWidth, Params.FrameHeight, EPixelFormat::PF_R16F);
@@ -337,21 +348,17 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	
 	avs::EncoderParams EncoderParams = {};
 	EncoderParams.codec  = avs::VideoCodec::HEVC;
-#if 0//def AIDAN_NEW
-	EncoderParams.preset = avs::VideoPreset::HighPerformance;
-	EncoderParams.idrInterval = Params.IDRInterval * 1 / Monitor->VideoEncodeFrequency;
-	EncoderParams.targetFrameRate = Params.TargetFPS * 1 / Monitor->VideoEncodeFrequency;
-	EncoderParams.averageBitrate = Params.AverageBitrate * 1 / Monitor->VideoEncodeFrequency;
-	EncoderParams.maxBitrate = Params.MaxBitrate * 1 / Monitor->VideoEncodeFrequency;
-#else
 	EncoderParams.preset = avs::VideoPreset::HighQuality;
-	EncoderParams.idrInterval = Params.IDRInterval;
-	EncoderParams.targetFrameRate = Params.TargetFPS;
-	EncoderParams.averageBitrate = Params.AverageBitrate;
-	EncoderParams.maxBitrate = Params.MaxBitrate;
-#endif
-	EncoderParams.deferOutput = Params.bDeferOutput;
-	EncoderParams.asyncEncoding = Monitor->bUseAsyncEncoding;
+	EncoderParams.targetFrameRate = Monitor->TargetFPS;
+	EncoderParams.idrInterval = Monitor->IDRInterval;
+	EncoderParams.rateControlMode = static_cast<avs::RateControlMode>(Monitor->RateControlMode);
+	EncoderParams.averageBitrate = Monitor->AverageBitrate;
+	EncoderParams.maxBitrate = Monitor->MaxBitrate;
+	EncoderParams.autoBitRate = Monitor->bAutoBitRate;
+	EncoderParams.vbvBufferSizeInFrames = Monitor->vbvBufferSizeInFrames;
+	EncoderParams.deferOutput = Monitor->bDeferOutput;
+	EncoderParams.useAsyncEncoding = Monitor->bUseAsyncEncoding;
+	EncoderParams.use10BitEncoding = Monitor->bUse10BitEncoding;
 
 	Pipeline.Reset(new avs::Pipeline);
 	Encoders.SetNum(NumStreams);
@@ -416,7 +423,7 @@ void FEncodePipelineMonoscopic::PrepareFrame_RenderThread(
 	}
 }
 	
-void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediate& RHICmdList, FTransform CameraTransform)
+void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediate& RHICmdList, FTransform CameraTransform, bool forceIDR)
 {
 	check(Pipeline.IsValid());
 	// The transform of the capture component needs to be sent with the image
@@ -428,6 +435,7 @@ void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediat
 	for (auto& Encoder : Encoders)
 	{
 		Encoder.setCameraTransform(CamTransform);
+		Encoder.setForceIDR(forceIDR);
 	}
 
 	if (!Pipeline->process())

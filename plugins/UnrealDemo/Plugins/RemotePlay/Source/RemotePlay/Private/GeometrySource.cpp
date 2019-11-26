@@ -78,69 +78,67 @@ void GeometrySource::Initialize(ARemotePlayMonitor* monitor, UWorld* world)
 {
 	Monitor = monitor;
 
-	if (Monitor)
+	if(Monitor)
 	{
-		if (Monitor->ResetCache)
+		if(Monitor->ResetCache)
 		{
 			clearData();
 		}
 	}
 	//0 == No item. First generated UID will be 1.
-	rootNodeUid = CreateNode(nullptr, 0, avs::NodeDataType::Scene,std::vector<avs::uid>());
+	rootNodeUid = CreateNode(nullptr, 0, avs::NodeDataType::Scene, std::vector<avs::uid>());
 
-	//Create the hand nodes, but only if we have not already done so.
-	if(handUIDs.size() == 0)
+	UStaticMeshComponent* handMeshComponent = nullptr;
+	//Use the hand actor blueprint set in the monitor.
+	if(Monitor->HandActor)
 	{
-		UStaticMeshComponent* handMeshComponent = nullptr;
-		//Use the hand actor blueprint set in the monitor.
-		if(Monitor->HandActor)
+		AActor* handActor = world->SpawnActor(Monitor->HandActor->GeneratedClass);
+		handMeshComponent = Cast<UStaticMeshComponent>(handActor->GetComponentByClass(UStaticMeshComponent::StaticClass()));
+
+		if(!handMeshComponent)
 		{
-			AActor* handActor = world->SpawnActor(Monitor->HandActor->GeneratedClass);
+			UE_LOG(LogRemotePlay, Warning, TEXT("Hand actor set in RemotePlayMonitor has no static mesh component."));
+		}
+	}
+	else
+	{
+		UE_LOG(LogRemotePlay, Log, TEXT("No hand actor set in RemotePlayMonitor."));
+	}
+
+	//If we can not use a set blueprint, then we use the default one.
+	if(!handMeshComponent)
+	{
+		FString defaultHandLocation("Blueprint'/Game/RemotePlay/RemotePlayHand.RemotePlayHand'");
+		UBlueprint* defaultHandBlueprint = Cast<UBlueprint>(StaticLoadObject(UBlueprint::StaticClass(), nullptr, *defaultHandLocation));
+
+		if(defaultHandBlueprint)
+		{
+			AActor* handActor = world->SpawnActor(defaultHandBlueprint->GeneratedClass);
 			handMeshComponent = Cast<UStaticMeshComponent>(handActor->GetComponentByClass(UStaticMeshComponent::StaticClass()));
 
 			if(!handMeshComponent)
 			{
-				UE_LOG(LogRemotePlay, Warning, TEXT("Hand actor set in RemotePlayMonitor has no static mesh component."));
-}
+				UE_LOG(LogRemotePlay, Warning, TEXT("Default hand actor in <%s> has no static mesh component."), *defaultHandLocation);
+			}
 		}
 		else
 		{
-			UE_LOG(LogRemotePlay, Log, TEXT("No hand actor set in RemotePlayMonitor."));
+			UE_LOG(LogRemotePlay, Warning, TEXT("Could not find default hand actor in <%s>."), *defaultHandLocation);
 		}
+	}
 
-		//If we can not use a set blueprint, then we use the default one.
-		if(!handMeshComponent)
-		{
-			FString defaultHandLocation("Blueprint'/Game/RemotePlay/RemotePlayHand.RemotePlayHand'");
-			UBlueprint* defaultHandBlueprint = Cast<UBlueprint>(StaticLoadObject(UBlueprint::StaticClass(), nullptr, *defaultHandLocation));
+	//Add the hand actors, and their resources, to the geometry source.
+	if(handMeshComponent)
+	{
+		avs::uid firstHandUID = AddNode(rootNodeUid, handMeshComponent);
+		nodes[firstHandUID]->data_type = avs::NodeDataType::Hand;
 
-			if(defaultHandBlueprint)
-			{
-				AActor* handActor = world->SpawnActor(defaultHandBlueprint->GeneratedClass);
-				handMeshComponent = Cast<UStaticMeshComponent>(handActor->GetComponentByClass(UStaticMeshComponent::StaticClass()));
+		//Whether we created a new node for the hand model, or it already existed; i.e whether the hand actor has changed.
+		bool isSameHandNode = handUIDs.size() != 0 && firstHandUID == handUIDs[0];
+		avs::uid secondHandUID = isSameHandNode ? handUIDs[1] : avs::GenerateUid();
+		nodes[secondHandUID] = nodes[firstHandUID];
 
-				if(!handMeshComponent)
-				{
-					UE_LOG(LogRemotePlay, Warning, TEXT("Default hand actor in <%s> has no static mesh component."), *defaultHandLocation);
-				}
-			}
-			else
-			{
-				UE_LOG(LogRemotePlay, Warning, TEXT("Could not find default hand actor in <%s>."), *defaultHandLocation);
-			}
-		}
-
-		//Add the hand actors, and their resources, to the geometry source.
-		if(handMeshComponent)
-		{
-			avs::uid firstHandUID = AddNode(rootNodeUid, handMeshComponent);
-			nodes[firstHandUID]->data_type = avs::NodeDataType::Hand;
-
-			avs::uid secondHandUID = avs::GenerateUid();
-			nodes[secondHandUID] = nodes[firstHandUID];
-
-			handUIDs = {firstHandUID, secondHandUID};
-		}
+		handUIDs = {firstHandUID, secondHandUID};
 	}
 }
 
@@ -439,6 +437,7 @@ avs::uid GeometrySource::AddStreamableMeshComponent(UMeshComponent *MeshComponen
 		{
 			already_got_mesh = true;
 			mesh_uid = i.Key;
+			break;
 		}
 	}
 	if (!already_got_mesh)
@@ -482,16 +481,23 @@ avs::uid GeometrySource::AddNode(avs::uid parent_uid, USceneComponent* component
 				UE_LOG(LogRemotePlay, Warning, TEXT("FAILED TO ADD MESH"));
 				return 0;
 			}
-			// the material/s that this particular instance of the mesh has applied to its slots...
-			TArray<UMaterialInterface *> mats = meshComponent->GetMaterials();
+			//Materials that this component has applied to its material slots.
+			TArray<UMaterialInterface*> materials = meshComponent->GetMaterials();
 
 			std::vector<avs::uid> mat_uids;
 			//Add material, and textures, for streaming to clients.
-			int32 num_mats = mats.Num();
-			for(int32 i = 0; i < num_mats; i++)
+			for(int32 i = 0; i < materials.Num(); i++)
 			{
-				UMaterialInterface *materialInterface = mats[i];
-				mat_uids.push_back(AddMaterial(materialInterface));
+				avs::uid material_uid = AddMaterial(materials[i]);
+
+				if(material_uid != 0)
+				{
+					mat_uids.push_back(material_uid);
+				}
+				else
+				{
+					UE_LOG(LogRemotePlay, Warning, TEXT("Actor \"%s\" has no material applied to material slot %d."), *component->GetOuter()->GetName(), i);
+				}
 			}
 
 			node_uid = CreateNode(component, mesh_uid, avs::NodeDataType::Mesh, mat_uids);
@@ -521,6 +527,8 @@ avs::uid GeometrySource::AddNode(avs::uid parent_uid, USceneComponent* component
 
 			node_uid = CreateNode(component, shadow_uid, avs::NodeDataType::ShadowMap, {});
 			decomposedNodes[levelUniqueNodeName] = node_uid;
+
+			lightNodes.emplace_back(avs::LightNodeResources{node_uid, shadow_uid});
 
 			//This node is a Terminus. i.e. no children.
 		}
@@ -1338,4 +1346,9 @@ bool GeometrySource::getShadowMap(avs::uid shadow_uid, avs::Texture& outShadowMa
 		UE_LOG(LogRemotePlay, Warning, TEXT("Failed to find shadow map with UID: %d"), shadow_uid)
 			return false;
 	}
+}
+
+const std::vector<avs::LightNodeResources>& GeometrySource::getLightNodes() const
+{
+	return lightNodes;
 }

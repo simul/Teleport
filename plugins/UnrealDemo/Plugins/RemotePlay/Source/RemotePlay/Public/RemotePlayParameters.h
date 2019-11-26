@@ -23,21 +23,6 @@ struct FRemotePlayEncodeParameters
 	int32 DepthHeight;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
-	int32 IDRInterval;
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
-	int32 TargetFPS;
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
-	int32 AverageBitrate;
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
-	int32 MaxBitrate;
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
-	uint32 bDeferOutput:1;
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)
 	uint32 bWriteDepthTexture:1; 
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category=RemotePlay)

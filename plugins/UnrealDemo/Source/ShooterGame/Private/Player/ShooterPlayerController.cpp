@@ -180,8 +180,8 @@ void AShooterPlayerController::SetPlayer( UPlayer* InPlayer )
 		ShooterIngameMenu = MakeShareable(new FShooterIngameMenu());
 		ShooterIngameMenu->Construct(Cast<ULocalPlayer>(Player));
 
-		FInputModeGameOnly InputMode;
-		SetInputMode(InputMode);
+		//FInputModeGameOnly InputMode;
+		//SetInputMode(InputMode);
 	}
 }
 

@@ -120,15 +120,16 @@ void FGeometryStreamingService::StopStreaming()
 
 	sentResources.clear();
 	actorUids.clear();
-	for (auto i : streamedActors)
+	for (auto i : hiddenActors)
 	{
 		if (i.second)
 			i.second->SetActorHiddenInGame(false);
 	}
 	streamedActors.clear();
+	hiddenActors.clear();
 }
  
-void FGeometryStreamingService::Tick()
+void FGeometryStreamingService::Tick(float DeltaTime)
 {
 	// Might not be initialized... YET
 	if (!avsPipeline)
@@ -137,6 +138,20 @@ void FGeometryStreamingService::Tick()
 	geometrySource->Tick();
 	// We can now be confident that all streamable geometries have been initialized, so we will do internal setup.
 	// Each frame we manage a view of which streamable geometries should or shouldn't be rendered on our client.
+
+	//Increment time for unconfirmed resources, if they pass the max time then they are flagged to be sent again.
+	for(auto it = unconfirmedResourceTimes.begin(); it != unconfirmedResourceTimes.end(); it++)
+	{
+		it->second += DeltaTime;
+
+		if(it->second > Monitor->ConfirmationWaitTime)
+		{
+			UE_LOG(LogRemotePlay, Log, TEXT("Resource with UID %llu was not confirmed within %.2f seconds, and will be resent."), it->first, Monitor->ConfirmationWaitTime);
+
+			sentResources[it->first] = false;
+			it = unconfirmedResourceTimes.erase(it);
+		}
+	}
 
 	// For this client's POSITION and OTHER PROPERTIES,
 	// Use the Geometry Source to determine which Node uid's are relevant.
@@ -154,9 +169,43 @@ void FGeometryStreamingService::Reset()
 
 void FGeometryStreamingService::SetShowClientSideActor(avs::uid actor_uid,bool show)
 {
-	AActor *a = streamedActors[actor_uid];
-	if (a)
-		a->SetActorHiddenInGame(!show);
+	auto actorPair = streamedActors.find(actor_uid);
+	if(actorPair != streamedActors.end())
+	{
+		actorPair->second->SetActorHiddenInGame(!show);
+	}
+	else
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Tried to %s non-streamed actor with UID of %d!"), show ? TEXT("show") : TEXT("hide"), actor_uid);
+	}
+}
+
+void FGeometryStreamingService::HideActor(avs::uid actor_uid)
+{
+	auto actorPair = streamedActors.find(actor_uid);
+	if(actorPair != streamedActors.end())
+	{
+		actorPair->second->SetActorHiddenInGame(true);
+		hiddenActors[actor_uid] = actorPair->second;
+	}
+	else
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Tried to hide non-streamed actor with UID of %d!"), actor_uid);
+	}
+}
+
+void FGeometryStreamingService::ShowActor(avs::uid actor_uid)
+{
+	auto actorPair = hiddenActors.find(actor_uid);
+	if(actorPair != hiddenActors.end())
+	{
+		actorPair->second->SetActorHiddenInGame(false);
+		hiddenActors.erase(actorPair);
+	}
+	else
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Tried to show non-hidden actor with UID of %d!"), actor_uid);
+	}
 }
 
 avs::uid FGeometryStreamingService::AddActor(AActor *newActor)
@@ -172,19 +221,23 @@ avs::uid FGeometryStreamingService::AddActor(AActor *newActor)
 	return actor_uid;
 }
 
-avs::uid FGeometryStreamingService::RemoveActor(AActor *oldActor)
+avs::uid FGeometryStreamingService::RemoveActor(AActor* oldActor)
 {
 	FName levelUniqueName = GetLevelUniqueActorName(oldActor);
-	//This will cause the actor to be added if it doesn't exist, but it gets removed next line anyway.
-	//Checking before hand would cause two searches for the same effect on an existing actor.
-	avs::uid actor_uid = actorUids[GetLevelUniqueActorName(oldActor)];
-	actorUids.erase(GetLevelUniqueActorName(oldActor));
-	AActor *a = streamedActors[actor_uid];
-	if (a)
-		a->SetActorHiddenInGame(false);
+
+	avs::uid actor_uid = actorUids[levelUniqueName];
+	actorUids.erase(levelUniqueName);
 	streamedActors.erase(actor_uid);
+	unconfirmedResourceTimes.erase(actor_uid);
 
 	return actor_uid;
+}
+
+avs::uid FGeometryStreamingService::GetActorID(AActor* actor)
+{
+	auto idPair = actorUids.find(GetLevelUniqueActorName(actor));
+
+	return idPair != actorUids.end() ? idPair->second : 0;
 }
 
 bool FGeometryStreamingService::IsStreamingActor(AActor* actor)
@@ -297,11 +350,20 @@ bool FGeometryStreamingService::HasResource(avs::uid resource_uid) const
 void FGeometryStreamingService::EncodedResource(avs::uid resource_uid)
 {
 	sentResources[resource_uid] = true;
+	unconfirmedResourceTimes[resource_uid] = 0;
 }
 
 void FGeometryStreamingService::RequestResource(avs::uid resource_uid)
 {
 	sentResources[resource_uid] = false;
+	unconfirmedResourceTimes.erase(resource_uid);
+}
+
+void FGeometryStreamingService::ConfirmResource(avs::uid resource_uid)
+{
+	unconfirmedResourceTimes.erase(resource_uid);
+	//Confirm again; incase something just elapsed the timer, but has yet to be sent.
+	sentResources[resource_uid] = true;
 }
 
 void FGeometryStreamingService::GetResourcesClientNeeds(
@@ -349,18 +411,5 @@ void FGeometryStreamingService::GetResourcesToStream(std::vector<avs::MeshNodeRe
 		GetMeshNodeResources(nodePair.second, outMeshResources);
 	}
 
-	///GGMP: If we're sending all shadowmaps anyway, can't we just store a list of all light datanodes?
-	std::vector<avs::uid> shadowIDs = geometrySource->getShadowMapUIDs();
-	const std::map<avs::uid, std::shared_ptr<avs::DataNode>>& nodes = geometrySource->getNodes();
-	for(auto& shadowUID : shadowIDs)
-	{
-		for(auto& node : nodes)
-		{
-			if(node.second->data_uid == shadowUID)
-			{
-				shadowIDs.push_back(node.first);
-				break;
-			}
-		}
-	}
+	outLightResources = geometrySource->getLightNodes();
 }
