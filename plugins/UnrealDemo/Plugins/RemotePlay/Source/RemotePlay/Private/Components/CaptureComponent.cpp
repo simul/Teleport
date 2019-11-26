@@ -153,6 +153,9 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 		}
 		FTransform Transform = GetComponentTransform();
 		 
+		FLookAtMatrix View = FLookAtMatrix(FVector::ZeroVector, ClientCamInfo.Orientation.GetForwardVector(), ClientCamInfo.Orientation.GetUpVector());
+
+
 		RemotePlayContext->EncodePipeline->PrepareFrame(Scene, TextureTarget, Transform);
 		if (RemotePlayReflectionCaptureComponent && EncodeParams.bDecomposeCube)
 		{
@@ -222,5 +225,15 @@ void URemotePlayCaptureComponent::RequestKeyframe()
 
 void URemotePlayCaptureComponent::OnViewportDrawn()
 {
+}
+
+void URemotePlayCaptureComponent::SetFOV(float InFOV)
+{
+	FOV = InFOV;
+}
+
+void URemotePlayCaptureComponent::SetClientCameraInfo(FCameraInfo InClientCamInfo)
+{
+	ClientCamInfo = InClientCamInfo;
 }
 

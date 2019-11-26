@@ -10,6 +10,12 @@
 #include "RemotePlayContext.h"
 #include "CaptureComponent.generated.h"
 
+struct FCameraInfo
+{
+	FQuat Orientation;
+	FVector Position;
+};
+
 //! This component is added to the player pawn. Derived from the SceneCaptureCube component, it
 //! continuously captures the surrounding image around the Pawn. However, it has
 //! other responsibilities as well.
@@ -41,9 +47,16 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = RemotePlay)
 	uint32 bRenderOwner : 1;
 	const FRemotePlayEncodeParameters &GetEncodeParams();
+
+	void SetFOV(float InFOV);
+	void SetClientCameraInfo(FCameraInfo InClientCamInfo);
+
 private: 
 	void OnViewportDrawn();
 	FDelegateHandle ViewportDrawnDelegateHandle;
+
+	FCameraInfo ClientCamInfo;
+	float FOV;
 
 	struct FRemotePlayContext* RemotePlayContext;
 	class URemotePlayReflectionCaptureComponent *RemotePlayReflectionCaptureComponent;

@@ -46,100 +46,113 @@ unsigned char GeometryEncoder::GALU_code[] = { 0x01,0x00,0x80,0xFF };
 
 avs::Result GeometryEncoder::encode(uint32_t timestamp, avs::GeometrySourceBackendInterface * src, avs::GeometryRequesterBackendInterface * req)
 {
-	buffer.clear();
+	queuedBuffer.clear();
 
 	// The source backend will give us the data to encode.
 	// What data it provides depends on the contents of the avs::GeometryRequesterBackendInterface object.
-	
-	//The buffer will have data put onto it node-by-node until after placing a node onto the buffer there is too much data to put on; causing it to wait until the next encode call.
-	///The biggest problem with the current implementation is if the buffer is just below the threshold, and then the next node has a lot of data to push onto it.
 
-	std::vector<avs::MeshNodeResources> meshNodeResources;
-	std::vector<avs::LightNodeResources> lightNodeResources;
+	//Encode data onto buffer, and then move it onto queuedBuffer.
+	//Unless queueing the data would causes queuedBuffer to exceed the recommended buffer size, which will cause the data to stay in buffer until the next encode call.
+	//Data may still be queued, and exceed the recommeneded size, if not queueing the data may leave it empty.
 
-	req->GetResourcesToStream(meshNodeResources, lightNodeResources);
-
-	//Encode mesh nodes first, as they should be sent before lighting data.
-	for(avs::MeshNodeResources meshResourceInfo : meshNodeResources)
+	//Queue what may have been left since last time, and keep queueing if there is still some space.
+	bool keepQueueing = attemptQueueData();
+	if(keepQueueing)
 	{
-		if(!req->HasResource(meshResourceInfo.mesh_uid))
-		{
-			encodeMeshes(src, req, {meshResourceInfo.mesh_uid});
-		}
+		std::vector<avs::MeshNodeResources> meshNodeResources;
+		std::vector<avs::LightNodeResources> lightNodeResources;
 
-		for(avs::MaterialResources material : meshResourceInfo.materials)
+		req->GetResourcesToStream(meshNodeResources, lightNodeResources);
+		//Encode mesh nodes first, as they should be sent before lighting data.
+		for(avs::MeshNodeResources meshResourceInfo : meshNodeResources)
 		{
-			if(GetNewUIDs(material.texture_uids, req) != 0)
+			if(!req->HasResource(meshResourceInfo.mesh_uid))
 			{
-				encodeTextures(src, req, material.texture_uids);
+				encodeMeshes(src, req, {meshResourceInfo.mesh_uid});
+
+				keepQueueing = attemptQueueData();
+				if(!keepQueueing) break;
 			}
 
-			if(!req->HasResource(material.material_uid))
+			for(avs::MaterialResources material : meshResourceInfo.materials)
 			{
-				encodeMaterials(src, req, {material.material_uid});
+				if(GetNewUIDs(material.texture_uids, req) != 0)
+				{
+					for(avs::uid textureID : material.texture_uids)
+					{
+						encodeTextures(src, req, {textureID});
+
+						keepQueueing = attemptQueueData();
+						if(!keepQueueing) break;
+					}
+
+					if(!keepQueueing) break;
+				}
+
+				if(!req->HasResource(material.material_uid))
+				{
+					encodeMaterials(src, req, {material.material_uid});
+
+					keepQueueing = attemptQueueData();
+					if(!keepQueueing) break;
+				}
+			}
+			if(!keepQueueing) break;
+
+			if(!req->HasResource(meshResourceInfo.node_uid))
+			{
+				encodeNodes(src, req, {meshResourceInfo.node_uid});
+
+				keepQueueing = attemptQueueData();
+				if(!keepQueueing) break;
 			}
 		}
 
-		if(!req->HasResource(meshResourceInfo.node_uid))
-		{
-			encodeNodes(src, req, {meshResourceInfo.node_uid});
-		}
-
-		//Stop encoding actors, if the buffer size is too large.
-		if(buffer.size() >= Monitor->GeometryBufferCutoffSize)
-		{
-			break;
-		}
-	}
-
-	//Encode light nodes, if there is not too much data from the mesh nodes.
-	if(buffer.size() < Monitor->GeometryBufferCutoffSize)
-	{
 		for(avs::LightNodeResources lightResourceInfo : lightNodeResources)
 		{
 			if(!req->HasResource(lightResourceInfo.shadowmap_uid))
 			{
 				encodeTextures(src, req, {lightResourceInfo.shadowmap_uid});
+
+				keepQueueing = attemptQueueData();
+				if(!keepQueueing) break;
 			}
 
 			if(!req->HasResource(lightResourceInfo.node_uid))
 			{
 				encodeNodes(src, req, {lightResourceInfo.node_uid});
-			}
 
-			//Stop encoding light nodes, if the buffer size is too large.
-			if(buffer.size() >= Monitor->GeometryBufferCutoffSize)
-			{
-				break;
+				keepQueueing = attemptQueueData();
+				if(!keepQueueing) break;
 			}
 		}
 	}
 
-	if(buffer.size() > Monitor->GeometryBufferCutoffSize)
-	{
-		float cutoffDifference = buffer.size() - Monitor->GeometryBufferCutoffSize;
-		UE_CLOG(cutoffDifference > Monitor->GeometryBufferCutoffSize * 2, LogRemotePlay, Warning, TEXT("Buffer size was %.2fMB; %.2fMB more than the cutoff(%.2fMB)."), buffer.size() / 1048576.0f, cutoffDifference / 1048576.0f, Monitor->GeometryBufferCutoffSize / 1048576.0f);
-	}
-
 	// GALU to end.
-	buffer.push_back(GALU_code[0]);
-	buffer.push_back(GALU_code[1]);
-	buffer.push_back(GALU_code[2]);
-	buffer.push_back(GALU_code[3]);
+	queuedBuffer.push_back(GALU_code[0]);
+	queuedBuffer.push_back(GALU_code[1]);
+	queuedBuffer.push_back(GALU_code[2]);
+	queuedBuffer.push_back(GALU_code[3]);
+
+	if(queuedBuffer.size() > Monitor->GeometryBufferCutoffSize + 10240)
+	{
+		float cutoffDifference = queuedBuffer.size() - Monitor->GeometryBufferCutoffSize;
+		UE_LOG(LogRemotePlay, Warning, TEXT("Queued buffer size was %.2fMB; %.2fMB more than the cutoff(%.2fMB)."), queuedBuffer.size() / 1048576.0f, cutoffDifference / 1048576.0f, Monitor->GeometryBufferCutoffSize / 1048576.0f);
+	}
 
 	return avs::Result::OK;
 }
 
 avs::Result GeometryEncoder::mapOutputBuffer(void *& bufferPtr, size_t & bufferSizeInBytes)
 {
-	bufferSizeInBytes = buffer.size();
-	bufferPtr = buffer.data(); 
+	bufferSizeInBytes = queuedBuffer.size();
+	bufferPtr = queuedBuffer.data(); 
 	return avs::Result::OK;
 }
 
 avs::Result GeometryEncoder::unmapOutputBuffer()
 {
-	buffer.clear();
+	queuedBuffer.clear();
 	return avs::Result::OK;
 }
 
@@ -442,4 +455,33 @@ avs::Result GeometryEncoder::encodeTexturesBackend(avs::GeometrySourceBackendInt
 	}
 
 	return avs::Result::OK;
+}
+
+bool GeometryEncoder::attemptQueueData()
+{
+	//If queueing the data will cause the queuedBuffer to exceed the cutoff size.
+	if(buffer.size() + queuedBuffer.size() > Monitor->GeometryBufferCutoffSize)
+	{
+		//Never leave queuedBuffer empty, if there is something to queue up (even if it is too large).
+		if(queuedBuffer.size() == 0)
+		{
+			size_t position = queuedBuffer.size();
+			queuedBuffer.resize(queuedBuffer.size() + buffer.size());
+
+			memcpy(queuedBuffer.data() + position, buffer.data(), buffer.size());
+			buffer.clear();
+		}
+
+		return false;
+	}
+	else
+	{
+		size_t position = queuedBuffer.size();
+		queuedBuffer.resize(queuedBuffer.size() + buffer.size());
+
+		memcpy(queuedBuffer.data() + position, buffer.data(), buffer.size());
+		buffer.clear();
+
+		return true;
+	}
 }

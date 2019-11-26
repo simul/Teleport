@@ -90,17 +90,6 @@ public:
 	}
 };
 
-enum ERemotePlaySessionChannel
-{
-	RPCH_HANDSHAKE = 0,
-	RPCH_Control = 1,
-	RPCH_HeadPose = 2,
-	RPCH_Resource_Request = 3,
-	RPCH_Keyframe_Request = 4,
-	RPCH_ClientMessage = 5,
-	RPCH_NumChannels,
-};
-
 URemotePlaySessionComponent::URemotePlaySessionComponent()
 	: bAutoStartSession(true)
 	, AutoListenPort(10500)
@@ -213,7 +202,7 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 				memcpy(packet->data + commandSize, ActorsEnteredBounds.data(), enteredBoundsSize);
 				memcpy(packet->data + commandSize + enteredBoundsSize, ActorsLeftBounds.data(), leftBoundsSize);
 
-				enet_peer_send(ClientPeer, RPCH_Control, packet);
+				enet_peer_send(ClientPeer, static_cast<enet_uint8>(avs::RemotePlaySessionChannel::RPCH_Control), packet);
 
 				ActorsEnteredBounds.clear();
 				ActorsLeftBounds.clear();
@@ -280,7 +269,7 @@ void URemotePlaySessionComponent::StartSession(int32 ListenPort, int32 Discovery
 	//enet_address_set_host(&ListenAddress, "192.168.3.6");
 	ListenAddress.port = ListenPort;
 	// ServerHost will live for the lifetime of the session.
-	ServerHost = enet_host_create(&ListenAddress, 1, RPCH_NumChannels, 0, 0);
+	ServerHost = enet_host_create(&ListenAddress, 1, static_cast<enet_uint8>(avs::RemotePlaySessionChannel::RPCH_NumChannels), 0, 0);
 	if (!ServerHost)
 	{
 		UE_LOG(LogRemotePlay, Error, TEXT("Session: Failed to create ENET server host"));
@@ -611,6 +600,8 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 		RemotePlayContext->NetworkPipeline->Initialize(Monitor, NetworkParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get(), RemotePlayContext->GeometryQueue.Get());
 	}
 
+	CaptureComponent->SetFOV(handshake.FOV);
+
 	CaptureComponent->StartStreaming(RemotePlayContext);
 
 	if (Monitor&&Monitor->StreamGeometry)
@@ -627,19 +618,17 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 {
 	switch (Event.channelID)
 	{
-	case RPCH_HANDSHAKE:
+	case static_cast<enet_uint8>(avs::RemotePlaySessionChannel::RPCH_Handshake):
 		//Delay the actual start of streaming until we receive a confirmation from the client that they are ready.
-	{
 		RecvHandshake(Event.packet);
 		break;
-	}
-	case RPCH_Control:
+	case static_cast<enet_uint8>(avs::RemotePlaySessionChannel::RPCH_Control):
 		RecvInput(Event.packet);
 		break;
-	case RPCH_HeadPose:
+	case static_cast<enet_uint8>(avs::RemotePlaySessionChannel::RPCH_HeadPose):
 		RecvHeadPose(Event.packet);
 		break;
-	case RPCH_Resource_Request:
+	case static_cast<enet_uint8>(avs::RemotePlaySessionChannel::RPCH_ResourceRequest):
 	{
 		size_t resourceAmount;
 		memcpy(&resourceAmount, Event.packet->data, sizeof(size_t));
@@ -653,23 +642,27 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 		}
 		break;
 	}
-	case RPCH_Keyframe_Request:
-	{
-		if(PlayerPawn.Get())
+	case static_cast<enet_uint8>(avs::RemotePlaySessionChannel::RPCH_KeyframeRequest):
+		if(PlayerPawn.IsValid())
 		{
-			URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
-			if (CaptureComponent)
+			if(PlayerPawn.Get())
 			{
-				CaptureComponent->RequestKeyframe();
+				URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
+				if(CaptureComponent)
+				{
+					CaptureComponent->RequestKeyframe();
+				}
 			}
+			else
+			{
+				UE_LOG(LogRemotePlay, Warning, TEXT("Received keyframe request; but player pawn, and thus the CaptureComponent, isn't set."))
+			}
+
+			break;
 		}
-		break;
-	}
-	case RPCH_ClientMessage:
-	{
+	case static_cast<enet_uint8>(avs::RemotePlaySessionChannel::RPCH_ClientMessage):
 		RecvClientMessage(Event.packet);
 		break;
-	}
 	default:
 		break;
 	}
@@ -704,11 +697,14 @@ void URemotePlaySessionComponent::RecvHeadPose(const ENetPacket* Packet)
 	pos *= 100.0f;
 	static FVector offset(0, 0, 1.5f);
 	FVector oldPos = PlayerController->GetPawn()->GetActorLocation();
-	pos += offset;
-	pos.Z = oldPos.Z;
-	PlayerController->GetPawn()->SetActorLocation(pos);
+	FVector newPos = pos + offset;
+	newPos.Z = oldPos.Z;
+	PlayerController->GetPawn()->SetActorLocation(newPos);
 	const FQuat HeadPoseUE{ headPose.OrientationQuat.x, headPose.OrientationQuat.y, headPose.OrientationQuat.z, headPose.OrientationQuat.w };
 	
+	URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
+	CaptureComponent->SetClientCameraInfo({HeadPoseUE, pos});
+
 	FVector Euler = HeadPoseUE.Euler();
 	Euler.X = Euler.Y = 0.0f;
 	// Unreal thinks the Euler angle starts from facing X, but actually it's Y.
@@ -813,7 +809,7 @@ inline bool URemotePlaySessionComponent::Client_SendCommand(const FString& Cmd) 
 	memcpy(packet_buffer.data(), &textCommand.commandPayloadType, cmdSize);
 	ENetPacket* Packet = enet_packet_create(packet_buffer.data(),packet_buffer.size(), ENET_PACKET_FLAG_RELIABLE);
 	check(Packet);
-	return enet_peer_send(ClientPeer, RPCH_Control, Packet) == 0;
+	return enet_peer_send(ClientPeer, static_cast<enet_uint8>(avs::RemotePlaySessionChannel::RPCH_Control), Packet) == 0;
 }
 
 bool URemotePlaySessionComponent::Client_SendCommand(const avs::Command &avsCommand) const
@@ -822,7 +818,7 @@ bool URemotePlaySessionComponent::Client_SendCommand(const avs::Command &avsComm
 	size_t commandSize = avs::GetCommandSize(avsCommand.commandPayloadType);
 	ENetPacket* Packet = enet_packet_create(&avsCommand, commandSize, ENET_PACKET_FLAG_RELIABLE);
 	check(Packet);
-	return enet_peer_send(ClientPeer, RPCH_Control, Packet) == 0;
+	return enet_peer_send(ClientPeer, static_cast<enet_uint8>(avs::RemotePlaySessionChannel::RPCH_Control), Packet) == 0;
 }
 
 template<typename T>
@@ -840,7 +836,7 @@ bool URemotePlaySessionComponent::Client_SendCommand(const avs::Command &avsComm
 	memcpy(Packet->data + commandSize, appendedList.data(), listSize);
 
 	check(Packet);
-	return enet_peer_send(ClientPeer, RPCH_Control, Packet) == 0;
+	return enet_peer_send(ClientPeer, static_cast<enet_uint8>(avs::RemotePlaySessionChannel::RPCH_Control), Packet) == 0;
 }
 
 inline FString URemotePlaySessionComponent::Client_GetIPAddress() const

@@ -156,8 +156,7 @@ void FGeometryStreamingService::Tick(float DeltaTime)
 	// For this client's POSITION and OTHER PROPERTIES,
 	// Use the Geometry Source to determine which Node uid's are relevant.
 	
-	if(avsPipeline)
-		avsPipeline->process();
+	avsPipeline->process();
 }
 
 void FGeometryStreamingService::Reset()
