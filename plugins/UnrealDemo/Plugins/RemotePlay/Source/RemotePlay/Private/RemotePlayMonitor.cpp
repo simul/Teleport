@@ -8,7 +8,8 @@
 TMap<UWorld*, ARemotePlayMonitor*> ARemotePlayMonitor::Monitors;
 
 ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectInitializer)
-	: Super(ObjectInitializer), HandActor(nullptr), GeometryTicksPerSecond(2), GeometryBufferCutoffSize(102400) /*100MB*/, ConfirmationWaitTime(5.0f), EstimatedDecodingFrequency(10)
+	: Super(ObjectInitializer), DetectionSphereRadius(1000), DetectionSphereBufferDistance(200), HandActor(nullptr),
+	GeometryTicksPerSecond(2), GeometryBufferCutoffSize(1048576) /*1MB*/, ConfirmationWaitTime(15.0f), EstimatedDecodingFrequency(10)
 {
 	// Defaults from settings class.
 	const URemotePlaySettings *RemotePlaySettings = GetDefault<URemotePlaySettings>();
@@ -38,8 +39,6 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 	bUseAsyncEncoding = true;
 	bUse10BitEncoding = false;
 	bUseYUV444Decoding = false;
-	DetectionSphereRadius = 500;
-	DetectionSphereBufferDistance = 200;
 
 	DebugStream = 0;
 	Checksums = false;
