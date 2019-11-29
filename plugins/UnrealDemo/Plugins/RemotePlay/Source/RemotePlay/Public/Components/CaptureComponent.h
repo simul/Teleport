@@ -46,6 +46,8 @@ public:
 private: 
 	void OnViewportDrawn();
 	FDelegateHandle ViewportDrawnDelegateHandle;
+	void CullHiddenCubeSegments(TArray<bool>& FaceIntersectionResults, TArray<bool>& QuadIntersectionResults);
+	static bool VectorIntersectsFrustum(const FVector& Vector, const FMatrix& ViewProjection);
 
 	FCameraInfo ClientCamInfo;
 

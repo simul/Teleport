@@ -734,7 +734,7 @@ void URemotePlaySessionComponent::RecvHeadPose(const ENetPacket* Packet)
 	
 	URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
 	FCameraInfo& ClientCamInfo = CaptureComponent->GetClientCameraInfo();
-	ClientCamInfo.Orientation = HeadPoseUE;
+	//ClientCamInfo.Orientation = HeadPoseUE;
 	ClientCamInfo.Position = pos;
 
 	FVector Euler = HeadPoseUE.Euler();
@@ -742,6 +742,7 @@ void URemotePlaySessionComponent::RecvHeadPose(const ENetPacket* Packet)
 	// Unreal thinks the Euler angle starts from facing X, but actually it's Y.
 	//Euler.Z += 180.0f;
 	FQuat FlatPose = FQuat::MakeFromEuler(Euler);
+	ClientCamInfo.Orientation = FlatPose;
 	check(PlayerController.IsValid());
 	PlayerController->SetControlRotation(FlatPose.Rotator());
 }
