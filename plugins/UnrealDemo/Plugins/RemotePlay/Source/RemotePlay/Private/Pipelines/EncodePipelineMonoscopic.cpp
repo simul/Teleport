@@ -419,6 +419,8 @@ void FEncodePipelineMonoscopic::Release_RenderThread(FRHICommandListImmediate& R
 
 void FEncodePipelineMonoscopic::CullHiddenCubeSegments_RenderThread(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, FCameraInfo CameraInfo, int32 FaceSize, uint32 Divisor)
 {
+	// Aidan: Currently not going to do this on GPU so this function is unused
+	// We will do this on cpu on game thread instead because we can share the output with the capture component to cull faces from rendering.
 	FLookAtMatrix ViewMatrix = FLookAtMatrix(FVector::ZeroVector, CameraInfo.Orientation.GetForwardVector(), CameraInfo.Orientation.GetUpVector());
 
 	float FOV = FMath::DegreesToRadians(CameraInfo.FOV);
