@@ -402,6 +402,7 @@ void URemotePlaySessionComponent::StartStreaming()
 	setupCommand.compose_cube	= EncodeParams.bDecomposeCube;
 	setupCommand.port = StreamingPort; 
 	setupCommand.debug_stream=Monitor->DebugStream;
+	setupCommand.debug_network_packets=Monitor->DebugNetworkPackets;
 	setupCommand.do_checksums = Monitor->Checksums?1:0;
 	setupCommand.server_id = Monitor->GetServerID();
 	setupCommand.use_10_bit_decoding = Monitor->bUse10BitEncoding;
@@ -625,8 +626,8 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 		RecvHandshake(Event.packet);
 		break;
 	case static_cast<enet_uint8>(avs::RemotePlaySessionChannel::RPCH_Control):
-		RecvInput(Event.packet);
-		break;
+		RecvInput(Event.packet); 
+		break; 
 	case static_cast<enet_uint8>(avs::RemotePlaySessionChannel::RPCH_DisplayInfo):
 		RecvDisplayInfo(Event.packet);
 		break;
@@ -637,7 +638,7 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 	{
 		size_t resourceAmount;
 		memcpy(&resourceAmount, Event.packet->data, sizeof(size_t));
-
+		   
 		std::vector<avs::uid> resourceRequests(resourceAmount);
 		memcpy(resourceRequests.data(), Event.packet->data + sizeof(size_t), sizeof(avs::uid) * resourceAmount);
 

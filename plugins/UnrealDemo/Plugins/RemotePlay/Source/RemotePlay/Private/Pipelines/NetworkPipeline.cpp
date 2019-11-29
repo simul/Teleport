@@ -107,6 +107,7 @@ void FNetworkPipeline::Process()
 		LastTimestamp = Timestamp;
 	}
 	NetworkSink->setDebugStream(Monitor->DebugStream);
+	NetworkSink->setDebugNetworkPackets(Monitor->DebugNetworkPackets);
 	NetworkSink->setDoChecksums(Monitor->Checksums);
 	NetworkSink->setEstimatedDecodingFrequency(Monitor->EstimatedDecodingFrequency);
 #endif // WITH_REMOTEPLAY_STATS

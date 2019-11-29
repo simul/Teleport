@@ -121,6 +121,9 @@ public:
 	int32 DebugStream;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
+	uint32 DebugNetworkPackets:1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
 	uint32 Checksums : 1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
