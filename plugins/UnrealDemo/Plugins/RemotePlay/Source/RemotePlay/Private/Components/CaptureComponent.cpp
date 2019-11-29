@@ -152,9 +152,8 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 			}
 		}
 		FTransform Transform = GetComponentTransform();
-		 
-		FLookAtMatrix View = FLookAtMatrix(FVector::ZeroVector, ClientCamInfo.Orientation.GetForwardVector(), ClientCamInfo.Orientation.GetUpVector());
-
+		int32 W = TextureTarget->GetSurfaceWidth();
+		//RemotePlayContext->EncodePipeline->CullHiddenCubeSegments(Scene, ClientCamInfo, W, 4);
 		RemotePlayContext->EncodePipeline->PrepareFrame(Scene, TextureTarget, Transform);
 		if (RemotePlayReflectionCaptureComponent && EncodeParams.bDecomposeCube)
 		{

@@ -47,6 +47,10 @@
 		{
 			"Name": "RemotePlay",
 			"Enabled": true
+		},
+		{
+			"Name": "SteamVR",
+			"Enabled": false
 		}
 	],
 	"TargetPlatforms": [
