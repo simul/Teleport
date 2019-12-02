@@ -29,6 +29,8 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 	bOverrideTextureTarget = false;
 	SceneCaptureTextureTarget = nullptr;
 	bDeferOutput = false;
+	bDoCubemapCulling = false;
+	BlocksPerCubeFace = 8; 
 	TargetFPS = 60;
 	IDRInterval = 0; // Value of 0 means only first frame will be IDR
 	RateControlMode = EncoderRateControlMode::RC_CBR_LOWDELAY_HQ;

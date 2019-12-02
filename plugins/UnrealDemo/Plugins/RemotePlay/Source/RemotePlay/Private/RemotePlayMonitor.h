@@ -88,6 +88,12 @@ public:
 	uint32 bDeferOutput : 1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	uint32 bDoCubemapCulling : 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	int32 BlocksPerCubeFace;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	int32 TargetFPS;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
@@ -116,7 +122,7 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	uint32 bUseYUV444Decoding : 1;
-	
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
 	int32 DebugStream;
 

@@ -145,7 +145,7 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 		return;
 	}
 
-	if(PlayerPawn.IsValid())
+	if(PlayerPawn.IsValid() && Monitor->StreamGeometry)
 	{
 		DetectionSphereInner->SetSphereRadius(Monitor->DetectionSphereRadius);
 		DetectionSphereOuter->SetSphereRadius(Monitor->DetectionSphereRadius + Monitor->DetectionSphereBufferDistance);
@@ -334,29 +334,33 @@ void URemotePlaySessionComponent::SwitchPlayerPawn(APawn* NewPawn)
 
 	if (PlayerPawn.IsValid())
 	{
-		FAttachmentTransformRules transformRules = FAttachmentTransformRules(EAttachmentRule::KeepRelative, true);
-
-		//Attach streamable geometry detection spheres to player pawn.
+		//Attach detection spheres to player pawn, but only if we're actually streaming geometry.
+		if(Monitor->StreamGeometry)
 		{
-			DetectionSphereInner = NewObject<USphereComponent>(PlayerPawn.Get(), "InnerSphere");
-			DetectionSphereInner->OnComponentBeginOverlap.AddDynamic(this, &URemotePlaySessionComponent::OnInnerSphereBeginOverlap);
-			DetectionSphereInner->SetCollisionProfileName("RemotePlaySensor");
-			DetectionSphereInner->SetGenerateOverlapEvents(true);
-			DetectionSphereInner->SetSphereRadius(Monitor->DetectionSphereRadius);
+			FAttachmentTransformRules transformRules = FAttachmentTransformRules(EAttachmentRule::KeepRelative, true);
 
-			DetectionSphereInner->RegisterComponent();
-			DetectionSphereInner->AttachToComponent(PlayerPawn->GetRootComponent(), transformRules);
-		}
+			//Attach streamable geometry detection spheres to player pawn.
+			{
+				DetectionSphereInner = NewObject<USphereComponent>(PlayerPawn.Get(), "InnerSphere");
+				DetectionSphereInner->OnComponentBeginOverlap.AddDynamic(this, &URemotePlaySessionComponent::OnInnerSphereBeginOverlap);
+				DetectionSphereInner->SetCollisionProfileName("RemotePlaySensor");
+				DetectionSphereInner->SetGenerateOverlapEvents(true);
+				DetectionSphereInner->SetSphereRadius(Monitor->DetectionSphereRadius);
 
-		{
-			DetectionSphereOuter = NewObject<USphereComponent>(PlayerPawn.Get(), "OuterSphere");
-			DetectionSphereOuter->OnComponentEndOverlap.AddDynamic(this, &URemotePlaySessionComponent::OnOuterSphereEndOverlap);
-			DetectionSphereOuter->SetCollisionProfileName("RemotePlaySensor");
-			DetectionSphereOuter->SetGenerateOverlapEvents(true);
-			DetectionSphereOuter->SetSphereRadius(Monitor->DetectionSphereRadius + Monitor->DetectionSphereBufferDistance);
+				DetectionSphereInner->RegisterComponent();
+				DetectionSphereInner->AttachToComponent(PlayerPawn->GetRootComponent(), transformRules);
+			}
 
-			DetectionSphereOuter->RegisterComponent();
-			DetectionSphereOuter->AttachToComponent(PlayerPawn->GetRootComponent(), transformRules);
+			{
+				DetectionSphereOuter = NewObject<USphereComponent>(PlayerPawn.Get(), "OuterSphere");
+				DetectionSphereOuter->OnComponentEndOverlap.AddDynamic(this, &URemotePlaySessionComponent::OnOuterSphereEndOverlap);
+				DetectionSphereOuter->SetCollisionProfileName("RemotePlaySensor");
+				DetectionSphereOuter->SetGenerateOverlapEvents(true);
+				DetectionSphereOuter->SetSphereRadius(Monitor->DetectionSphereRadius + Monitor->DetectionSphereBufferDistance);
+
+				DetectionSphereOuter->RegisterComponent();
+				DetectionSphereOuter->AttachToComponent(PlayerPawn->GetRootComponent(), transformRules);
+			}
 		}
 
 		StartStreaming();
@@ -408,55 +412,57 @@ void URemotePlaySessionComponent::StartStreaming()
 	setupCommand.use_10_bit_decoding = Monitor->bUse10BitEncoding;
 	setupCommand.use_yuv_444_decoding = Monitor->bUseYUV444Decoding;
 
-	//Fill the list of streamed actors, so a reconnecting client will not have to download geometry it already has.
-	TSet<AActor*> actorsOverlappingOnStart;
-	DetectionSphereInner->GetOverlappingActors(actorsOverlappingOnStart);
-	for(AActor* actor : actorsOverlappingOnStart)
-	{
-		GeometryStreamingService.AddActor(actor);
-	}
-
-	//Get resources the client will need to check it has.
-	std::vector<avs::MeshNodeResources> outMeshResources;
-	std::vector<avs::LightNodeResources> outLightResources;
-	GeometryStreamingService.GetResourcesToStream(outMeshResources, outLightResources);
-
 	std::vector<avs::uid> resourcesClientNeeds;
-	for(const avs::MeshNodeResources& meshResource : outMeshResources)
+	//If this is a reconnect we don't want the client throwing away resources it will need, so we send a list of resources it will need; but only if we're actually streaming geometry.
+	if(Monitor->StreamGeometry)
 	{
-		resourcesClientNeeds.push_back(meshResource.node_uid);
-		resourcesClientNeeds.push_back(meshResource.mesh_uid);
-		
-		for(const avs::MaterialResources& material : meshResource.materials)
+		//Fill the list of streamed actors, so a reconnecting client will not have to download geometry it already has.
+		TSet<AActor*> actorsOverlappingOnStart;
+		DetectionSphereInner->GetOverlappingActors(actorsOverlappingOnStart);
+		for(AActor* actor : actorsOverlappingOnStart)
 		{
-			resourcesClientNeeds.push_back(material.material_uid);
+			GeometryStreamingService.AddActor(actor);
+		}
 
-			for(avs::uid texture_uid : material.texture_uids)
+		//Get resources the client will need to check it has.
+		std::vector<avs::MeshNodeResources> outMeshResources;
+		std::vector<avs::LightNodeResources> outLightResources;
+		GeometryStreamingService.GetResourcesToStream(outMeshResources, outLightResources);
+
+		for(const avs::MeshNodeResources& meshResource : outMeshResources)
+		{
+			resourcesClientNeeds.push_back(meshResource.node_uid);
+			resourcesClientNeeds.push_back(meshResource.mesh_uid);
+
+			for(const avs::MaterialResources& material : meshResource.materials)
 			{
-				resourcesClientNeeds.push_back(texture_uid);
+				resourcesClientNeeds.push_back(material.material_uid);
+
+				for(avs::uid texture_uid : material.texture_uids)
+				{
+					resourcesClientNeeds.push_back(texture_uid);
+				}
 			}
 		}
-	}
-	for(const avs::LightNodeResources& lightResource : outLightResources)
-	{
-		resourcesClientNeeds.push_back(lightResource.node_uid);
-		resourcesClientNeeds.push_back(lightResource.shadowmap_uid);
-	}
+		for(const avs::LightNodeResources& lightResource : outLightResources)
+		{
+			resourcesClientNeeds.push_back(lightResource.node_uid);
+			resourcesClientNeeds.push_back(lightResource.shadowmap_uid);
+		}
 
-	//Remove duplicates, and UIDs of 0.
-	std::sort(resourcesClientNeeds.begin(), resourcesClientNeeds.end());
-	resourcesClientNeeds.erase(std::unique(resourcesClientNeeds.begin(), resourcesClientNeeds.end()), resourcesClientNeeds.end());
-	resourcesClientNeeds.erase(std::remove(resourcesClientNeeds.begin(), resourcesClientNeeds.end(), 0), resourcesClientNeeds.end());
+		//Remove duplicates, and UIDs of 0.
+		std::sort(resourcesClientNeeds.begin(), resourcesClientNeeds.end());
+		resourcesClientNeeds.erase(std::unique(resourcesClientNeeds.begin(), resourcesClientNeeds.end()), resourcesClientNeeds.end());
+		resourcesClientNeeds.erase(std::remove(resourcesClientNeeds.begin(), resourcesClientNeeds.end(), 0), resourcesClientNeeds.end());
 
+		//If the client needs a resource it will tell us; we don't want to stream the data if the client already has it.
+		for(avs::uid resourceID : resourcesClientNeeds)
+		{
+			GeometryStreamingService.ConfirmResource(resourceID);
+		}
+	}
 	setupCommand.resourceCount = resourcesClientNeeds.size();
-
 	Client_SendCommand<avs::uid>(setupCommand, resourcesClientNeeds);
-
-	//If the client needs a resource it will tell us; we don't want to stream the data if the client already has it.
-	for(avs::uid resourceID : resourcesClientNeeds)
-	{
-		GeometryStreamingService.ConfirmResource(resourceID);
-	}
 
 	IsStreaming = true;
 }
@@ -734,7 +740,7 @@ void URemotePlaySessionComponent::RecvHeadPose(const ENetPacket* Packet)
 	
 	URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
 	FCameraInfo& ClientCamInfo = CaptureComponent->GetClientCameraInfo();
-	ClientCamInfo.Orientation = HeadPoseUE;
+	//ClientCamInfo.Orientation = HeadPoseUE;
 	ClientCamInfo.Position = pos;
 
 	FVector Euler = HeadPoseUE.Euler();
@@ -742,6 +748,7 @@ void URemotePlaySessionComponent::RecvHeadPose(const ENetPacket* Packet)
 	// Unreal thinks the Euler angle starts from facing X, but actually it's Y.
 	//Euler.Z += 180.0f;
 	FQuat FlatPose = FQuat::MakeFromEuler(Euler);
+	ClientCamInfo.Orientation = FlatPose;
 	check(PlayerController.IsValid());
 	PlayerController->SetControlRotation(FlatPose.Rotator());
 }
