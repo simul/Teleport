@@ -106,7 +106,7 @@ void FNetworkPipeline::Process()
 			Counters.decoderPacketsQueued, Counters.networkPacketsSent, Counters.bytesSent);
 		LastTimestamp = Timestamp;
 	}
-	NetworkSink->setDebugStream(Monitor->DebugStream);
+	NetworkSink->setDebugStream(Monitor->DebugStream); 
 	NetworkSink->setDebugNetworkPackets(Monitor->DebugNetworkPackets);
 	NetworkSink->setDoChecksums(Monitor->Checksums);
 	NetworkSink->setEstimatedDecodingFrequency(Monitor->EstimatedDecodingFrequency);
