@@ -44,6 +44,7 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 
 	DebugStream = 0;
 	DebugNetworkPackets=false;
+	DebugControlPackets=false;
 	Checksums = false;
 	ResetCache = false;
 

@@ -229,7 +229,6 @@ void FEncodePipelineMonoscopic::EncodeFrame(FSceneInterface* InScene, UTexture* 
 	{
 		return;
 	}
-
 	const ERHIFeatureLevel::Type FeatureLevel = InScene->GetFeatureLevel();
 
 	auto SourceTarget = CastChecked<UTextureRenderTargetCube>(InSourceTexture);

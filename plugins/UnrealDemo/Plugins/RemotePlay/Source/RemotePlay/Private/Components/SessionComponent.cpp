@@ -728,21 +728,36 @@ void URemotePlaySessionComponent::RecvHeadPose(const ENetPacket* Packet)
 	// Convert quaternion from Simulcaster coordinate system (X right, Y forward, Z up) to UE4 coordinate system (left-handed, X left, Y forward, Z up).
 	avs::ConvertRotation(RemotePlayContext->axesStandard,avs::AxesStandard::UnrealStyle, headPose.OrientationQuat);
 	avs::ConvertPosition(RemotePlayContext->axesStandard, avs::AxesStandard::UnrealStyle, headPose.Position);
-	FVector pos(headPose.Position.x, headPose.Position.y, headPose.Position.z);
+	FVector NewCameraPos(headPose.Position.x, headPose.Position.y, headPose.Position.z);
 	// back to centimetres...
-	pos *= 100.0f;
-	static FVector offset(0, 0, 1.5f);
-	FVector oldPos = PlayerController->GetPawn()->GetActorLocation();
-	FVector newPos = pos + offset;
-	newPos.Z = oldPos.Z;
-	PlayerController->GetPawn()->SetActorLocation(newPos);
-	const FQuat HeadPoseUE{ headPose.OrientationQuat.x, headPose.OrientationQuat.y, headPose.OrientationQuat.z, headPose.OrientationQuat.w };
-	
-	URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
-	FCameraInfo& ClientCamInfo = CaptureComponent->GetClientCameraInfo();
-	//ClientCamInfo.Orientation = HeadPoseUE;
-	ClientCamInfo.Position = pos;
+	NewCameraPos *= 100.0f;
 
+	if(Monitor&&Monitor->DebugControlPackets)
+	{
+		static char c=0;
+		c--;
+		if(!c)
+		{
+			UE_LOG(LogRemotePlay, Warning, TEXT("Received Head Pos: %3.2f %3.2f %3.2f"), headPose.Position.x, headPose.Position.y, headPose.Position.z);
+		}
+	}
+	URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
+	if(!PlayerController.Get()||!PlayerPawn.Get())
+		return;
+	FVector CurrentActorPos = PlayerPawn->GetActorLocation();
+
+	//We want the Relative Location x and y to remain the same, while the z may vary.
+	FVector ActorToComponent=CaptureComponent->GetComponentLocation()-CurrentActorPos;
+
+	FVector newActorPos = NewCameraPos - ActorToComponent;
+	newActorPos.Z = CurrentActorPos.Z;
+	PlayerController->GetPawn()->SetActorLocation(newActorPos);
+	
+	FCameraInfo& ClientCamInfo = CaptureComponent->GetClientCameraInfo();
+
+	CaptureComponent->SetWorldLocation(NewCameraPos);
+	ClientCamInfo.Position = NewCameraPos;
+	const FQuat HeadPoseUE{ headPose.OrientationQuat.x, headPose.OrientationQuat.y, headPose.OrientationQuat.z, headPose.OrientationQuat.w };
 	FVector Euler = HeadPoseUE.Euler();
 	Euler.X = Euler.Y = 0.0f;
 	// Unreal thinks the Euler angle starts from facing X, but actually it's Y.
@@ -820,7 +835,7 @@ void URemotePlaySessionComponent::RecvInput(const ENetPacket* Packet)
 
 	if (Packet->dataLength != sizeof(FInputState))
 	{
-		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Received malfored input state change packet of length: %d"), Packet->dataLength);
+		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Received malformed input state change packet of length: %d"), Packet->dataLength);
 		return;
 	} 
 
