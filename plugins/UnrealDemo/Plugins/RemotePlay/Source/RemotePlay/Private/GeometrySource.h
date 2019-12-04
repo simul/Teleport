@@ -42,6 +42,10 @@ public:
 	avs::uid AddShadowMap(const FStaticShadowDepthMapData* shadowDepthMapData);
 	void Tick();
 
+	//Compresses any textures that were found during decomposition of actors.
+	//Split-off so all texture compression can happen at once with a progress bar.
+	void CompressTextures();
+
 	// Inherited via GeometrySourceBackendInterface
 	virtual std::vector<avs::uid> getNodeUIDs() const override;
 	virtual bool getNode(avs::uid node_uid, std::shared_ptr<avs::DataNode> & outNode) const override;
@@ -64,9 +68,15 @@ public:
 	virtual std::vector<avs::uid> getShadowMapUIDs() const override;
 	virtual bool getShadowMap(avs::uid shadow_uid, avs::Texture& outShadowMap) const override;
 	virtual const std::vector<avs::LightNodeResources>& getLightNodes() const;
-
 protected:
 	struct Mesh;
+
+	//Stores data on a texture that is to be compressed.
+	struct PrecompressedTexture
+	{
+		FString basisFilePath;
+		FTextureSource& textureSource;
+	};
 
 	basisu::basis_compressor_params basisCompressorParams; //Parameters for basis compressor.
 
@@ -86,6 +96,8 @@ protected:
 	std::map<avs::uid, avs::Texture> textures;
 	std::map<avs::uid, avs::Material> materials;
 	std::map<avs::uid, avs::Texture> shadowMaps;
+
+	std::map<avs::uid, PrecompressedTexture> texturesToCompress; //Map of textures that need compressing. <ID of the texture; file path to store the basis file>
 
 	std::vector<avs::LightNodeResources> lightNodes; //List of all light nodes; prevents having to search for them every geometry tick.
 	

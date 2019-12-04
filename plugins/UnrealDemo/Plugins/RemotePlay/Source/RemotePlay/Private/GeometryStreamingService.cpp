@@ -46,21 +46,24 @@ void FGeometryStreamingService::Initialise(UWorld *World, GeometrySource *geomSo
 	}
 	geometrySource = geomSource;
 
-	Monitor = ARemotePlayMonitor::Instantiate(World);
-	geometrySource->Initialize(Monitor, World);
-	geometryEncoder.Initialise(Monitor);
-
-	//Decompose all relevant actors into streamable geometry.
 	TArray<AActor*> staticMeshActors;
 	UGameplayStatics::GetAllActorsOfClass(World, AStaticMeshActor::StaticClass(), staticMeshActors);
+
+	TArray<AActor*> lightActors;
+	UGameplayStatics::GetAllActorsOfClass(World, ALight::StaticClass(), lightActors);
 
 	ECollisionChannel remotePlayChannel;
 	FCollisionResponseParams profileResponses;
 	//Returns the collision channel used by RemotePlay; uses the object type of the profile to determine the channel.
 	UCollisionProfile::GetChannelAndResponseParams("RemotePlaySensor", remotePlayChannel, profileResponses);
 
+	Monitor = ARemotePlayMonitor::Instantiate(World);
+	geometrySource->Initialize(Monitor, World);
+	geometryEncoder.Initialise(Monitor);
+
 	avs::uid root_node_uid = geometrySource->GetRootNodeUid();
 
+	//Decompose all relevant actors into streamable geometry.
 	for(auto actor : staticMeshActors)
 	{
 		UMeshComponent *rootMesh = Cast<UMeshComponent>(actor->GetComponentByClass(UMeshComponent::StaticClass()));
@@ -73,9 +76,6 @@ void FGeometryStreamingService::Initialise(UWorld *World, GeometrySource *geomSo
 	}
 
 	//Decompose all relevant light actors into streamable geometry.
-	TArray<AActor*> lightActors;
-	UGameplayStatics::GetAllActorsOfClass(World, ALight::StaticClass(), lightActors);
-
 	for (auto actor : lightActors)
 	{
 		auto sgc = actor->GetComponentByClass(UStreamableGeometryComponent::StaticClass());
@@ -90,6 +90,8 @@ void FGeometryStreamingService::Initialise(UWorld *World, GeometrySource *geomSo
 			}
 		}
 	}
+
+	geometrySource->CompressTextures();
 }
 
 void FGeometryStreamingService::StartStreaming(FRemotePlayContext *Context)

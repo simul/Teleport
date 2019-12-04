@@ -27,6 +27,9 @@
 #include "Engine/Classes/Materials/MaterialExpressionTextureCoordinate.h"
 #include "Engine/Classes/Materials/MaterialExpressionMultiply.h"
 
+//For progress bar while compressing textures.
+#include "ScopedSlowTask.h"
+
 #include "RemotePlayMonitor.h"
 
 #include <functional> //std::function
@@ -692,6 +695,62 @@ void GeometrySource::Tick()
 
 }
 
+void GeometrySource::CompressTextures()
+{
+#define LOCTEXT_NAMESPACE "GeometrySource"
+	//Create FScopedSlowTask to show user progress of compressing the texture.
+	FScopedSlowTask compressTextureTask(texturesToCompress.size(), FText::Format(LOCTEXT("Compressing Texture", "Starting compression of {0} textures"), texturesToCompress.size()));
+	compressTextureTask.MakeDialog(false, true);
+
+	int index = 1;//
+	for(auto idPrecompressedPair : texturesToCompress)
+	{
+		assert(textures.find(idFilePathPair.first) != textures.end());
+		avs::Texture& newTexture = textures[idPrecompressedPair.first];
+
+		TArray<uint8> mipData;
+		idPrecompressedPair.second.textureSource.GetMipData(mipData, 0);
+
+		basisu::image image(newTexture.width, newTexture.height);
+		basisu::color_rgba_vec& imageData = image.get_pixels();
+		memcpy(imageData.data(), mipData.GetData(), newTexture.width * newTexture.height * newTexture.depth * newTexture.bytesPerPixel);
+
+		basisCompressorParams.m_source_images.clear();
+		basisCompressorParams.m_source_images.push_back(image);
+
+		basisCompressorParams.m_write_output_basis_files = true;
+		basisCompressorParams.m_out_filename = TCHAR_TO_ANSI(*idPrecompressedPair.second.basisFilePath);
+
+		basisCompressorParams.m_quality_level = Monitor->QualityLevel;
+		basisCompressorParams.m_compression_level = Monitor->CompressionLevel;
+
+		basisCompressorParams.m_mip_gen = true;
+		basisCompressorParams.m_mip_smallest_dimension = 4; //Appears to be the smallest texture size that SimulFX handles.
+
+		basisu::basis_compressor basisCompressor;
+
+		if(basisCompressor.init(basisCompressorParams))
+		{
+			compressTextureTask.EnterProgressFrame(1.0f, FText::Format(LOCTEXT("Compressing Texture", "Compressing texture {0}/{1} ({2} [{3} x {4}])"), index, texturesToCompress.size(), FText::FromString(ANSI_TO_TCHAR(newTexture.name.data())), newTexture.width, newTexture.height));
+			basisu::basis_compressor::error_code result = basisCompressor.process();
+
+			if(result == basisu::basis_compressor::error_code::cECSuccess)
+			{
+				basisu::uint8_vec basisTex = basisCompressor.get_output_basis_file();
+
+				newTexture.dataSize = basisCompressor.get_basis_file_size();
+				newTexture.data = new unsigned char[newTexture.dataSize];
+				memcpy(newTexture.data, basisTex.data(), newTexture.dataSize);
+			}
+		}
+
+		++index;
+	}
+#undef LOCTEXT_NAMESPACE
+
+	texturesToCompress.clear();
+}
+
 void GeometrySource::PrepareMesh(Mesh &m)
 {
 	// We will pre-encode the mesh to prepare it for streaming.
@@ -735,68 +794,54 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 	else
 	{
 		texture_uid = avs::GenerateUid();
-
-		std::string textureName = TCHAR_TO_ANSI(*texture->GetName());
+		decomposedTextures[texture] = texture_uid;
+		avs::Texture& newTexture = textures[texture_uid];
 
 		//Assuming the first running platform is the desired running platform.
 		FTexture2DMipMap baseMip = texture->GetRunningPlatformData()[0]->Mips[0];
 		FTextureSource& textureSource = texture->Source;
-		ETextureSourceFormat unrealFormat = textureSource.GetFormat();
 
-		uint32_t width = baseMip.SizeX;
-		uint32_t height = baseMip.SizeY;
-		uint32_t depth = baseMip.SizeZ; ///!!! Is this actually where Unreal stores its depth information for a texture? !!!
-		uint32_t bytesPerPixel = textureSource.GetBytesPerPixel();
-		uint32_t arrayCount = textureSource.GetNumSlices(); ///!!! Is this actually the array count? !!!
-		uint32_t mipCount = textureSource.GetNumMips();
-		avs::TextureFormat format;
+		newTexture.name = TCHAR_TO_ANSI(*texture->GetName());
+		newTexture.width = baseMip.SizeX;
+		newTexture.height = baseMip.SizeY;
+		newTexture.depth = baseMip.SizeZ; ///!!! Is this actually where Unreal stores its depth information for a texture? !!!
+		newTexture.bytesPerPixel = textureSource.GetBytesPerPixel();
+		newTexture.arrayCount = textureSource.GetNumSlices(); ///!!! Is this actually the array count? !!!
+		newTexture.mipCount = textureSource.GetNumMips();
+		newTexture.sampler_uid = 0;
 
-		UE_CLOG(bytesPerPixel != 4, LogRemotePlay, Warning, TEXT("Texture \"%s\" has bytes per pixel of %d!"), *texture->GetName(), bytesPerPixel);
+		UE_CLOG(newTexture.bytesPerPixel != 4, LogRemotePlay, Warning, TEXT("Texture \"%s\" has bytes per pixel of %d!"), *texture->GetName(), newTexture.bytesPerPixel);
 
-		std::size_t texSize = width * height * bytesPerPixel;
-
-		switch(unrealFormat)
+		switch(textureSource.GetFormat())
 		{
-			case ETextureSourceFormat::TSF_Invalid:
-				format = avs::TextureFormat::INVALID;
-				break;
 			case ETextureSourceFormat::TSF_G8:
-				format = avs::TextureFormat::G8;
+				newTexture.format = avs::TextureFormat::G8;
 				break;
 			case ETextureSourceFormat::TSF_BGRA8:
-				format = avs::TextureFormat::BGRA8;
+				newTexture.format = avs::TextureFormat::BGRA8;
 				break;
 			case ETextureSourceFormat::TSF_BGRE8:
-				format = avs::TextureFormat::BGRE8;
+				newTexture.format = avs::TextureFormat::BGRE8;
 				break;
 			case ETextureSourceFormat::TSF_RGBA16:
-				format = avs::TextureFormat::RGBA16;
+				newTexture.format = avs::TextureFormat::RGBA16;
 				break;
 			case ETextureSourceFormat::TSF_RGBA16F:
-				format = avs::TextureFormat::RGBA16F;
+				newTexture.format = avs::TextureFormat::RGBA16F;
 				break;
 			case ETextureSourceFormat::TSF_RGBA8:
-				format = avs::TextureFormat::RGBA8;
+				newTexture.format = avs::TextureFormat::RGBA8;
 				break;
-			case ETextureSourceFormat::TSF_RGBE8:
-				format = avs::TextureFormat::INVALID;
-				break;
-			case ETextureSourceFormat::TSF_MAX:
 			default:
-				format = avs::TextureFormat::INVALID;
-				UE_LOG(LogRemotePlay, Warning, TEXT("Invalid texture format"));
+				newTexture.format = avs::TextureFormat::INVALID;
+				UE_LOG(LogRemotePlay, Warning, TEXT("Invalid texture format on texture: %s"), *texture->GetName());
 				break;
 		}		
 
-		avs::TextureCompression compression = avs::TextureCompression::UNCOMPRESSED;
-		
-		uint32_t dataSize=0;
-		unsigned char* data = nullptr;
 		//Compress the texture with Basis Universal if the flag is set, and bytes per pixel is equal to 4.
-		if(Monitor->UseCompressedTextures && bytesPerPixel == 4)
+		if(Monitor->UseCompressedTextures && newTexture.bytesPerPixel == 4)
 		{
-			compression = avs::TextureCompression::BASIS_COMPRESSED;
-			bool validBasisFileExists = false;
+			newTexture.compression = avs::TextureCompression::BASIS_COMPRESSED;
 
 			FString GameSavedDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir());
 
@@ -808,6 +853,7 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 
 			FString basisFilePath = FPaths::Combine(GameSavedDir, uniqueName + FString(".basis"));
 			
+			bool validBasisFileExists = false;
 			FFileManagerGeneric fileManager;
 			if(fileManager.FileExists(*basisFilePath))
 			{
@@ -823,72 +869,32 @@ avs::uid GeometrySource::StoreTexture(UTexture * texture)
 			{
 				FArchive *reader = fileManager.CreateFileReader(*basisFilePath);
 				
-				dataSize = reader->TotalSize();
-				data = new unsigned char[dataSize];
-				reader->Serialize(data, dataSize);
+				newTexture.dataSize = reader->TotalSize();
+				newTexture.data = new unsigned char[newTexture.dataSize];
+				reader->Serialize(newTexture.data, newTexture.dataSize);
 
 				reader->Close();
 				delete reader;
 			}
-			//Otherwise, compress the file.
+			//Otherwise, queue the texture for compression.
 			else
 			{
-				TArray<uint8> mipData;
-				textureSource.GetMipData(mipData, 0);
-
-				basisu::image image(width, height);
-				basisu::color_rgba_vec& imageData = image.get_pixels();
-				memcpy(imageData.data(), mipData.GetData(), texSize);
-
-				basisCompressorParams.m_source_images.clear();
-				basisCompressorParams.m_source_images.push_back(image);
-
-				basisCompressorParams.m_write_output_basis_files = true;
-				basisCompressorParams.m_out_filename = TCHAR_TO_ANSI(*basisFilePath);
-
-				basisCompressorParams.m_quality_level = Monitor->QualityLevel;
-				basisCompressorParams.m_compression_level = Monitor->CompressionLevel;
-
-				basisCompressorParams.m_mip_gen = true;
-				basisCompressorParams.m_mip_smallest_dimension = 4; //Appears to be the smallest texture size that SimulFX handles.
-
-				basisu::basis_compressor basisCompressor;
-
-				if(basisCompressor.init(basisCompressorParams))
-				{
-					UE_LOG(LogRemotePlay, Warning, TEXT("Basis compressing %s"),*uniqueName);
-					basisu::basis_compressor::error_code result = basisCompressor.process();
-
-					if(result == basisu::basis_compressor::error_code::cECSuccess)
-					{
-						basisu::uint8_vec basisTex = basisCompressor.get_output_basis_file();
-
-						dataSize = basisCompressor.get_basis_file_size();
-						data = new unsigned char[dataSize];
-						memcpy(data, basisTex.data(), dataSize);
-					}
-				}
+				texturesToCompress.emplace(texture_uid, PrecompressedTexture{basisFilePath, textureSource});
 			}
 		}
-
-		//We send over the uncompressed texture data, if we can't get the compressed data.
-		if(!data)
+		else
 		{
+			newTexture.compression = avs::TextureCompression::UNCOMPRESSED;
+
 			TArray<uint8> mipData;
 			textureSource.GetMipData(mipData, 0);
 
-			dataSize = texSize;
-			data = new unsigned char[dataSize];
-			memcpy(data, mipData.GetData(), dataSize);
+			newTexture.dataSize = newTexture.width * newTexture.height * newTexture.depth * newTexture.bytesPerPixel;
+			newTexture.data = new unsigned char[newTexture.dataSize];
+			memcpy(newTexture.data, mipData.GetData(), newTexture.dataSize);
 
-			UE_CLOG(dataSize > 1048576, LogRemotePlay, Warning, TEXT("Texture \"%s\" was stored UNCOMPRESSED with a data size larger than 1MB! Size: %dB(%.2fMB)"), *texture->GetName(), dataSize, dataSize / 1048576.0f)
+			UE_CLOG(newTexture.dataSize > 1048576, LogRemotePlay, Warning, TEXT("Texture \"%s\" was stored UNCOMPRESSED with a data size larger than 1MB! Size: %dB(%.2fMB)"), *texture->GetName(), newTexture.dataSize, newTexture.dataSize / 1048576.0f)
 		}
-
-		//We're using a single sampler for now.
-		avs::uid sampler_uid = 0;
-
-		textures[texture_uid] = {textureName, width, height, depth, bytesPerPixel, arrayCount, mipCount, format, compression, dataSize, data, sampler_uid};
-		decomposedTextures[texture] = texture_uid;
 	}
 
 	return texture_uid;
@@ -1280,6 +1286,8 @@ bool GeometrySource::getTexture(avs::uid texture_uid, avs::Texture & outTexture)
 	try
 	{
 		outTexture = textures.at(texture_uid);
+		//Check the texture was actually compressed/loaded from file.
+		assert(outTexture.data);
 
 		return true;
 	}
