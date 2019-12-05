@@ -77,20 +77,11 @@ GeometrySource::~GeometrySource()
 	delete basisCompressorParams.m_pJob_pool;
 }
 
-void GeometrySource::Initialize(ARemotePlayMonitor* monitor, UWorld* world)
+void GeometrySource::Initialise(ARemotePlayMonitor* monitor, UWorld* world)
 {
 	Monitor = monitor;
-
-	if(Monitor)
-	{
-		if(Monitor->ResetCache)
-		{
-			clearData();
-		}
-	}
-	//0 == No item. First generated UID will be 1.
-	rootNodeUid = CreateNode(nullptr, 0, avs::NodeDataType::Scene, std::vector<avs::uid>());
-
+	if(Monitor && Monitor->ResetCache) clearData();
+	
 	UStaticMeshComponent* handMeshComponent = nullptr;
 	//Use the hand actor blueprint set in the monitor.
 	if(Monitor->HandActor)
@@ -133,8 +124,8 @@ void GeometrySource::Initialize(ARemotePlayMonitor* monitor, UWorld* world)
 	//Add the hand actors, and their resources, to the geometry source.
 	if(handMeshComponent)
 	{
-		avs::uid firstHandUID = AddNode(rootNodeUid, handMeshComponent);
-		nodes[firstHandUID]->data_type = avs::NodeDataType::Hand;
+		avs::uid firstHandUID = AddNode(handMeshComponent);
+		nodes[firstHandUID].data_type = avs::NodeDataType::Hand;
 
 		//Whether we created a new node for the hand model, or it already existed; i.e whether the hand actor has changed.
 		bool isSameHandNode = handUIDs.size() != 0 && firstHandUID == handUIDs[0];
@@ -356,24 +347,19 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 	return true;
 }
 
-void GeometrySource::UpdateNodeTransform(std::shared_ptr<avs::DataNode>& node, USceneComponent* component)
+avs::Transform GeometrySource::GetComponentTransform(USceneComponent* component)
 {
-	if(component)
-	{
-		FTransform transform = component->GetComponentTransform();
+	check(component)
 
-		// convert offset from cm to metres.
-		FVector t = transform.GetTranslation() * 0.01f;
-		// We retain Unreal axes until sending to individual clients, which might have varying standards.
-		FQuat r = transform.GetRotation();
-		const FVector s = transform.GetScale3D();
+	FTransform transform = component->GetComponentTransform();
 
-		node->transform = {t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z};
-	}
-	else
-	{
-		UE_LOG(LogRemotePlay, Log, TEXT("UpdateNodeTransform used on node with nullptr component."))
-	}
+	// convert offset from cm to metres.
+	FVector t = transform.GetTranslation() * 0.01f;
+	// We retain Unreal axes until sending to individual clients, which might have varying standards.
+	FQuat r = transform.GetRotation();
+	const FVector s = transform.GetScale3D();
+
+	return avs::Transform{t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z};
 }
 
 void GeometrySource::clearData()
@@ -415,7 +401,7 @@ avs::uid GeometrySource::AddStreamableMeshComponent(UMeshComponent *MeshComponen
 {
 	if (MeshComponent->GetClass()->IsChildOf(USkeletalMeshComponent::StaticClass()))
 	{
-		UE_LOG(LogRemotePlay, Warning, TEXT("Skeletal meshes not supported yet"));
+		UE_LOG(LogRemotePlay, Warning, TEXT("Skeletal meshes not supported yet. Found on actor: %s"), *MeshComponent->GetOuter()->GetName());
 		return 0;
 	}
 
@@ -451,120 +437,19 @@ avs::uid GeometrySource::AddStreamableMeshComponent(UMeshComponent *MeshComponen
 	return mesh_uid;
 }
 
-avs::uid GeometrySource::AddNode(avs::uid parent_uid, USceneComponent* component, bool forceTransformUpdate)
+avs::uid GeometrySource::AddNode(USceneComponent* component)
 {
-	avs::uid node_uid;
-	if (!component)
-		return 0;
-	FName levelUniqueNodeName = *FPaths::Combine(component->GetOutermost()->GetName(), component->GetOuter()->GetName(), component->GetName());
-	std::map<FName, avs::uid>::iterator nodeIt = decomposedNodes.find(levelUniqueNodeName);
+	check(component); //Why have we passed a null pointer?
 
-	if(nodeIt != decomposedNodes.end())
-	{
-		node_uid = nodeIt->second;
-
-		if(forceTransformUpdate)
-		{
-			UpdateNodeTransform(nodes[node_uid], component);
-		}
-	}
-	else
-	{
-		UMeshComponent* meshComponent = Cast<UMeshComponent>(component);
-		ULightComponent* lightComponent = Cast<ULightComponent>(component);
-
-		if(meshComponent)
-		{
-			std::shared_ptr<avs::DataNode> parent;
-			getNode(parent_uid, parent);
-
-			avs::uid mesh_uid = AddStreamableMeshComponent(meshComponent);
-			if (mesh_uid == 0)
-			{
-				UE_LOG(LogRemotePlay, Warning, TEXT("FAILED TO ADD MESH"));
-				return 0;
-			}
-			//Materials that this component has applied to its material slots.
-			TArray<UMaterialInterface*> mats = meshComponent->GetMaterials();
-
-			std::vector<avs::uid> mat_uids;
-			//Add material, and textures, for streaming to clients.
-			for(int32 i = 0; i < mats.Num(); i++)
-			{
-				avs::uid material_uid = AddMaterial(mats[i]);
-
-				if(material_uid != 0)
-				{
-					mat_uids.push_back(material_uid);
-				}
-				else
-				{
-					UE_LOG(LogRemotePlay, Warning, TEXT("Actor \"%s\" has no material applied to material slot %d."), *component->GetOuter()->GetName(), i);
-				}
-			}
-
-			node_uid = CreateNode(component, mesh_uid, avs::NodeDataType::Mesh, mat_uids);
-			decomposedNodes[levelUniqueNodeName] = node_uid;
-
-			parent->childrenUids.push_back(node_uid);
-
-			TArray<USceneComponent *> children;
-			component->GetChildrenComponents(false, children);
-
-			for(auto child : children)
-			{
-				if(child->GetClass()->IsChildOf(UMeshComponent::StaticClass()))
-				{
-					AddNode(node_uid, Cast<UMeshComponent>(child));
-				}
-			}
-		}
-		else if (lightComponent)
-		{
-			std::shared_ptr<avs::DataNode> parent;
-			getNode(parent_uid, parent);
-
-			avs::uid shadow_uid = AddShadowMap(lightComponent->StaticShadowDepthMap.Data);
-			if (shadow_uid == 0)
-				return 0;
-
-			node_uid = CreateNode(component, shadow_uid, avs::NodeDataType::ShadowMap, {});
-			decomposedNodes[levelUniqueNodeName] = node_uid;
-
-			lightNodes.emplace_back(avs::LightNodeResources{node_uid, shadow_uid});
-
-			//This node is a Terminus. i.e. no children.
-		}
-		else
-		{
-			UE_LOG(LogRemotePlay, Warning, TEXT("Currently only UMeshComponents and ULightComponents are supported, but a component of type <%s> was passed to the GeometrySource."), *component->GetName())
-				return 0;
-		}
-	}
-
-	return node_uid;
+	return AddNode_Internal(component, FindNodeIterator(component));
 }
 
-avs::uid GeometrySource::CreateNode(USceneComponent* component, avs::uid data_uid, avs::NodeDataType data_type, const std::vector<avs::uid>& mat_uids)
+avs::uid GeometrySource::GetNode(USceneComponent* component)
 {
-	avs::uid uid = avs::GenerateUid();
-	std::shared_ptr<avs::DataNode> node = std::make_shared<avs::DataNode>();
-	UpdateNodeTransform(node, component);
-	node->data_uid = data_uid;
-	node->data_type = data_type;
-	node->materials = mat_uids;
-	nodes[uid] = node;
-	return uid;
-}
+	check(component); //Why have we passed a null pointer?
 
-avs::uid GeometrySource::GetRootNodeUid()
-{
-	return rootNodeUid;
-}
-
-bool GeometrySource::GetRootNode(std::shared_ptr<avs::DataNode>& node)
-{
-	return getNode(rootNodeUid, node);
+	std::map<FName, avs::uid>::iterator nodeIterator = FindNodeIterator(component);
+	return nodeIterator != decomposedNodes.end() ? nodeIterator->second : AddNode_Internal(component, nodeIterator);
 }
 
 avs::uid GeometrySource::AddMaterial(UMaterialInterface *materialInterface)
@@ -749,6 +634,73 @@ void GeometrySource::CompressTextures()
 #undef LOCTEXT_NAMESPACE
 
 	texturesToCompress.clear();
+}
+
+avs::uid GeometrySource::AddNode_Internal(USceneComponent* component, std::map<FName, avs::uid>::iterator nodeIterator)
+{
+	UMeshComponent* meshComponent = Cast<UMeshComponent>(component);
+	ULightComponent* lightComponent = Cast<ULightComponent>(component);
+
+	avs::uid dataID;
+	avs::NodeDataType dataType;
+	std::vector<avs::uid> materialIDs;
+	std::vector<avs::uid> childIDs;
+	if(meshComponent)
+	{
+		dataType = avs::NodeDataType::Mesh;
+		dataID = AddStreamableMeshComponent(meshComponent);
+		if(dataID == 0) return 0;
+
+		//Materials that this component has applied to its material slots.
+		TArray<UMaterialInterface*> mats = meshComponent->GetMaterials();
+
+		//Add material, and textures, for streaming to clients.
+		for(int32 i = 0; i < mats.Num(); i++)
+		{
+			avs::uid materialID = AddMaterial(mats[i]);
+			if(materialID != 0) materialIDs.push_back(materialID);
+			else UE_LOG(LogRemotePlay, Warning, TEXT("Actor \"%s\" has no material applied to material slot %d."), *component->GetOuter()->GetName(), i);
+		}
+
+		TArray<USceneComponent*> children;
+		component->GetChildrenComponents(false, children);
+
+		for(auto child : children)
+		{
+			avs::uid childID = AddNode(Cast<UMeshComponent>(child));
+			if(childID != 0) childIDs.push_back(childID);
+			else UE_LOG(LogRemotePlay, Log, TEXT("Failed to add child component \"%s\" as a node of actor \"%s\""), *child->GetName(), *component->GetOuter()->GetName());
+		}
+	}
+	else if(lightComponent)
+	{
+		dataType = avs::NodeDataType::ShadowMap;
+		dataID = AddShadowMap(lightComponent->StaticShadowDepthMap.Data);
+		if(dataID == 0)
+		{
+			UE_LOG(LogRemotePlay, Warning, TEXT("Failed to add shadow map for actor with name: %s"), *component->GetOuter()->GetName());
+			return 0;
+		}
+	}
+	else
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Currently only UMeshComponents and ULightComponents are supported, but a component of type <%s> was passed to the GeometrySource."), *component->GetName());
+
+		return 0;
+	}
+
+	avs::uid nodeID = nodeIterator == decomposedNodes.end() ? avs::GenerateUid() : nodeIterator->second;
+	nodes[nodeID] = avs::DataNode{GetComponentTransform(component), dataID, dataType, materialIDs, childIDs};
+
+	if(dataType == avs::NodeDataType::ShadowMap) lightNodes.emplace_back(avs::LightNodeResources{nodeID, dataID});
+
+	return nodeID;
+}
+
+std::map<FName, avs::uid>::iterator GeometrySource::FindNodeIterator(USceneComponent* component)
+{
+	FName levelUniqueNodeName = *FPaths::Combine(component->GetOutermost()->GetName(), component->GetOuter()->GetName(), component->GetName());
+	return decomposedNodes.find(levelUniqueNodeName);
 }
 
 void GeometrySource::PrepareMesh(Mesh &m)
@@ -1171,7 +1123,7 @@ std::vector<avs::uid> GeometrySource::getNodeUIDs() const
 	return nodeUIDs;
 }
 
-bool GeometrySource::getNode(avs::uid node_uid, std::shared_ptr<avs::DataNode> & outNode) const
+bool GeometrySource::getNode(avs::uid node_uid, avs::DataNode& outNode) const
 {
 	//Assuming an incorrect node uid should not happen, or at least not frequently.
 	try
@@ -1187,7 +1139,7 @@ bool GeometrySource::getNode(avs::uid node_uid, std::shared_ptr<avs::DataNode> &
 	}
 }
 
-std::map<avs::uid, std::shared_ptr<avs::DataNode>>& GeometrySource::getNodes() const
+std::map<avs::uid, avs::DataNode>& GeometrySource::getNodes() const
 {
 	return nodes;
 }

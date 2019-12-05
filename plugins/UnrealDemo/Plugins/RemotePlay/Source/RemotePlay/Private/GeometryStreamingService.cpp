@@ -58,10 +58,8 @@ void FGeometryStreamingService::Initialise(UWorld *World, GeometrySource *geomSo
 	UCollisionProfile::GetChannelAndResponseParams("RemotePlaySensor", remotePlayChannel, profileResponses);
 
 	Monitor = ARemotePlayMonitor::Instantiate(World);
-	geometrySource->Initialize(Monitor, World);
+	geometrySource->Initialise(Monitor, World);
 	geometryEncoder.Initialise(Monitor);
-
-	avs::uid root_node_uid = geometrySource->GetRootNodeUid();
 
 	//Decompose all relevant actors into streamable geometry.
 	for(auto actor : staticMeshActors)
@@ -71,7 +69,7 @@ void FGeometryStreamingService::Initialise(UWorld *World, GeometrySource *geomSo
 		//Decompose the meshes that would cause an overlap event to occur with the "RemotePlaySensor" profile.
 		if(rootMesh->GetGenerateOverlapEvents() && rootMesh->GetCollisionResponseToChannel(remotePlayChannel) != ECollisionResponse::ECR_Ignore)
 		{
-			geometrySource->AddNode(root_node_uid, rootMesh, true);
+			geometrySource->AddNode(rootMesh);
 		}
 	}
 
@@ -86,7 +84,7 @@ void FGeometryStreamingService::Initialise(UWorld *World, GeometrySource *geomSo
 			if (lightComponent)
 			{
 				//ShadowMapData smd(lc);
-				geometrySource->AddNode(root_node_uid, lightComponent, true);
+				geometrySource->AddNode(lightComponent);
 			}
 		}
 	}
@@ -211,15 +209,22 @@ void FGeometryStreamingService::ShowActor(avs::uid actor_uid)
 
 avs::uid FGeometryStreamingService::AddActor(AActor *newActor)
 {
-	avs::uid actor_uid = geometrySource->AddNode(geometrySource->GetRootNodeUid(), Cast<UMeshComponent>(newActor->GetComponentByClass(UMeshComponent::StaticClass())));
-	
-	if(actor_uid != 0)
+	UActorComponent* meshComponent = newActor->GetComponentByClass(UMeshComponent::StaticClass());
+	if(!meshComponent)
 	{
-		actorUids[GetLevelUniqueActorName(newActor)] = actor_uid;
-		streamedActors[actor_uid] = newActor;
+		UE_LOG(LogRemotePlay, Warning, TEXT("Failed to find mesh when adding actor \"%s\" to geometry stream."), *newActor->GetName());
+		return 0;
 	}
 
-	return actor_uid;
+	avs::uid actorID = geometrySource->GetNode(Cast<UMeshComponent>(meshComponent));
+	
+	if(actorID != 0)
+	{
+		actorUids[GetLevelUniqueActorName(newActor)] = actorID;
+		streamedActors[actorID] = newActor;
+	}
+
+	return actorID;
 }
 
 avs::uid FGeometryStreamingService::RemoveActor(AActor* oldActor)
@@ -266,14 +271,14 @@ void FGeometryStreamingService::GetNodeResourceUIDs(
 	std::vector<avs::uid>& outNodeIds)
 {
 	//Retrieve node.
-	std::shared_ptr<avs::DataNode> thisNode;
+	avs::DataNode thisNode;
 	geometrySource->getNode(nodeUID, thisNode);
 
 	//Add mesh UID.
-	outMeshIds.push_back(thisNode->data_uid);
+	outMeshIds.push_back(thisNode.data_uid);
 
 	//Add all material UIDs.
-	for(auto materialId : thisNode->materials)
+	for(auto materialId : thisNode.materials)
 	{
 		avs::Material thisMaterial;
 		geometrySource->getMaterial(materialId, thisMaterial);
@@ -292,7 +297,7 @@ void FGeometryStreamingService::GetNodeResourceUIDs(
 	}
 
 	//Add all child node UIDs.
-	for(auto childNode : thisNode->childrenUids)
+	for(auto childNode : thisNode.childrenUids)
 	{
 		outNodeIds.push_back(childNode);
 		GetNodeResourceUIDs(childNode, outMeshIds, outTextureIds, outMaterialIds, outNodeIds);
@@ -301,15 +306,15 @@ void FGeometryStreamingService::GetNodeResourceUIDs(
 
 void FGeometryStreamingService::GetMeshNodeResources(avs::uid node_uid, std::vector<avs::MeshNodeResources>& outMeshResources)
 {
-	std::shared_ptr<avs::DataNode> thisNode;
+	avs::DataNode thisNode;
 	geometrySource->getNode(node_uid, thisNode);
-	if (thisNode->data_uid == 0)
-		return;
+	if(thisNode.data_uid == 0) return;
+
 	avs::MeshNodeResources meshNode;
 	meshNode.node_uid = node_uid;
-	meshNode.mesh_uid = thisNode->data_uid;
+	meshNode.mesh_uid = thisNode.data_uid;
 
-	for(avs::uid material_uid : thisNode->materials)
+	for(avs::uid material_uid : thisNode.materials)
 	{
 		avs::Material thisMaterial;
 		geometrySource->getMaterial(material_uid, thisMaterial);
@@ -331,7 +336,7 @@ void FGeometryStreamingService::GetMeshNodeResources(avs::uid node_uid, std::vec
 		meshNode.materials.push_back(material);
 	}
 
-	for(avs::uid childNode_uid : thisNode->childrenUids)
+	for(avs::uid childNode_uid : thisNode.childrenUids)
 	{
 		GetMeshNodeResources(childNode_uid, outMeshResources);
 	}
@@ -392,7 +397,7 @@ void FGeometryStreamingService::GetResourcesClientNeeds(
 	{
 		for (auto& node : nodes)
 		{
-			if (node.second->data_uid == shadowUID)
+			if (node.second.data_uid == shadowUID)
 			{
 				outNodeIds.push_back(node.first);
 				break;

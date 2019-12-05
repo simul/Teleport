@@ -18,17 +18,19 @@ class GeometrySource : public avs::GeometrySourceBackendInterface
 public:
 	GeometrySource();
 	~GeometrySource();
-	void Initialize(ARemotePlayMonitor* monitor, UWorld* world);
+	void Initialise(class ARemotePlayMonitor* monitor, UWorld* world);
 	void clearData();
 
 	avs::uid AddMesh(class UStaticMesh *);
 	avs::uid AddStreamableMeshComponent(UMeshComponent *MeshComponent);
 	
-	avs::uid AddNode(avs::uid parent_uid, USceneComponent* component, bool forceTransformUpdate = false);
-	avs::uid CreateNode(USceneComponent* component, avs::uid data_uid, avs::NodeDataType data_type,const std::vector<avs::uid> &mat_uids);
-
-	avs::uid GetRootNodeUid();
-	bool GetRootNode(std::shared_ptr<avs::DataNode>& node);
+	//Adds the node to the geometry source; decomposing the node to its base components. Will update the node if it has already been processed before.
+	//	component : Scene component the node represents.
+	//Return UID of node.
+	avs::uid AddNode(USceneComponent* component);
+	//Returns UID of node that represents the passed component; will add the node if it has not been processed before.
+	//	component : Scene component the node represents.
+	avs::uid GetNode(USceneComponent* component);
 
 	const std::vector<avs::uid>& GetHandActorUIDs()
 	{
@@ -48,8 +50,8 @@ public:
 
 	// Inherited via GeometrySourceBackendInterface
 	virtual std::vector<avs::uid> getNodeUIDs() const override;
-	virtual bool getNode(avs::uid node_uid, std::shared_ptr<avs::DataNode> & outNode) const override;
-	virtual std::map<avs::uid, std::shared_ptr<avs::DataNode>>& getNodes() const override;
+	virtual bool getNode(avs::uid node_uid, avs::DataNode& outNode) const override;
+	virtual std::map<avs::uid, avs::DataNode>& getNodes() const override;
 
 	virtual size_t getMeshCount() const override;
 	virtual avs::uid getMeshUid(size_t index) const override;
@@ -86,7 +88,7 @@ protected:
 	mutable std::map<avs::uid, avs::Accessor> accessors;
 	mutable std::map<avs::uid, avs::BufferView> bufferViews;
 	mutable std::map<avs::uid, avs::GeometryBuffer> geometryBuffers;
-	mutable std::map<avs::uid, std::shared_ptr<avs::DataNode>> nodes;
+	mutable std::map<avs::uid, avs::DataNode> nodes;
 
 	std::unordered_map<UTexture*, avs::uid> decomposedTextures; //Textures we have already stored in the GeometrySource; the pointer points to the uid of the stored texture information.
 	std::unordered_map<UMaterialInterface*, avs::uid> decomposedMaterials; //Materials we have already stored in the GeometrySource; the pointer points to the uid of the stored material information.
@@ -103,16 +105,21 @@ protected:
 	
 	mutable std::map<avs::uid, std::vector<avs::vec3>> scaledPositionBuffers;
 	mutable std::map<avs::uid, std::vector<FVector2D>> processedUVs;
-	avs::uid rootNodeUid;
+
+	//Returns ID of the node that represents the component; to prevent double search in GetNode when a node doesn't exist.
+	//	component : Scene component the node represents.
+	//	nodeIterator : Iterator returned when searching for the node in decomposedNodes.
+	avs::uid AddNode_Internal(USceneComponent* component, std::map<FName, avs::uid>::iterator nodeIterator);
+	//Returns the iterator returned when searching for the passed component.
+	//	component : Scene component the node represents.
+	std::map<FName, avs::uid>::iterator FindNodeIterator(USceneComponent* component);
 
 	void PrepareMesh(Mesh &m);
-	void SendMesh(Mesh &m);
 	bool InitMesh(Mesh *mesh, uint8 lodIndex) const;
 
-	//Updates the transform of the node.
-	//	node : Node which is to be updated.
-	//	component : Component the node corresponds to.
-	void UpdateNodeTransform(std::shared_ptr<avs::DataNode>& node, USceneComponent* component);
+	//Returns component transform.
+	//	component : Component we want the transform of.
+	avs::Transform GetComponentTransform(USceneComponent* component);
 
 	//Determines if the texture has already been stored, and pulls apart the texture data and stores it in a avs::Texture.
 	//	texture : UTexture to pull the texture data from.
