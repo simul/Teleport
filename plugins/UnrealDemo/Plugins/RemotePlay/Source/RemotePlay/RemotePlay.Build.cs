@@ -37,7 +37,8 @@ public class RemotePlay : ModuleRules
                 "RenderCore",
                 "Projects",
                 "Networking",
-			}
+                "MeshDescription" //For reading ID string of imported mesh, so a change can be detected.
+            }
 			);
 		
 		DynamicallyLoadedModuleNames.AddRange(

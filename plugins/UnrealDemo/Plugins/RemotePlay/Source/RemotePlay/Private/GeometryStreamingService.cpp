@@ -253,12 +253,12 @@ bool FGeometryStreamingService::IsStreamingActor(AActor* actor)
 
 void FGeometryStreamingService::AddControllersToStream()
 {
-	const std::vector<avs::uid>& handUIDs = geometrySource->GetHandActorUIDs();
+	const std::vector<avs::uid>& handIDs = geometrySource->GetHandActorUIDs();
 
-	if(handUIDs.size() != 0)
+	if(handIDs.size() != 0)
 	{
-		actorUids["RemotePlayHandActor1"] = handUIDs[0];
-		actorUids["RemotePlayHandActor2"] = handUIDs[1];
+		actorUids["RemotePlayHandActor1"] = handIDs[0];
+		actorUids["RemotePlayHandActor2"] = handIDs[1];
 	
 	}
 }

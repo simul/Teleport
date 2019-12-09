@@ -186,7 +186,6 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 				accessors.insert(primitiveArray.attributes[k].accessor);
 			}
 		}
-		req->EncodedResource(uid);
 
 		put(accessors.size());
 		std::set<avs::uid> bufferViews;
@@ -226,6 +225,8 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 			put(b.byteLength);
 			put(b.data, b.byteLength);
 		}
+
+		req->EncodedResource(uid);
 
 		float sizeDifference = buffer.size() - oldBufferSize;
 		UE_CLOG(sizeDifference > Monitor->GeometryBufferCutoffSize, LogRemotePlay, Warning, TEXT("Mesh(%llu) was encoded as %.2fMB. Cutoff is: %.2fMB"), uid, sizeDifference / 1048576.0f, Monitor->GeometryBufferCutoffSize / 1048576.0f);

@@ -54,6 +54,7 @@ struct GeometrySource::Mesh
 	bool Confirmed;
 	std::vector<avs::PrimitiveArray> primitiveArrays;
 	std::vector<avs::Attribute> attributes;
+	FString BulkDataIDString; //ID string of the bulk data the last time it was processed; changes whenever the mesh data is reimported, so can be used to detect changes.
 };
 
 namespace
@@ -72,15 +73,27 @@ GeometrySource::GeometrySource()
 
 GeometrySource::~GeometrySource()
 {
-	clearData();
+	ClearData();
 
 	delete basisCompressorParams.m_pJob_pool;
 }
 
 void GeometrySource::Initialise(ARemotePlayMonitor* monitor, UWorld* world)
 {
+	check(monitor);
+
 	Monitor = monitor;
-	if(Monitor && Monitor->ResetCache) clearData();
+	if(Monitor->ResetCache)
+	{
+		//Clear all stored data, if the reset cache flag is set.
+		ClearData();
+	}
+	else
+	{
+		//Otherwise, clear the lists of avs::Materials and avs::Textures; so the materials, and textures, will be reloaded, but we won't regenerate IDs.
+		materials.clear();
+		textures.clear();
+	}
 	
 	UStaticMeshComponent* handMeshComponent = nullptr;
 	//Use the hand actor blueprint set in the monitor.
@@ -128,11 +141,11 @@ void GeometrySource::Initialise(ARemotePlayMonitor* monitor, UWorld* world)
 		nodes[firstHandUID].data_type = avs::NodeDataType::Hand;
 
 		//Whether we created a new node for the hand model, or it already existed; i.e whether the hand actor has changed.
-		bool isSameHandNode = handUIDs.size() != 0 && firstHandUID == handUIDs[0];
-		avs::uid secondHandUID = isSameHandNode ? handUIDs[1] : avs::GenerateUid();
+		bool isSameHandNode = handIDs.size() != 0 && firstHandUID == handIDs[0];
+		avs::uid secondHandUID = isSameHandNode ? handIDs[1] : avs::GenerateUid();
 		nodes[secondHandUID] = nodes[firstHandUID];
 
-		handUIDs = {firstHandUID, secondHandUID};
+		handIDs = {firstHandUID, secondHandUID};
 	}
 }
 
@@ -160,19 +173,19 @@ avs::AttributeSemantic IndexToSemantic(int index)
 	return avs::AttributeSemantic::TEXCOORD_0;
 }
 
-bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
+bool GeometrySource::InitMesh(Mesh* mesh, uint8 lodIndex)
 {
-	if (m->StaticMesh->GetClass()->IsChildOf(USkeletalMesh::StaticClass()))
+	if (mesh->StaticMesh->GetClass()->IsChildOf(USkeletalMesh::StaticClass()))
 	{
 		return false;
 	}
 
-	UStaticMesh *StaticMesh = Cast<UStaticMesh>(m->StaticMesh);
+	UStaticMesh *StaticMesh = Cast<UStaticMesh>(mesh->StaticMesh);
 	auto &lods = StaticMesh->RenderData->LODResources;
 	if (!lods.Num())
 		return false;
 
-	auto AddBuffer = [this](GeometrySource::Mesh *m, avs::uid b_uid, size_t num, size_t stride, const void *data)
+	auto AddBuffer = [this](Mesh* mesh, avs::uid b_uid, size_t num, size_t stride, const void *data)
 	{
 		// Data may already exist:
 		if (geometryBuffers.find(b_uid) == geometryBuffers.end())
@@ -182,7 +195,7 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 			b.data = (const uint8_t *)data;			// Remember, just a pointer: we don't own this data.
 		}
 	};
-	auto AddBufferView = [this](GeometrySource::Mesh *m, avs::uid b_uid, avs::uid v_uid, size_t start_index, size_t num, size_t stride)
+	auto AddBufferView = [this](Mesh* mesh, avs::uid b_uid, avs::uid v_uid, size_t start_index, size_t num, size_t stride)
 	{
 		avs::BufferView &bv = bufferViews[v_uid];
 		bv.byteOffset = start_index * stride;
@@ -222,25 +235,25 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 			p[j].z = orig[j].z *0.01f;
 		}
 		size_t stride = pb.GetStride();
-		AddBuffer(m, positions_uid, pb.GetNumVertices(), stride, (const void*)p.data());
+		AddBuffer(mesh, positions_uid, pb.GetNumVertices(), stride, (const void*)p.data());
 		size_t position_stride = pb.GetStride();
 		// Offset is zero, because the sections are just lists of indices. 
-		AddBufferView(m, positions_uid, positions_view_uid, 0, pb.GetNumVertices(), position_stride);
+		AddBufferView(mesh, positions_uid, positions_view_uid, 0, pb.GetNumVertices(), position_stride);
 	}
 	size_t tangent_stride = vb.GetTangentSize() / vb.GetNumVertices();
 	// Normal:
 	{
 		size_t stride = vb.GetTangentSize() / vb.GetNumVertices();
-		AddBuffer(m, normals_uid, vb.GetNumVertices(), stride, vb.GetTangentData());
-		AddBufferView(m, normals_uid, normals_view_uid,  0, pb.GetNumVertices(), tangent_stride);
+		AddBuffer(mesh, normals_uid, vb.GetNumVertices(), stride, vb.GetTangentData());
+		AddBufferView(mesh, normals_uid, normals_view_uid,  0, pb.GetNumVertices(), tangent_stride);
 	}
 
 	// Tangent:
 	if (vb.GetTangentData())
 	{
 		size_t stride = vb.GetTangentSize() / vb.GetNumVertices();
-		AddBuffer(m, tangents_uid, vb.GetNumVertices(), stride, vb.GetTangentData());
-		AddBufferView(m, tangents_uid, tangents_view_uid, 0, pb.GetNumVertices(), tangent_stride);
+		AddBuffer(mesh, tangents_uid, vb.GetNumVertices(), stride, vb.GetTangentData());
+		AddBufferView(mesh, tangents_uid, tangents_view_uid, 0, pb.GetNumVertices(), tangent_stride);
 	}
 	// TexCoords:
 	size_t texcoords_stride = sizeof(FVector2D);
@@ -251,28 +264,28 @@ bool GeometrySource::InitMesh(Mesh *m, uint8 lodIndex) const
 		for (uint32_t k = 0; k < vb.GetNumVertices(); k++)
 			uvData.push_back(vb.GetVertexUV(k, j));
 	}
-	AddBuffer(m, texcoords_uid, vb.GetNumVertices()*vb.GetNumTexCoords(), texcoords_stride, uvData.data());
+	AddBuffer(mesh, texcoords_uid, vb.GetNumVertices()*vb.GetNumTexCoords(), texcoords_stride, uvData.data());
 	for (size_t j = 0; j < vb.GetNumTexCoords(); j++)
 	{
 		//bool IsFP32 = vb.GetUseFullPrecisionUVs(); //Not need vb.GetVertexUV() returns FP32 regardless. 
 		texcoords_view_uid[j] = avs::GenerateUid();
-		AddBufferView(m, texcoords_uid, texcoords_view_uid[j], j*pb.GetNumVertices(), pb.GetNumVertices(), texcoords_stride);
+		AddBufferView(mesh, texcoords_uid, texcoords_view_uid[j], j*pb.GetNumVertices(), pb.GetNumVertices(), texcoords_stride);
 	}
 	FRawStaticIndexBuffer &ib = lod.IndexBuffer;
 	FIndexArrayView arr = ib.GetArrayView();
 	avs::Accessor::ComponentType componentType = ib.Is32Bit() ? avs::Accessor::ComponentType::UINT : avs::Accessor::ComponentType::USHORT;
 	size_t istride = avs::GetComponentSize(componentType);
-	AddBuffer(m, indices_uid, ib.GetNumIndices(), istride, (const void*)((uint64*)&arr)[0]);
+	AddBuffer(mesh, indices_uid, ib.GetNumIndices(), istride, (const void*)((uint64*)&arr)[0]);
 	avs::uid indices_view_uid = avs::GenerateUid();
-	AddBufferView(m, indices_uid, indices_view_uid, 0, ib.GetNumIndices(), istride);
+	AddBufferView(mesh, indices_uid, indices_view_uid, 0, ib.GetNumIndices(), istride);
 	
 	// Now create the views:
 	size_t  num_elements = lod.Sections.Num();
-	m->primitiveArrays.resize(num_elements);
+	mesh->primitiveArrays.resize(num_elements);
 	for (size_t i = 0; i < num_elements; i++)
 	{
 		auto &section = lod.Sections[i];
-		auto &pa = m->primitiveArrays[i];
+		auto &pa = mesh->primitiveArrays[i];
 		pa.attributeCount = 2 + (vb.GetTangentData() ? 1 : 0) + (vb.GetTexCoordData() ? vb.GetNumTexCoords() : 0);
 		pa.attributes = new avs::Attribute[pa.attributeCount];
 		size_t idx = 0;
@@ -362,9 +375,9 @@ avs::Transform GeometrySource::GetComponentTransform(USceneComponent* component)
 	return avs::Transform{t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z};
 }
 
-void GeometrySource::clearData()
+void GeometrySource::ClearData()
 {
-	Meshes.Empty();
+	meshes.clear();
 	accessors.clear();
 	bufferViews.clear();
 	geometryBuffers.clear();
@@ -373,31 +386,19 @@ void GeometrySource::clearData()
 
 	nodes.clear();
 
-	decomposedTextures.clear();
-	decomposedMaterials.clear();
-	decomposedNodes.clear();
-	storedShadowMaps.clear();
+	processedTextures.clear();
+	processedMaterials.clear();
+	processedNodes.clear();
+	processedShadowMaps.clear();
 
 	textures.clear();
 	materials.clear();
 	shadowMaps.clear();
 
-	handUIDs.clear();
+	handIDs.clear();
 }
 
-// By adding a m, we also add a pipe, including the InputMesh, which must be configured with the appropriate 
-avs::uid GeometrySource::AddMesh(UStaticMesh *StaticMesh)
-{
-	avs::uid uid = avs::GenerateUid();
-	TSharedPtr<Mesh> m(new Mesh);
-	Meshes.Add(uid, m);
-	m->StaticMesh = StaticMesh;
-	m->Confirmed = false;
-	PrepareMesh(*m);
-	return uid;
-}
-
-avs::uid GeometrySource::AddStreamableMeshComponent(UMeshComponent *MeshComponent)
+avs::uid GeometrySource::AddMesh(UMeshComponent *MeshComponent)
 {
 	if (MeshComponent->GetClass()->IsChildOf(USkeletalMeshComponent::StaticClass()))
 	{
@@ -405,36 +406,53 @@ avs::uid GeometrySource::AddStreamableMeshComponent(UMeshComponent *MeshComponen
 		return 0;
 	}
 
-	avs::uid mesh_uid=avs::uid(0);
-	UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(MeshComponent);
-	UStaticMesh *StaticMesh = StaticMeshComponent->GetStaticMesh();
+	avs::uid meshID;
+	UStaticMeshComponent* staticMeshComponent = Cast<UStaticMeshComponent>(MeshComponent);
+	UStaticMesh *staticMesh = staticMeshComponent->GetStaticMesh();
 
-	if(!StaticMesh)
+	if(!staticMesh)
 	{
 		UE_LOG(LogRemotePlay, Warning, TEXT("Actor \"%s\" has been set as streamable, but they have no mesh assigned to their mesh component!"), *MeshComponent->GetOuter()->GetName());
 		return 0;
 	}
 
-	bool already_got_mesh = false;
-	for (auto &i : Meshes)
+	//The mesh data was reimported, if the ID string has changed.
+	FString idString;
+	if(staticMesh->SourceModels.Num() != 0 && staticMesh->SourceModels[0].MeshDescriptionBulkData)
 	{
-		if (i.Value->StaticMesh->GetClass()->IsChildOf(USkeletalMesh::StaticClass()))
-		{
-			continue;
-		}
-		if (StaticMesh == i.Value->StaticMesh)
-		{
-			already_got_mesh = true;
-			mesh_uid = i.Key;
-			break;
-		}
-	}
-	if (!already_got_mesh)
-	{
-		mesh_uid = AddMesh(StaticMesh);
+		idString = staticMesh->SourceModels[0].MeshDescriptionBulkData->GetIdString();
 	}
 
-	return mesh_uid;
+	Mesh* mesh;
+
+	auto meshIt = processedMeshes.find(staticMesh);
+	if(meshIt != processedMeshes.end())
+	{
+		//Reuse the ID if this mesh has been processed before.
+		meshID = meshIt->second;
+		mesh = &meshes[meshID];
+
+		//Return if we have already processed the mesh in this play session, or the processed data wasn't cleared at the start of the play session, and the mesh data has not changed.
+		if(idString == mesh->BulkDataIDString)
+		{
+			return meshID;
+		}
+	}
+	else
+	{
+		//Create a new ID if this mesh has never been processed.
+		meshID = avs::GenerateUid();
+		processedMeshes[staticMesh] = meshID;
+		mesh = &meshes[meshID];
+	}
+
+	mesh->StaticMesh = staticMesh;
+	mesh->Confirmed = false;
+	mesh->BulkDataIDString = idString;
+	PrepareMesh(mesh);
+	InitMesh(mesh, 0);
+	
+	return meshID;
 }
 
 avs::uid GeometrySource::AddNode(USceneComponent* component)
@@ -449,87 +467,87 @@ avs::uid GeometrySource::GetNode(USceneComponent* component)
 	check(component); //Why have we passed a null pointer?
 
 	std::map<FName, avs::uid>::iterator nodeIterator = FindNodeIterator(component);
-	return nodeIterator != decomposedNodes.end() ? nodeIterator->second : AddNode_Internal(component, nodeIterator);
+	return nodeIterator != processedNodes.end() ? nodeIterator->second : AddNode_Internal(component, nodeIterator);
 }
 
-avs::uid GeometrySource::AddMaterial(UMaterialInterface *materialInterface)
+avs::uid GeometrySource::AddMaterial(UMaterialInterface* materialInterface)
 {
 	//Return 0 if we were passed a nullptr.
 	if(!materialInterface) return 0;
 
-	avs::uid mat_uid;
-
+	avs::uid materialID;
 	//Try and locate the pointer in the list of processed materials.
-	std::unordered_map<UMaterialInterface*, avs::uid>::iterator materialIt = decomposedMaterials.find(materialInterface);
+	std::unordered_map<UMaterialInterface*, avs::uid>::iterator materialIt = processedMaterials.find(materialInterface);
 
-	//Return the UID of the already processed material, if we have already processed the material.
-	if(materialIt != decomposedMaterials.end())
+	if(materialIt != processedMaterials.end())
 	{
-		mat_uid = materialIt->second;
+		//Reuse the ID if this material has been processed before.
+		materialID = materialIt->second;
+
+		//Return if we have already processed the material in this play session, or it wasn't cleared at the start of the play session.
+		if(materials.find(materialIt->second) != materials.end()) return materialID;
 	}
-	//Store the material if we have yet to process it.
 	else
 	{
-		avs::Material newMaterial;
+		//Create a new ID if this material has never been processed.
+		materialID = avs::GenerateUid();
+		processedMaterials[materialInterface] = materialID;
+	}
 
-		newMaterial.name = TCHAR_TO_ANSI(*materialInterface->GetName());
+	avs::Material& newMaterial = materials[materialID];
 
-		DecomposeMaterialProperty(materialInterface, EMaterialProperty::MP_BaseColor, newMaterial.pbrMetallicRoughness.baseColorTexture, newMaterial.pbrMetallicRoughness.baseColorFactor);
-		DecomposeMaterialProperty(materialInterface, EMaterialProperty::MP_Metallic, newMaterial.pbrMetallicRoughness.metallicRoughnessTexture, newMaterial.pbrMetallicRoughness.metallicFactor);
-		DecomposeMaterialProperty(materialInterface, EMaterialProperty::MP_Roughness, newMaterial.pbrMetallicRoughness.metallicRoughnessTexture, newMaterial.pbrMetallicRoughness.roughnessFactor);
-		DecomposeMaterialProperty(materialInterface, EMaterialProperty::MP_AmbientOcclusion, newMaterial.occlusionTexture, newMaterial.occlusionTexture.strength);
-		DecomposeMaterialProperty(materialInterface, EMaterialProperty::MP_Normal, newMaterial.normalTexture, newMaterial.normalTexture.scale);
-		DecomposeMaterialProperty(materialInterface, EMaterialProperty::MP_EmissiveColor, newMaterial.emissiveTexture, newMaterial.emissiveFactor);
+	newMaterial.name = TCHAR_TO_ANSI(*materialInterface->GetName());
 
-		//MP_WorldPositionOffset Property Chain for SimpleGrassWind
+	DecomposeMaterialProperty(materialInterface, EMaterialProperty::MP_BaseColor, newMaterial.pbrMetallicRoughness.baseColorTexture, newMaterial.pbrMetallicRoughness.baseColorFactor);
+	DecomposeMaterialProperty(materialInterface, EMaterialProperty::MP_Metallic, newMaterial.pbrMetallicRoughness.metallicRoughnessTexture, newMaterial.pbrMetallicRoughness.metallicFactor);
+	DecomposeMaterialProperty(materialInterface, EMaterialProperty::MP_Roughness, newMaterial.pbrMetallicRoughness.metallicRoughnessTexture, newMaterial.pbrMetallicRoughness.roughnessFactor);
+	DecomposeMaterialProperty(materialInterface, EMaterialProperty::MP_AmbientOcclusion, newMaterial.occlusionTexture, newMaterial.occlusionTexture.strength);
+	DecomposeMaterialProperty(materialInterface, EMaterialProperty::MP_Normal, newMaterial.normalTexture, newMaterial.normalTexture.scale);
+	DecomposeMaterialProperty(materialInterface, EMaterialProperty::MP_EmissiveColor, newMaterial.emissiveTexture, newMaterial.emissiveFactor);
+
+	//MP_WorldPositionOffset Property Chain for SimpleGrassWind
+	{
+		TArray<UMaterialExpression*> outExpressions;
+		materialInterface->GetMaterial()->GetExpressionsInPropertyChain(MP_WorldPositionOffset, outExpressions, nullptr);
+
+		if(outExpressions.Num() != 0)
 		{
-			TArray<UMaterialExpression *> outExpressions;
-			materialInterface->GetMaterial()->GetExpressionsInPropertyChain(MP_WorldPositionOffset, outExpressions, nullptr);
-
-			if(outExpressions.Num() != 0)
+			if(outExpressions[0]->GetName().Contains("MaterialFunctionCall"))
 			{
-				if(outExpressions[0]->GetName().Contains("MaterialFunctionCall"))
+				UMaterialExpressionMaterialFunctionCall* functionExp = Cast<UMaterialExpressionMaterialFunctionCall>(outExpressions[0]);
+				if(functionExp->MaterialFunction->GetName() == "SimpleGrassWind")
 				{
-					UMaterialExpressionMaterialFunctionCall *functionExp = Cast<UMaterialExpressionMaterialFunctionCall>(outExpressions[0]);
-					if(functionExp->MaterialFunction->GetName() == "SimpleGrassWind")
+					avs::SimpleGrassWindExtension simpleGrassWind;
+
+					if(functionExp->FunctionInputs[0].Input.Expression && functionExp->FunctionInputs[0].Input.Expression->GetName().Contains("Constant"))
 					{
-						avs::SimpleGrassWindExtension simpleGrassWind;
-
-						if(functionExp->FunctionInputs[0].Input.Expression && functionExp->FunctionInputs[0].Input.Expression->GetName().Contains("Constant"))
-						{
-							simpleGrassWind.windIntensity = Cast<UMaterialExpressionConstant>(functionExp->FunctionInputs[0].Input.Expression)->R;
-						}
-
-						if(functionExp->FunctionInputs[1].Input.Expression && functionExp->FunctionInputs[1].Input.Expression->GetName().Contains("Constant"))
-						{
-							simpleGrassWind.windWeight = Cast<UMaterialExpressionConstant>(functionExp->FunctionInputs[1].Input.Expression)->R;
-						}
-
-						if(functionExp->FunctionInputs[2].Input.Expression && functionExp->FunctionInputs[2].Input.Expression->GetName().Contains("Constant"))
-						{
-							simpleGrassWind.windSpeed = Cast<UMaterialExpressionConstant>(functionExp->FunctionInputs[2].Input.Expression)->R;
-						}
-
-						if(functionExp->FunctionInputs[3].Input.Expression && functionExp->FunctionInputs[3].Input.Expression->GetName().Contains("TextureSample"))
-						{
-							simpleGrassWind.texUID = StoreTexture(Cast<UMaterialExpressionTextureBase>(functionExp->FunctionInputs[3].Input.Expression)->Texture);
-						}
-
-						newMaterial.extensions[avs::MaterialExtensionIdentifier::SIMPLE_GRASS_WIND] = std::make_unique<avs::SimpleGrassWindExtension>(simpleGrassWind);
+						simpleGrassWind.windIntensity = Cast<UMaterialExpressionConstant>(functionExp->FunctionInputs[0].Input.Expression)->R;
 					}
+
+					if(functionExp->FunctionInputs[1].Input.Expression && functionExp->FunctionInputs[1].Input.Expression->GetName().Contains("Constant"))
+					{
+						simpleGrassWind.windWeight = Cast<UMaterialExpressionConstant>(functionExp->FunctionInputs[1].Input.Expression)->R;
+					}
+
+					if(functionExp->FunctionInputs[2].Input.Expression && functionExp->FunctionInputs[2].Input.Expression->GetName().Contains("Constant"))
+					{
+						simpleGrassWind.windSpeed = Cast<UMaterialExpressionConstant>(functionExp->FunctionInputs[2].Input.Expression)->R;
+					}
+
+					if(functionExp->FunctionInputs[3].Input.Expression && functionExp->FunctionInputs[3].Input.Expression->GetName().Contains("TextureSample"))
+					{
+						simpleGrassWind.texUID = AddTexture(Cast<UMaterialExpressionTextureBase>(functionExp->FunctionInputs[3].Input.Expression)->Texture);
+					}
+
+					newMaterial.extensions[avs::MaterialExtensionIdentifier::SIMPLE_GRASS_WIND] = std::make_unique<avs::SimpleGrassWindExtension>(simpleGrassWind);
 				}
 			}
 		}
-		
-		mat_uid = avs::GenerateUid();
-
-		materials[mat_uid] = newMaterial;
-		decomposedMaterials[materialInterface] = mat_uid;
-
-		UE_CLOG(newMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index != newMaterial.occlusionTexture.index, LogRemotePlay, Warning, TEXT("Occlusion texture on material <%s> is not combined with metallic-roughness texture."), *materialInterface->GetName());
 	}
 
-	return mat_uid;
+	UE_CLOG(newMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index != newMaterial.occlusionTexture.index, LogRemotePlay, Warning, TEXT("Occlusion texture on material <%s> is not combined with metallic-roughness texture."), *materialInterface->GetName());
+
+	return materialID;
 }
 
 avs::uid GeometrySource::AddShadowMap(const FStaticShadowDepthMapData* shadowDepthMapData)
@@ -539,8 +557,8 @@ avs::uid GeometrySource::AddShadowMap(const FStaticShadowDepthMapData* shadowDep
 		return 0;
 
 	//Return pre-stored shadow_uid
-	auto it = storedShadowMaps.find(shadowDepthMapData);
-	if (it != storedShadowMaps.end())
+	auto it = processedShadowMaps.find(shadowDepthMapData);
+	if (it != processedShadowMaps.end())
 	{
 		return (it->second);
 	}
@@ -570,7 +588,7 @@ avs::uid GeometrySource::AddShadowMap(const FStaticShadowDepthMapData* shadowDep
 
 	//Store in std::maps
 	shadowMaps[shadow_uid] = shadowTexture;
-	storedShadowMaps[shadowDepthMapData] = shadow_uid;
+	processedShadowMaps[shadowDepthMapData] = shadow_uid;
 	
 	return shadow_uid;
 }
@@ -648,7 +666,7 @@ avs::uid GeometrySource::AddNode_Internal(USceneComponent* component, std::map<F
 	if(meshComponent)
 	{
 		dataType = avs::NodeDataType::Mesh;
-		dataID = AddStreamableMeshComponent(meshComponent);
+		dataID = AddMesh(meshComponent);
 		if(dataID == 0) return 0;
 
 		//Materials that this component has applied to its material slots.
@@ -689,7 +707,7 @@ avs::uid GeometrySource::AddNode_Internal(USceneComponent* component, std::map<F
 		return 0;
 	}
 
-	avs::uid nodeID = nodeIterator == decomposedNodes.end() ? avs::GenerateUid() : nodeIterator->second;
+	avs::uid nodeID = nodeIterator == processedNodes.end() ? avs::GenerateUid() : nodeIterator->second;
 	nodes[nodeID] = avs::DataNode{GetComponentTransform(component), dataID, dataType, materialIDs, childIDs};
 
 	if(dataType == avs::NodeDataType::ShadowMap) lightNodes.emplace_back(avs::LightNodeResources{nodeID, dataID});
@@ -700,15 +718,15 @@ avs::uid GeometrySource::AddNode_Internal(USceneComponent* component, std::map<F
 std::map<FName, avs::uid>::iterator GeometrySource::FindNodeIterator(USceneComponent* component)
 {
 	FName levelUniqueNodeName = *FPaths::Combine(component->GetOutermost()->GetName(), component->GetOuter()->GetName(), component->GetName());
-	return decomposedNodes.find(levelUniqueNodeName);
+	return processedNodes.find(levelUniqueNodeName);
 }
 
-void GeometrySource::PrepareMesh(Mesh &m)
+void GeometrySource::PrepareMesh(Mesh* mesh)
 {
 	// We will pre-encode the mesh to prepare it for streaming.
-	if (m.StaticMesh->GetClass()->IsChildOf(UStaticMesh::StaticClass()))
+	if (mesh->StaticMesh->GetClass()->IsChildOf(UStaticMesh::StaticClass()))
 	{
-		UStaticMesh* StaticMesh = m.StaticMesh;
+		UStaticMesh* StaticMesh = mesh->StaticMesh;
 		int verts = StaticMesh->GetNumVertices(0);
 		FStaticMeshRenderData *StaticMeshRenderData = StaticMesh->RenderData.Get();
 		if (!StaticMeshRenderData->IsInitialized())
@@ -732,124 +750,128 @@ void GeometrySource::PrepareMesh(Mesh &m)
 	}
 }
 
-avs::uid GeometrySource::StoreTexture(UTexture * texture)
+avs::uid GeometrySource::AddTexture(UTexture* texture)
 {
-	avs::uid texture_uid;
-	auto it = decomposedTextures.find(texture);
+	avs::uid textureID;
+	auto it = processedTextures.find(texture);
 
-	//Retrieve the uid if we have already processed this texture.
-	if(it != decomposedTextures.end())
+	if(it != processedTextures.end())
 	{
-		texture_uid = it->second;
+		//Reuse the ID if this texture has been processed before.
+		textureID = it->second;
+
+		//Return if we have already processed the texture in this play session, or it wasn't cleared at the start of the play session.
+		if(textures.find(it->second) != textures.end()) return textureID;
 	}
-	//Otherwise, store it.
 	else
 	{
-		texture_uid = avs::GenerateUid();
-		decomposedTextures[texture] = texture_uid;
-		avs::Texture& newTexture = textures[texture_uid];
-
-		//Assuming the first running platform is the desired running platform.
-		FTexture2DMipMap baseMip = texture->GetRunningPlatformData()[0]->Mips[0];
-		FTextureSource& textureSource = texture->Source;
-
-		newTexture.name = TCHAR_TO_ANSI(*texture->GetName());
-		newTexture.width = baseMip.SizeX;
-		newTexture.height = baseMip.SizeY;
-		newTexture.depth = baseMip.SizeZ; ///!!! Is this actually where Unreal stores its depth information for a texture? !!!
-		newTexture.bytesPerPixel = textureSource.GetBytesPerPixel();
-		newTexture.arrayCount = textureSource.GetNumSlices(); ///!!! Is this actually the array count? !!!
-		newTexture.mipCount = textureSource.GetNumMips();
-		newTexture.sampler_uid = 0;
-
-		UE_CLOG(newTexture.bytesPerPixel != 4, LogRemotePlay, Warning, TEXT("Texture \"%s\" has bytes per pixel of %d!"), *texture->GetName(), newTexture.bytesPerPixel);
-
-		switch(textureSource.GetFormat())
-		{
-			case ETextureSourceFormat::TSF_G8:
-				newTexture.format = avs::TextureFormat::G8;
-				break;
-			case ETextureSourceFormat::TSF_BGRA8:
-				newTexture.format = avs::TextureFormat::BGRA8;
-				break;
-			case ETextureSourceFormat::TSF_BGRE8:
-				newTexture.format = avs::TextureFormat::BGRE8;
-				break;
-			case ETextureSourceFormat::TSF_RGBA16:
-				newTexture.format = avs::TextureFormat::RGBA16;
-				break;
-			case ETextureSourceFormat::TSF_RGBA16F:
-				newTexture.format = avs::TextureFormat::RGBA16F;
-				break;
-			case ETextureSourceFormat::TSF_RGBA8:
-				newTexture.format = avs::TextureFormat::RGBA8;
-				break;
-			default:
-				newTexture.format = avs::TextureFormat::INVALID;
-				UE_LOG(LogRemotePlay, Warning, TEXT("Invalid texture format on texture: %s"), *texture->GetName());
-				break;
-		}		
-
-		//Compress the texture with Basis Universal if the flag is set, and bytes per pixel is equal to 4.
-		if(Monitor->UseCompressedTextures && newTexture.bytesPerPixel == 4)
-		{
-			newTexture.compression = avs::TextureCompression::BASIS_COMPRESSED;
-
-			FString GameSavedDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir());
-
-			//Create a unique name based on the filepath.
-			FString uniqueName = FPaths::ConvertRelativePathToFull(texture->AssetImportData->SourceData.SourceFiles[0].RelativeFilename);
-			uniqueName = uniqueName.Replace(TEXT("/"), TEXT("#")); //Replaces slashes with hashes.
-			uniqueName = uniqueName.RightChop(2); //Remove drive.
-			uniqueName = uniqueName.Right(255); //Restrict name length.
-
-			FString basisFilePath = FPaths::Combine(GameSavedDir, uniqueName + FString(".basis"));
-			
-			bool validBasisFileExists = false;
-			FFileManagerGeneric fileManager;
-			if(fileManager.FileExists(*basisFilePath))
-			{
-				FDateTime basisLastModified = fileManager.GetTimeStamp(*basisFilePath);
-				FDateTime textureLastModified = texture->AssetImportData->SourceData.SourceFiles[0].Timestamp;
-
-				//The file is valid if the basis file is younger than the texture file.
-				validBasisFileExists = basisLastModified > textureLastModified;
-			}
-
-			//Read from disk if the file exists.
-			if(validBasisFileExists)
-			{
-				FArchive *reader = fileManager.CreateFileReader(*basisFilePath);
-				
-				newTexture.dataSize = reader->TotalSize();
-				newTexture.data = new unsigned char[newTexture.dataSize];
-				reader->Serialize(newTexture.data, newTexture.dataSize);
-
-				reader->Close();
-				delete reader;
-			}
-			//Otherwise, queue the texture for compression.
-			else
-			{
-				texturesToCompress.emplace(texture_uid, PrecompressedTexture{basisFilePath, textureSource});
-			}
-		}
-		else
-		{
-			newTexture.compression = avs::TextureCompression::UNCOMPRESSED;
-
-			TArray<uint8> mipData;
-			textureSource.GetMipData(mipData, 0);
-
-			newTexture.dataSize = newTexture.width * newTexture.height * newTexture.depth * newTexture.bytesPerPixel;
-			newTexture.data = new unsigned char[newTexture.dataSize];
-			memcpy(newTexture.data, mipData.GetData(), newTexture.dataSize);
-
-			UE_CLOG(newTexture.dataSize > 1048576, LogRemotePlay, Warning, TEXT("Texture \"%s\" was stored UNCOMPRESSED with a data size larger than 1MB! Size: %dB(%.2fMB)"), *texture->GetName(), newTexture.dataSize, newTexture.dataSize / 1048576.0f)
-		}
+		//Create a new ID if this texture has never been processed.
+		textureID = avs::GenerateUid();
+		processedTextures[texture] = textureID;
 	}
 
-	return texture_uid;
+	avs::Texture& newTexture = textures[textureID];
+
+	//Assuming the first running platform is the desired running platform.
+	FTexture2DMipMap baseMip = texture->GetRunningPlatformData()[0]->Mips[0];
+	FTextureSource& textureSource = texture->Source;
+
+	newTexture.name = TCHAR_TO_ANSI(*texture->GetName());
+	newTexture.width = baseMip.SizeX;
+	newTexture.height = baseMip.SizeY;
+	newTexture.depth = baseMip.SizeZ; ///!!! Is this actually where Unreal stores its depth information for a texture? !!!
+	newTexture.bytesPerPixel = textureSource.GetBytesPerPixel();
+	newTexture.arrayCount = textureSource.GetNumSlices(); ///!!! Is this actually the array count? !!!
+	newTexture.mipCount = textureSource.GetNumMips();
+	newTexture.sampler_uid = 0;
+
+	UE_CLOG(newTexture.bytesPerPixel != 4, LogRemotePlay, Warning, TEXT("Texture \"%s\" has bytes per pixel of %d!"), *texture->GetName(), newTexture.bytesPerPixel);
+
+	switch(textureSource.GetFormat())
+	{
+		case ETextureSourceFormat::TSF_G8:
+			newTexture.format = avs::TextureFormat::G8;
+			break;
+		case ETextureSourceFormat::TSF_BGRA8:
+			newTexture.format = avs::TextureFormat::BGRA8;
+			break;
+		case ETextureSourceFormat::TSF_BGRE8:
+			newTexture.format = avs::TextureFormat::BGRE8;
+			break;
+		case ETextureSourceFormat::TSF_RGBA16:
+			newTexture.format = avs::TextureFormat::RGBA16;
+			break;
+		case ETextureSourceFormat::TSF_RGBA16F:
+			newTexture.format = avs::TextureFormat::RGBA16F;
+			break;
+		case ETextureSourceFormat::TSF_RGBA8:
+			newTexture.format = avs::TextureFormat::RGBA8;
+			break;
+		default:
+			newTexture.format = avs::TextureFormat::INVALID;
+			UE_LOG(LogRemotePlay, Warning, TEXT("Invalid texture format on texture: %s"), *texture->GetName());
+			break;
+	}
+
+	//Compress the texture with Basis Universal if the flag is set, and bytes per pixel is equal to 4.
+	if(Monitor->UseCompressedTextures && newTexture.bytesPerPixel == 4)
+	{
+		newTexture.compression = avs::TextureCompression::BASIS_COMPRESSED;
+
+		FString GameSavedDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir());
+
+		//Create a unique name based on the filepath.
+		FString uniqueName = FPaths::ConvertRelativePathToFull(texture->AssetImportData->SourceData.SourceFiles[0].RelativeFilename);
+		uniqueName = uniqueName.Replace(TEXT("/"), TEXT("#")); //Replaces slashes with hashes.
+		uniqueName = uniqueName.RightChop(2); //Remove drive.
+		uniqueName = uniqueName.Right(255); //Restrict name length.
+
+		FString basisFilePath = FPaths::Combine(GameSavedDir, uniqueName + FString(".basis"));
+
+		bool validBasisFileExists = false;
+		FFileManagerGeneric fileManager;
+		if(fileManager.FileExists(*basisFilePath))
+		{
+			FDateTime basisLastModified = fileManager.GetTimeStamp(*basisFilePath);
+			FDateTime textureLastModified = texture->AssetImportData->SourceData.SourceFiles[0].Timestamp;
+
+			//The file is valid if the basis file is younger than the texture file.
+			validBasisFileExists = basisLastModified > textureLastModified;
+		}
+
+		//Read from disk if the file exists.
+		if(validBasisFileExists)
+		{
+			FArchive* reader = fileManager.CreateFileReader(*basisFilePath);
+
+			newTexture.dataSize = reader->TotalSize();
+			newTexture.data = new unsigned char[newTexture.dataSize];
+			reader->Serialize(newTexture.data, newTexture.dataSize);
+
+			reader->Close();
+			delete reader;
+		}
+		//Otherwise, queue the texture for compression.
+		else
+		{
+			texturesToCompress.emplace(textureID, PrecompressedTexture{basisFilePath, textureSource});
+		}
+	}
+	else
+	{
+		newTexture.compression = avs::TextureCompression::UNCOMPRESSED;
+
+		TArray<uint8> mipData;
+		textureSource.GetMipData(mipData, 0);
+
+		newTexture.dataSize = newTexture.width * newTexture.height * newTexture.depth * newTexture.bytesPerPixel;
+		newTexture.data = new unsigned char[newTexture.dataSize];
+		memcpy(newTexture.data, mipData.GetData(), newTexture.dataSize);
+
+		UE_CLOG(newTexture.dataSize > 1048576, LogRemotePlay, Warning, TEXT("Texture \"%s\" was stored UNCOMPRESSED with a data size larger than 1MB! Size: %dB(%.2fMB)"), * texture->GetName(), newTexture.dataSize, newTexture.dataSize / 1048576.0f)
+	}
+
+	return textureID;
 }
 
 void GeometrySource::GetDefaultTexture(UMaterialInterface *materialInterface, EMaterialProperty propertyChain, avs::TextureAccessor &outTexture)
@@ -861,7 +883,7 @@ void GeometrySource::GetDefaultTexture(UMaterialInterface *materialInterface, EM
 	
 	if(texture)
 	{
-		outTexture = {StoreTexture(texture), DUMMY_TEX_COORD};
+		outTexture = {AddTexture(texture), DUMMY_TEX_COORD};
 	}
 }
 
@@ -1036,7 +1058,7 @@ void GeometrySource::DecomposeMaterialProperty(UMaterialInterface *materialInter
 size_t GeometrySource::DecomposeTextureSampleExpression(UMaterialInterface* materialInterface, UMaterialExpressionTextureSample* textureSample, avs::TextureAccessor& outTexture)
 {
 	size_t subExpressionsHandled = 0;
-	outTexture = {StoreTexture(textureSample->Texture), DUMMY_TEX_COORD};
+	outTexture = {AddTexture(textureSample->Texture), DUMMY_TEX_COORD};
 
 	//Extract tiling data for this texture.
 	if(textureSample->Coordinates.Expression)
@@ -1139,48 +1161,35 @@ bool GeometrySource::getNode(avs::uid node_uid, avs::DataNode& outNode) const
 	}
 }
 
-std::map<avs::uid, avs::DataNode>& GeometrySource::getNodes() const
+const std::map<avs::uid, avs::DataNode>& GeometrySource::getNodes() const
 {
 	return nodes;
 }
 
-size_t GeometrySource::getMeshCount() const
-{
-	return Meshes.Num();
-}
-
-avs::uid GeometrySource::getMeshUid(size_t index) const
-{
-	TArray<avs::uid> MeshUids;
-	Meshes.GenerateKeyArray(MeshUids);
-	return MeshUids[index];
-}
-
 size_t GeometrySource::getMeshPrimitiveArrayCount(avs::uid mesh_uid) const
 {
-	auto &mesh = Meshes[mesh_uid];
-	if (mesh->StaticMesh->GetClass()->IsChildOf(UStaticMesh::StaticClass()))
+	auto meshIt = meshes.find(mesh_uid);
+	if(meshIt == meshes.end())
 	{
-		if (!mesh->StaticMesh->RenderData)
-			return 0;
-		auto &lods = mesh->StaticMesh->RenderData->LODResources;
-		if (!lods.Num())
-			return 0;
-		return lods[0].Sections.Num();
+		UE_LOG(LogRemotePlay, Warning, TEXT("Failed to find mesh with ID: %llu"), mesh_uid);
+		return 0;
 	}
-	return 0;
+
+	const Mesh& mesh = meshIt->second;
+	return mesh.primitiveArrays.size();
 }
 
-bool GeometrySource::getMeshPrimitiveArray(avs::uid mesh_uid, size_t array_index, avs::PrimitiveArray & primitiveArray) const
+bool GeometrySource::getMeshPrimitiveArray(avs::uid mesh_uid, size_t array_index, avs::PrimitiveArray& primitiveArray) const
 {
-	GeometrySource::Mesh *mesh = Meshes[mesh_uid].Get();
-	bool result = true;
-	if (!mesh->primitiveArrays.size())
+	auto meshIt = meshes.find(mesh_uid);
+	if(meshIt == meshes.end())
 	{
-		result = InitMesh(mesh, 0);
+		UE_LOG(LogRemotePlay, Warning, TEXT("Failed to find mesh with ID: %llu"), mesh_uid);
+		return false;
 	}
-	primitiveArray = mesh->primitiveArrays[array_index];
-	return result;
+
+	primitiveArray = meshIt->second.primitiveArrays[array_index];
+	return true;
 }
 
 bool GeometrySource::getAccessor(avs::uid accessor_uid, avs::Accessor & accessor) const
@@ -1188,10 +1197,10 @@ bool GeometrySource::getAccessor(avs::uid accessor_uid, avs::Accessor & accessor
 	auto it = accessors.find(accessor_uid);
 	if (it == accessors.end())
 	{
-		UE_LOG(LogRemotePlay, Error, TEXT("Accessor not found!"));
+		UE_LOG(LogRemotePlay, Error, TEXT("Failed to find accessor with ID: %llu"), accessor_uid);
 		return false;
 	}
-	accessor = accessors[accessor_uid];
+	accessor = it->second;
 	return true;
 }
 
@@ -1200,10 +1209,10 @@ bool GeometrySource::getBufferView(avs::uid buffer_view_uid, avs::BufferView & b
 	auto it = bufferViews.find(buffer_view_uid);
 	if (it == bufferViews.end())
 	{
-		UE_LOG(LogRemotePlay, Error, TEXT("Buffer View not found!"));
+		UE_LOG(LogRemotePlay, Error, TEXT("Failed to find buffer view with ID: %llu"), buffer_view_uid);
 		return false;
 	}
-	bufferView = bufferViews[buffer_view_uid];
+	bufferView = it->second;
 	return true;
 }
 
@@ -1212,10 +1221,10 @@ bool GeometrySource::getBuffer(avs::uid buffer_uid, avs::GeometryBuffer & buffer
 	auto it = geometryBuffers.find(buffer_uid);
 	if (it == geometryBuffers.end())
 	{
-		UE_LOG(LogRemotePlay, Error, TEXT("Buffer not found!"));
+		UE_LOG(LogRemotePlay, Error, TEXT("Failed to find buffer with ID: %llu"), buffer_uid);
 		return false;
 	}
-	buffer = geometryBuffers[buffer_uid];
+	buffer = it->second;
 	return true;
 }
 
