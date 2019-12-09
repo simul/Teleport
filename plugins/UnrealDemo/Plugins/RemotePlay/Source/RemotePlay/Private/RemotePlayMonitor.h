@@ -62,9 +62,6 @@ public:
 	uint32 StreamGeometry : 1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Geometry)
-	uint32 StreamGeometryContinuously : 1;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Geometry)
 	uint8 GeometryTicksPerSecond;
 
 	// Size we stop encoding nodes at.

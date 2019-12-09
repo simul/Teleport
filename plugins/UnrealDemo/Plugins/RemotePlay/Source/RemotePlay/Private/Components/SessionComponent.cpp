@@ -172,10 +172,6 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 		{
 			RemotePlayContext->NetworkPipeline->Process();
 		}
-		if (Monitor)
-		{
-			GeometryStreamingService.SetStreamingContinuously(Monitor->StreamGeometryContinuously);
-		}
 
 		static float timeSinceLastGeometryStream = 0;
 		timeSinceLastGeometryStream += DeltaTime;
@@ -587,7 +583,7 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 
 	if(handshake.usingHands)
 	{
-		GeometryStreamingService.AddControllersToStream();
+		GeometryStreamingService.AddHandsToStream();
 	}
 
 	RemotePlayContext->axesStandard = handshake.axesStandard;
@@ -613,13 +609,14 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 
 	CaptureComponent->StartStreaming(RemotePlayContext);
 
-	if (Monitor&&Monitor->StreamGeometry)
+	if(Monitor && Monitor->StreamGeometry)
 	{
-		GeometryStreamingService.SetStreamingContinuously(Monitor->StreamGeometryContinuously);
 		GeometryStreamingService.StartStreaming(RemotePlayContext);
 	}
+
 	avs::AcknowledgeHandshakeCommand ack;
 	Client_SendCommand(ack);
+
 	UE_LOG(LogRemotePlay, Log, TEXT("RemotePlay: Started streaming to %s:%d"), *Client_GetIPAddress(), StreamingPort);
 }
 
