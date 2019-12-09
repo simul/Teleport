@@ -62,6 +62,11 @@ namespace
 	const unsigned long long DUMMY_TEX_COORD = 0;
 }
 
+FName GetUniqueComponentName(USceneComponent* component)
+{
+	return *FPaths::Combine(component->GetOutermost()->GetName(), component->GetOuter()->GetName(), component->GetName());
+}
+
 GeometrySource::GeometrySource()
 	:Monitor(nullptr)
 {
@@ -708,6 +713,7 @@ avs::uid GeometrySource::AddNode_Internal(USceneComponent* component, std::map<F
 	}
 
 	avs::uid nodeID = nodeIterator == processedNodes.end() ? avs::GenerateUid() : nodeIterator->second;
+	processedNodes[GetUniqueComponentName(component)] = nodeID;
 	nodes[nodeID] = avs::DataNode{GetComponentTransform(component), dataID, dataType, materialIDs, childIDs};
 
 	if(dataType == avs::NodeDataType::ShadowMap) lightNodes.emplace_back(avs::LightNodeResources{nodeID, dataID});
@@ -717,8 +723,7 @@ avs::uid GeometrySource::AddNode_Internal(USceneComponent* component, std::map<F
 
 std::map<FName, avs::uid>::iterator GeometrySource::FindNodeIterator(USceneComponent* component)
 {
-	FName levelUniqueNodeName = *FPaths::Combine(component->GetOutermost()->GetName(), component->GetOuter()->GetName(), component->GetName());
-	return processedNodes.find(levelUniqueNodeName);
+	return processedNodes.find(GetUniqueComponentName(component));
 }
 
 void GeometrySource::PrepareMesh(Mesh* mesh)
