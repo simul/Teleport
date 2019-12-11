@@ -27,6 +27,8 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	/* End UActorComponent interface */
 
+	bool ShouldRenderFace(int32 FaceId) const override;
+
 	void UpdateSceneCaptureContents(FSceneInterface* Scene) override;
 
 	void StartStreaming(FRemotePlayContext *Context);
@@ -51,8 +53,11 @@ private:
 
 	FCameraInfo ClientCamInfo;
 
+	TArray<bool> FacesToRender;
+
 	struct FRemotePlayContext* RemotePlayContext;
 	class URemotePlayReflectionCaptureComponent *RemotePlayReflectionCaptureComponent;
 	bool bIsStreaming;
 	bool bSendKeyframe;
+
 };

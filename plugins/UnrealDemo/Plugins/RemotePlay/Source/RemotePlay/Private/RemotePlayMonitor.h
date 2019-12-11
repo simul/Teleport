@@ -90,8 +90,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	uint32 bDoCubemapCulling : 1;
 
+	// The number of blocks per cube face will be this value squared
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
-	int32 BlocksPerCubeFace;
+	int32 BlocksPerCubeFaceAcross;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	int32 TargetFPS;
