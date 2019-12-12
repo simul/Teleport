@@ -167,6 +167,11 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 		}
 		FTransform Transform = GetComponentTransform();
 
+		/*for (auto& v : QuadsToRender)
+		{
+			v = true;
+		}
+		QuadsToRender[Monitor->Index] = false;*/
 		RemotePlayContext->EncodePipeline->PrepareFrame(Scene, TextureTarget, Transform, QuadsToRender);
 		if (RemotePlayReflectionCaptureComponent && EncodeParams.bDecomposeCube)
 		{
@@ -229,17 +234,17 @@ void URemotePlayCaptureComponent::CullHiddenCubeSegments(TArray<bool>& FaceInter
 
 	TArray<FVector> VArray;
 
-	// Quaternions for rotating front face to get the points of the other faces.
-	FQuat FaceQuats[6] = 
-	{
-		{0, 0, 0, 1}, // Front face (identity as no rotation needed)
-		{0, 0, 1, 180}, // Back face
-		{0, 0, 1, 90}, // Right face
-		{0, 0, 1, -90}, // Left face
-		{0, 1, 0, -90}, // Top face
-		{0, 1, 0, 90}  // Bottom face
-	};
-	
+	// First Quat is to get position, forward and side vectors relative to front face
+	// Second qauternion is rotate to match Unreal's cubemap face rotations
+	static const FQuat FrontQuat = FQuat(1, 0, 0, -90); // No need to multiply as first qauternion is identity
+	static const FQuat BackQuat = FQuat(0, 0, 1, 180) * FQuat(1, 0, 0, 90);
+	static const FQuat RightQuat = FQuat(0, 0, 1, 90) * FQuat(0, 1, 0, 180);
+	static const FQuat LeftQuat = FQuat(1, 0, 0, -90); // No need to multiply as second quaternion is identity
+	static const FQuat TopQuat = FQuat(0, 1, 0, -90) * FQuat(0, 0, 1, -90);
+	static const FQuat BottomQuat = FQuat(0, 1, 0, 90) * FQuat(0, 0, 1, 90);
+
+	FQuat FaceQuats[6] = { FrontQuat, BackQuat, RightQuat, LeftQuat, TopQuat, BottomQuat };
+
 	// Iterate through all six faces
 	for (uint32 i = 0; i < 6; ++i)
 	{
