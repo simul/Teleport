@@ -2,6 +2,9 @@
 #define WIN32_LEAN_AND_MEAN
 
 #include "GeometryStreamingService.h"
+
+#include <algorithm>
+
 #include "Components/StreamableGeometryComponent.h"
 #include "RemotePlayContext.h"
 #include "Kismet/GameplayStatics.h"
@@ -101,7 +104,7 @@ void FGeometryStreamingService::StartStreaming(FRemotePlayContext *Context)
 	avsPipeline.Reset(new avs::Pipeline); 
 	avsGeometrySource.Reset(new avs::GeometrySource);
 	avsGeometryEncoder.Reset(new avs::GeometryEncoder);
-	avsGeometrySource->configure(geometrySource,this);
+	avsGeometrySource->configure(&geometrySource->GetStorage(), this);
 	avsGeometryEncoder->configure(&geometryEncoder);
 
 	avsPipeline->link({ avsGeometrySource.Get(), avsGeometryEncoder.Get(), RemotePlayContext->GeometryQueue.Get() });
@@ -134,8 +137,7 @@ void FGeometryStreamingService::Tick(float DeltaTime)
 	// Might not be initialized... YET
 	if (!avsPipeline)
 		return;
-	// This will be called by each streaming service, but only the first call per-frame really matters.
-	geometrySource->Tick();
+
 	// We can now be confident that all streamable geometries have been initialized, so we will do internal setup.
 	// Each frame we manage a view of which streamable geometries should or shouldn't be rendered on our client.
 
@@ -246,7 +248,7 @@ bool FGeometryStreamingService::IsStreamingActor(AActor* actor)
 
 void FGeometryStreamingService::AddHandsToStream()
 {
-	const std::vector<avs::uid>& handIDs = geometrySource->GetHandActorUIDs();
+	const std::vector<avs::uid>& handIDs = geometrySource->GetStorage().getHandIDs();
 
 	if(handIDs.size() != 0)
 	{
@@ -259,7 +261,7 @@ void FGeometryStreamingService::AddHandsToStream()
 void FGeometryStreamingService::GetMeshNodeResources(avs::uid node_uid, std::vector<avs::MeshNodeResources>& outMeshResources)
 {
 	avs::DataNode thisNode;
-	geometrySource->getNode(node_uid, thisNode);
+	geometrySource->GetStorage().getNode(node_uid, thisNode);
 	if(thisNode.data_uid == 0) return;
 
 	avs::MeshNodeResources meshNode;
@@ -269,7 +271,7 @@ void FGeometryStreamingService::GetMeshNodeResources(avs::uid node_uid, std::vec
 	for(avs::uid material_uid : thisNode.materials)
 	{
 		avs::Material thisMaterial;
-		geometrySource->getMaterial(material_uid, thisMaterial);
+		geometrySource->GetStorage().getMaterial(material_uid, thisMaterial);
 
 		avs::MaterialResources material;
 		material.material_uid = material_uid;
@@ -327,5 +329,5 @@ void FGeometryStreamingService::GetResourcesToStream(std::vector<avs::MeshNodeRe
 		GetMeshNodeResources(nodePair.second, outMeshResources);
 	}
 
-	outLightResources = geometrySource->getLightNodes();
+	outLightResources = geometrySource->GetStorage().getLightNodes();
 }

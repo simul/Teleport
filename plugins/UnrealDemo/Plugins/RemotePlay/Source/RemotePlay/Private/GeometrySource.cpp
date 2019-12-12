@@ -46,15 +46,15 @@ int dice_roll = distribution(generator);
 
 struct GeometrySource::Mesh
 {
-	~Mesh()
-	{
-	}
-	UStaticMesh* StaticMesh;
-	//unsigned long long SentFrame;
-	bool Confirmed;
-	std::vector<avs::PrimitiveArray> primitiveArrays;
-	std::vector<avs::Attribute> attributes;
-	FString BulkDataIDString; //ID string of the bulk data the last time it was processed; changes whenever the mesh data is reimported, so can be used to detect changes.
+	avs::uid id;
+	UStaticMesh* staticMesh;
+	FString bulkDataIDString; //ID string of the bulk data the last time it was processed; changes whenever the mesh data is reimported, so can be used to detect changes.
+};
+
+struct GeometrySource::MaterialChangedInfo
+{
+	avs::uid id = 0;
+	bool wasProcessedThisSession = false;
 };
 
 namespace
@@ -69,19 +69,10 @@ FName GetUniqueComponentName(USceneComponent* component)
 
 GeometrySource::GeometrySource()
 	:Monitor(nullptr)
-{
-	basisCompressorParams.m_tex_type = basist::basis_texture_type::cBASISTexType2D;
-
-	const uint32_t THREAD_AMOUNT = 16;
-	basisCompressorParams.m_pJob_pool = new basisu::job_pool(THREAD_AMOUNT);
-}
+{}
 
 GeometrySource::~GeometrySource()
-{
-	ClearData();
-
-	delete basisCompressorParams.m_pJob_pool;
-}
+{}
 
 void GeometrySource::Initialise(ARemotePlayMonitor* monitor, UWorld* world)
 {
@@ -95,9 +86,11 @@ void GeometrySource::Initialise(ARemotePlayMonitor* monitor, UWorld* world)
 	}
 	else
 	{
-		//Otherwise, clear the lists of avs::Materials and avs::Textures; so the materials, and textures, will be reloaded, but we won't regenerate IDs.
-		materials.clear();
-		textures.clear();
+		//Otherwise, flag all processed materials as not having been changed this session; so we will update them incase they changed, while also reusing IDs.
+		for(auto& material : processedMaterials)
+		{
+			material.second.wasProcessedThisSession = false;
+		}
 	}
 	
 	UStaticMeshComponent* handMeshComponent = nullptr;
@@ -142,15 +135,26 @@ void GeometrySource::Initialise(ARemotePlayMonitor* monitor, UWorld* world)
 	//Add the hand actors, and their resources, to the geometry source.
 	if(handMeshComponent)
 	{
-		avs::uid firstHandUID = AddNode(handMeshComponent);
-		nodes[firstHandUID].data_type = avs::NodeDataType::Hand;
+		std::vector<avs::uid> oldHandIDs = storage.getHandIDs();
+
+		avs::uid firstHandID = AddNode(handMeshComponent);
+
+		//Retrieve the just added/updated hand node.
+		avs::DataNode firstHand;
+		storage.getNode(firstHandID, firstHand);
+
+		//Set back to hand data type.
+		firstHand.data_type = avs::NodeDataType::Hand;
 
 		//Whether we created a new node for the hand model, or it already existed; i.e whether the hand actor has changed.
-		bool isSameHandNode = handIDs.size() != 0 && firstHandUID == handIDs[0];
-		avs::uid secondHandUID = isSameHandNode ? handIDs[1] : avs::GenerateUid();
-		nodes[secondHandUID] = nodes[firstHandUID];
+		bool isSameHandNode = oldHandIDs.size() != 0 && firstHandID == oldHandIDs[0];
 
-		handIDs = {firstHandUID, secondHandUID};
+		//Set the ID of the second hand, and set it to be the same as the first hand.
+		avs::uid secondHandID = isSameHandNode ? oldHandIDs[1] : avs::GenerateUid();
+		//Copy first hand to make second.
+		storage.storeNode(secondHandID, avs::DataNode{firstHand});
+
+		storage.setHandIDs(firstHandID, secondHandID);
 	}
 }
 
@@ -180,27 +184,31 @@ avs::AttributeSemantic IndexToSemantic(int index)
 
 bool GeometrySource::InitMesh(Mesh* mesh, uint8 lodIndex)
 {
-	if (mesh->StaticMesh->GetClass()->IsChildOf(USkeletalMesh::StaticClass()))
+	if (mesh->staticMesh->GetClass()->IsChildOf(USkeletalMesh::StaticClass()))
 	{
 		return false;
 	}
 
-	UStaticMesh *StaticMesh = Cast<UStaticMesh>(mesh->StaticMesh);
+	UStaticMesh *StaticMesh = Cast<UStaticMesh>(mesh->staticMesh);
 	auto &lods = StaticMesh->RenderData->LODResources;
-	if (!lods.Num())
-		return false;
+	if(!lods.Num()) return false;
 
-	auto AddBuffer = [this](Mesh* mesh, avs::uid b_uid, size_t num, size_t stride, const void *data)
+	std::vector<avs::PrimitiveArray> primitiveArrays;
+	std::unordered_map<avs::uid, avs::Accessor> accessors;
+	std::map<avs::uid, avs::BufferView> bufferViews;
+	std::map<avs::uid, avs::GeometryBuffer> buffers;
+
+	auto AddBuffer = [this, &buffers](Mesh* mesh, avs::uid b_uid, size_t num, size_t stride, const void *data)
 	{
 		// Data may already exist:
-		if (geometryBuffers.find(b_uid) == geometryBuffers.end())
+		if (buffers.find(b_uid) == buffers.end())
 		{
-			avs::GeometryBuffer& b = geometryBuffers[b_uid];
+			avs::GeometryBuffer& b = buffers[b_uid];
 			b.byteLength = num * stride;
 			b.data = (const uint8_t *)data;			// Remember, just a pointer: we don't own this data.
 		}
 	};
-	auto AddBufferView = [this](Mesh* mesh, avs::uid b_uid, avs::uid v_uid, size_t start_index, size_t num, size_t stride)
+	auto AddBufferView = [this, &bufferViews](Mesh* mesh, avs::uid b_uid, avs::uid v_uid, size_t start_index, size_t num, size_t stride)
 	{
 		avs::BufferView &bv = bufferViews[v_uid];
 		bv.byteOffset = start_index * stride;
@@ -286,11 +294,11 @@ bool GeometrySource::InitMesh(Mesh* mesh, uint8 lodIndex)
 	
 	// Now create the views:
 	size_t  num_elements = lod.Sections.Num();
-	mesh->primitiveArrays.resize(num_elements);
+	primitiveArrays.resize(num_elements);
 	for (size_t i = 0; i < num_elements; i++)
 	{
 		auto &section = lod.Sections[i];
-		auto &pa = mesh->primitiveArrays[i];
+		auto &pa = primitiveArrays[i];
 		pa.attributeCount = 2 + (vb.GetTangentData() ? 1 : 0) + (vb.GetTexCoordData() ? vb.GetNumTexCoords() : 0);
 		pa.attributes = new avs::Attribute[pa.attributeCount];
 		size_t idx = 0;
@@ -362,6 +370,8 @@ bool GeometrySource::InitMesh(Mesh* mesh, uint8 lodIndex)
 		pa.material = 0;
 		pa.primitiveMode = avs::PrimitiveMode::TRIANGLES;
 	}
+
+	storage.storeMesh(mesh->id, avs::Mesh{primitiveArrays, accessors, bufferViews, buffers});
 	return true;
 }
 
@@ -382,25 +392,14 @@ avs::Transform GeometrySource::GetComponentTransform(USceneComponent* component)
 
 void GeometrySource::ClearData()
 {
-	meshes.clear();
-	accessors.clear();
-	bufferViews.clear();
-	geometryBuffers.clear();
 	scaledPositionBuffers.clear();
 	processedUVs.clear();
 
-	nodes.clear();
-
-	processedTextures.clear();
-	processedMaterials.clear();
 	processedNodes.clear();
+	processedMeshes.clear();
+	processedMaterials.clear();
+	processedTextures.clear();
 	processedShadowMaps.clear();
-
-	textures.clear();
-	materials.clear();
-	shadowMaps.clear();
-
-	handIDs.clear();
 }
 
 avs::uid GeometrySource::AddMesh(UMeshComponent *MeshComponent)
@@ -411,7 +410,6 @@ avs::uid GeometrySource::AddMesh(UMeshComponent *MeshComponent)
 		return 0;
 	}
 
-	avs::uid meshID;
 	UStaticMeshComponent* staticMeshComponent = Cast<UStaticMeshComponent>(MeshComponent);
 	UStaticMesh *staticMesh = staticMeshComponent->GetStaticMesh();
 
@@ -434,30 +432,27 @@ avs::uid GeometrySource::AddMesh(UMeshComponent *MeshComponent)
 	if(meshIt != processedMeshes.end())
 	{
 		//Reuse the ID if this mesh has been processed before.
-		meshID = meshIt->second;
-		mesh = &meshes[meshID];
+		mesh = &meshIt->second;
 
 		//Return if we have already processed the mesh in this play session, or the processed data wasn't cleared at the start of the play session, and the mesh data has not changed.
-		if(idString == mesh->BulkDataIDString)
+		if(idString == mesh->bulkDataIDString)
 		{
-			return meshID;
+			return mesh->id;
 		}
 	}
 	else
 	{
 		//Create a new ID if this mesh has never been processed.
-		meshID = avs::GenerateUid();
-		processedMeshes[staticMesh] = meshID;
-		mesh = &meshes[meshID];
+		mesh = &processedMeshes[staticMesh];
+		mesh->id = avs::GenerateUid();
 	}
 
-	mesh->StaticMesh = staticMesh;
-	mesh->Confirmed = false;
-	mesh->BulkDataIDString = idString;
+	mesh->staticMesh = staticMesh;
+	mesh->bulkDataIDString = idString;
 	PrepareMesh(mesh);
 	InitMesh(mesh, 0);
 	
-	return meshID;
+	return mesh->id;
 }
 
 avs::uid GeometrySource::AddNode(USceneComponent* component)
@@ -479,27 +474,26 @@ avs::uid GeometrySource::AddMaterial(UMaterialInterface* materialInterface)
 {
 	//Return 0 if we were passed a nullptr.
 	if(!materialInterface) return 0;
+	
+	//Try and locate the pointer in the list of processed materials.
+	std::unordered_map<UMaterialInterface*, MaterialChangedInfo>::iterator materialIt = processedMaterials.find(materialInterface);
 
 	avs::uid materialID;
-	//Try and locate the pointer in the list of processed materials.
-	std::unordered_map<UMaterialInterface*, avs::uid>::iterator materialIt = processedMaterials.find(materialInterface);
-
 	if(materialIt != processedMaterials.end())
 	{
 		//Reuse the ID if this material has been processed before.
-		materialID = materialIt->second;
+		materialID = materialIt->second.id;
 
-		//Return if we have already processed the material in this play session, or it wasn't cleared at the start of the play session.
-		if(materials.find(materialIt->second) != materials.end()) return materialID;
+		//Return if we have already processed the material in this play session.
+		if(materialIt->second.wasProcessedThisSession) return materialID;
 	}
 	else
 	{
-		//Create a new ID if this material has never been processed.
 		materialID = avs::GenerateUid();
-		processedMaterials[materialInterface] = materialID;
 	}
+	processedMaterials[materialInterface] = {materialID, true};
 
-	avs::Material& newMaterial = materials[materialID];
+	avs::Material newMaterial;
 
 	newMaterial.name = TCHAR_TO_ANSI(*materialInterface->GetName());
 
@@ -550,6 +544,8 @@ avs::uid GeometrySource::AddMaterial(UMaterialInterface* materialInterface)
 		}
 	}
 
+	storage.storeMaterial(materialID, std::move(newMaterial));
+
 	UE_CLOG(newMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index != newMaterial.occlusionTexture.index, LogRemotePlay, Warning, TEXT("Occlusion texture on material <%s> is not combined with metallic-roughness texture."), *materialInterface->GetName());
 
 	return materialID;
@@ -591,72 +587,30 @@ avs::uid GeometrySource::AddShadowMap(const FStaticShadowDepthMapData* shadowDep
 	memcpy(shadowTexture.data, (uint8_t*)shadowDepthMapData->DepthSamples.GetData(), shadowTexture.dataSize);
 	shadowTexture.sampler_uid = 0;
 
-	//Store in std::maps
-	shadowMaps[shadow_uid] = shadowTexture;
+	
 	processedShadowMaps[shadowDepthMapData] = shadow_uid;
+	storage.storeShadowMap(shadow_uid, std::move(shadowTexture));
 	
 	return shadow_uid;
 }
 
-void GeometrySource::Tick()
-{
-
-}
-
 void GeometrySource::CompressTextures()
 {
+	size_t texturesToCompressAmount = storage.getAmountOfTexturesWaitingForCompression();
+
 #define LOCTEXT_NAMESPACE "GeometrySource"
 	//Create FScopedSlowTask to show user progress of compressing the texture.
-	FScopedSlowTask compressTextureTask(texturesToCompress.size(), FText::Format(LOCTEXT("Compressing Texture", "Starting compression of {0} textures"), texturesToCompress.size()));
+	FScopedSlowTask compressTextureTask(texturesToCompressAmount, FText::Format(LOCTEXT("Compressing Texture", "Starting compression of {0} textures"), texturesToCompressAmount));
 	compressTextureTask.MakeDialog(false, true);
 
-	int index = 1;//
-	for(auto idPrecompressedPair : texturesToCompress)
+	for(int i = 0; i < texturesToCompressAmount; i++)
 	{
-		assert(textures.find(idFilePathPair.first) != textures.end());
-		avs::Texture& newTexture = textures[idPrecompressedPair.first];
-
-		TArray<uint8> mipData;
-		idPrecompressedPair.second.textureSource.GetMipData(mipData, 0);
-
-		basisu::image image(newTexture.width, newTexture.height);
-		basisu::color_rgba_vec& imageData = image.get_pixels();
-		memcpy(imageData.data(), mipData.GetData(), newTexture.width * newTexture.height * newTexture.depth * newTexture.bytesPerPixel);
-
-		basisCompressorParams.m_source_images.clear();
-		basisCompressorParams.m_source_images.push_back(image);
-
-		basisCompressorParams.m_write_output_basis_files = true;
-		basisCompressorParams.m_out_filename = TCHAR_TO_ANSI(*idPrecompressedPair.second.basisFilePath);
-
-		basisCompressorParams.m_quality_level = Monitor->QualityLevel;
-		basisCompressorParams.m_compression_level = Monitor->CompressionLevel;
-
-		basisCompressorParams.m_mip_gen = true;
-		basisCompressorParams.m_mip_smallest_dimension = 4; //Appears to be the smallest texture size that SimulFX handles.
-
-		basisu::basis_compressor basisCompressor;
-
-		if(basisCompressor.init(basisCompressorParams))
-		{
-			compressTextureTask.EnterProgressFrame(1.0f, FText::Format(LOCTEXT("Compressing Texture", "Compressing texture {0}/{1} ({2} [{3} x {4}])"), index, texturesToCompress.size(), FText::FromString(ANSI_TO_TCHAR(newTexture.name.data())), newTexture.width, newTexture.height));
-			basisu::basis_compressor::error_code result = basisCompressor.process();
-
-			if(result == basisu::basis_compressor::error_code::cECSuccess)
-			{
-				basisu::uint8_vec basisTex = basisCompressor.get_output_basis_file();
-
-				newTexture.dataSize = basisCompressor.get_basis_file_size();
-				newTexture.data = new unsigned char[newTexture.dataSize];
-				memcpy(newTexture.data, basisTex.data(), newTexture.dataSize);
-			}
-		}
-
-		++index;
+		const avs::Texture* textureInfo = storage.getNextCompressedTexture();
+		compressTextureTask.EnterProgressFrame(1.0f, FText::Format(LOCTEXT("Compressing Texture", "Compressing texture {0}/{1} ({2} [{3} x {4}])"), i + 1, texturesToCompressAmount, FText::FromString(ANSI_TO_TCHAR(textureInfo->name.data())), textureInfo->width, textureInfo->height));
+		
+		storage.compressNextTexture();
 	}
 #undef LOCTEXT_NAMESPACE
-
-	texturesToCompress.clear();
 }
 
 avs::uid GeometrySource::AddNode_Internal(USceneComponent* component, std::map<FName, avs::uid>::iterator nodeIterator)
@@ -714,9 +668,7 @@ avs::uid GeometrySource::AddNode_Internal(USceneComponent* component, std::map<F
 
 	avs::uid nodeID = nodeIterator == processedNodes.end() ? avs::GenerateUid() : nodeIterator->second;
 	processedNodes[GetUniqueComponentName(component)] = nodeID;
-	nodes[nodeID] = avs::DataNode{GetComponentTransform(component), dataID, dataType, materialIDs, childIDs};
-
-	if(dataType == avs::NodeDataType::ShadowMap) lightNodes.emplace_back(avs::LightNodeResources{nodeID, dataID});
+	storage.storeNode(nodeID, avs::DataNode{GetComponentTransform(component), dataID, dataType, materialIDs, childIDs});
 
 	return nodeID;
 }
@@ -729,9 +681,9 @@ std::map<FName, avs::uid>::iterator GeometrySource::FindNodeIterator(USceneCompo
 void GeometrySource::PrepareMesh(Mesh* mesh)
 {
 	// We will pre-encode the mesh to prepare it for streaming.
-	if (mesh->StaticMesh->GetClass()->IsChildOf(UStaticMesh::StaticClass()))
+	if (mesh->staticMesh->GetClass()->IsChildOf(UStaticMesh::StaticClass()))
 	{
-		UStaticMesh* StaticMesh = mesh->StaticMesh;
+		UStaticMesh* StaticMesh = mesh->staticMesh;
 		int verts = StaticMesh->GetNumVertices(0);
 		FStaticMeshRenderData *StaticMeshRenderData = StaticMesh->RenderData.Get();
 		if (!StaticMeshRenderData->IsInitialized())
@@ -755,6 +707,8 @@ void GeometrySource::PrepareMesh(Mesh* mesh)
 	}
 }
 
+#include "experimental/filesystem"
+#include <fstream>
 avs::uid GeometrySource::AddTexture(UTexture* texture)
 {
 	avs::uid textureID;
@@ -762,11 +716,9 @@ avs::uid GeometrySource::AddTexture(UTexture* texture)
 
 	if(it != processedTextures.end())
 	{
-		//Reuse the ID if this texture has been processed before.
+		//Reuse the ID if this texture has been processed before, and return value
 		textureID = it->second;
-
-		//Return if we have already processed the texture in this play session, or it wasn't cleared at the start of the play session.
-		if(textures.find(it->second) != textures.end()) return textureID;
+		return textureID;
 	}
 	else
 	{
@@ -775,7 +727,7 @@ avs::uid GeometrySource::AddTexture(UTexture* texture)
 		processedTextures[texture] = textureID;
 	}
 
-	avs::Texture& newTexture = textures[textureID];
+	avs::Texture newTexture;
 
 	//Assuming the first running platform is the desired running platform.
 	FTexture2DMipMap baseMip = texture->GetRunningPlatformData()[0]->Mips[0];
@@ -818,11 +770,15 @@ avs::uid GeometrySource::AddTexture(UTexture* texture)
 			break;
 	}
 
-	//Compress the texture with Basis Universal if the flag is set, and bytes per pixel is equal to 4.
-	if(Monitor->UseCompressedTextures && newTexture.bytesPerPixel == 4)
-	{
-		newTexture.compression = avs::TextureCompression::BASIS_COMPRESSED;
+	TArray<uint8> mipData;
+	textureSource.GetMipData(mipData, 0);
 
+	newTexture.dataSize = newTexture.width * newTexture.height * newTexture.depth * newTexture.bytesPerPixel;
+	newTexture.data = mipData.GetData();
+	
+	std::string basisFileLocation;
+	if(Monitor->UseCompressedTextures)
+	{
 		FString GameSavedDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir());
 
 		//Create a unique name based on the filepath.
@@ -831,50 +787,11 @@ avs::uid GeometrySource::AddTexture(UTexture* texture)
 		uniqueName = uniqueName.RightChop(2); //Remove drive.
 		uniqueName = uniqueName.Right(255); //Restrict name length.
 
-		FString basisFilePath = FPaths::Combine(GameSavedDir, uniqueName + FString(".basis"));
-
-		bool validBasisFileExists = false;
-		FFileManagerGeneric fileManager;
-		if(fileManager.FileExists(*basisFilePath))
-		{
-			FDateTime basisLastModified = fileManager.GetTimeStamp(*basisFilePath);
-			FDateTime textureLastModified = texture->AssetImportData->SourceData.SourceFiles[0].Timestamp;
-
-			//The file is valid if the basis file is younger than the texture file.
-			validBasisFileExists = basisLastModified > textureLastModified;
-		}
-
-		//Read from disk if the file exists.
-		if(validBasisFileExists)
-		{
-			FArchive* reader = fileManager.CreateFileReader(*basisFilePath);
-
-			newTexture.dataSize = reader->TotalSize();
-			newTexture.data = new unsigned char[newTexture.dataSize];
-			reader->Serialize(newTexture.data, newTexture.dataSize);
-
-			reader->Close();
-			delete reader;
-		}
-		//Otherwise, queue the texture for compression.
-		else
-		{
-			texturesToCompress.emplace(textureID, PrecompressedTexture{basisFilePath, textureSource});
-		}
+		basisFileLocation = TCHAR_TO_ANSI(*FPaths::Combine(GameSavedDir, uniqueName + FString(".basis")));
 	}
-	else
-	{
-		newTexture.compression = avs::TextureCompression::UNCOMPRESSED;
 
-		TArray<uint8> mipData;
-		textureSource.GetMipData(mipData, 0);
-
-		newTexture.dataSize = newTexture.width * newTexture.height * newTexture.depth * newTexture.bytesPerPixel;
-		newTexture.data = new unsigned char[newTexture.dataSize];
-		memcpy(newTexture.data, mipData.GetData(), newTexture.dataSize);
-
-		UE_CLOG(newTexture.dataSize > 1048576, LogRemotePlay, Warning, TEXT("Texture \"%s\" was stored UNCOMPRESSED with a data size larger than 1MB! Size: %dB(%.2fMB)"), * texture->GetName(), newTexture.dataSize, newTexture.dataSize / 1048576.0f)
-	}
+	FDateTime textureTimestamp = texture->AssetImportData->SourceData.SourceFiles[0].Timestamp;
+	storage.storeTexture(textureID, std::move(newTexture), textureTimestamp.ToUnixTimestamp(), basisFileLocation);
 
 	return textureID;
 }
@@ -1135,194 +1052,4 @@ size_t GeometrySource::DecomposeTextureSampleExpression(UMaterialInterface* mate
 	}
 
 	return subExpressionsHandled;
-}
-
-std::vector<avs::uid> GeometrySource::getNodeUIDs() const
-{
-	std::vector<avs::uid> nodeUIDs(nodes.size());
-
-	size_t i = 0;
-	for(const auto &it : nodes)
-	{
-		nodeUIDs[i++] = it.first;
-	}
-
-	return nodeUIDs;
-}
-
-bool GeometrySource::getNode(avs::uid node_uid, avs::DataNode& outNode) const
-{
-	//Assuming an incorrect node uid should not happen, or at least not frequently.
-	try
-	{
-		outNode = nodes.at(node_uid);
-
-		return true;
-	}
-	catch(std::out_of_range oor)
-	{
-		UE_LOG(LogRemotePlay, Warning, TEXT("Failed to find node with UID: %d"), node_uid)
-		return false;
-	}
-}
-
-const std::map<avs::uid, avs::DataNode>& GeometrySource::getNodes() const
-{
-	return nodes;
-}
-
-size_t GeometrySource::getMeshPrimitiveArrayCount(avs::uid mesh_uid) const
-{
-	auto meshIt = meshes.find(mesh_uid);
-	if(meshIt == meshes.end())
-	{
-		UE_LOG(LogRemotePlay, Warning, TEXT("Failed to find mesh with ID: %llu"), mesh_uid);
-		return 0;
-	}
-
-	const Mesh& mesh = meshIt->second;
-	return mesh.primitiveArrays.size();
-}
-
-bool GeometrySource::getMeshPrimitiveArray(avs::uid mesh_uid, size_t array_index, avs::PrimitiveArray& primitiveArray) const
-{
-	auto meshIt = meshes.find(mesh_uid);
-	if(meshIt == meshes.end())
-	{
-		UE_LOG(LogRemotePlay, Warning, TEXT("Failed to find mesh with ID: %llu"), mesh_uid);
-		return false;
-	}
-
-	primitiveArray = meshIt->second.primitiveArrays[array_index];
-	return true;
-}
-
-bool GeometrySource::getAccessor(avs::uid accessor_uid, avs::Accessor & accessor) const
-{
-	auto it = accessors.find(accessor_uid);
-	if (it == accessors.end())
-	{
-		UE_LOG(LogRemotePlay, Error, TEXT("Failed to find accessor with ID: %llu"), accessor_uid);
-		return false;
-	}
-	accessor = it->second;
-	return true;
-}
-
-bool GeometrySource::getBufferView(avs::uid buffer_view_uid, avs::BufferView & bufferView) const
-{
-	auto it = bufferViews.find(buffer_view_uid);
-	if (it == bufferViews.end())
-	{
-		UE_LOG(LogRemotePlay, Error, TEXT("Failed to find buffer view with ID: %llu"), buffer_view_uid);
-		return false;
-	}
-	bufferView = it->second;
-	return true;
-}
-
-bool GeometrySource::getBuffer(avs::uid buffer_uid, avs::GeometryBuffer & buffer) const
-{
-	auto it = geometryBuffers.find(buffer_uid);
-	if (it == geometryBuffers.end())
-	{
-		UE_LOG(LogRemotePlay, Error, TEXT("Failed to find buffer with ID: %llu"), buffer_uid);
-		return false;
-	}
-	buffer = it->second;
-	return true;
-}
-
-std::vector<avs::uid> GeometrySource::getTextureUIDs() const
-{
-	std::vector<avs::uid> textureUIDs(textures.size());
-
-	size_t i = 0;
-	for(const auto &it : textures)
-	{
-		textureUIDs[i++] = it.first;
-	}
-
-	return textureUIDs;
-}
-
-bool GeometrySource::getTexture(avs::uid texture_uid, avs::Texture & outTexture) const
-{
-	//Assuming an incorrect texture uid should not happen, or at least not frequently.
-	try
-	{
-		outTexture = textures.at(texture_uid);
-		//Check the texture was actually compressed/loaded from file.
-		assert(outTexture.data);
-
-		return true;
-	}
-	catch(std::out_of_range oor)
-	{
-		UE_LOG(LogRemotePlay, Warning, TEXT("Failed to find texture with UID: %d"), texture_uid)
-		return false;
-	}
-}
-
-std::vector<avs::uid> GeometrySource::getMaterialUIDs() const
-{
-	std::vector<avs::uid> materialUIDs(materials.size());
-
-	size_t i = 0;
-	for(const auto &it : materials)
-	{
-		materialUIDs[i++] = it.first;
-	}
-
-	return materialUIDs;
-}
-
-bool GeometrySource::getMaterial(avs::uid material_uid, avs::Material & outMaterial) const
-{
-	//Assuming an incorrect material uid should not happen, or at least not frequently.
-	try
-	{
-		outMaterial = materials.at(material_uid);
-
-		return true;
-	}
-	catch(std::out_of_range oor)
-	{
-		UE_LOG(LogRemotePlay, Warning, TEXT("Failed to find material with UID: %d"), material_uid)
-		return false;
-	}
-}
-
-std::vector<avs::uid> GeometrySource::getShadowMapUIDs() const
-{
-	std::vector<avs::uid> shadowMapUIDs(shadowMaps.size());
-
-	size_t i = 0;
-	for (const auto& it : shadowMaps)
-	{
-		shadowMapUIDs[i++] = it.first;
-	}
-
-	return shadowMapUIDs;
-}
-
-bool GeometrySource::getShadowMap(avs::uid shadow_uid, avs::Texture& outShadowMap) const
-{
-	//Assuming an incorrect texture uid should not happen, or at least not frequently.
-	try
-	{
-		outShadowMap = shadowMaps.at(shadow_uid);
-
-		return true;
-	}
-	catch (std::out_of_range oor)
-	{
-		UE_LOG(LogRemotePlay, Warning, TEXT("Failed to find shadow map with UID: %d"), shadow_uid)
-			return false;
-	}
-}
-
-const std::vector<avs::LightNodeResources>& GeometrySource::getLightNodes() const
-{
-	return lightNodes;
 }

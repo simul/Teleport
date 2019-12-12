@@ -51,6 +51,7 @@ public class RemotePlay : ModuleRules
         Link_libavstream(Target);
         Link_libenet(Target);
         Link_basisu(Target);
+		Link_SimulCasterServer(Target);
 	}
 
 	private string GetConfigName(ReadOnlyTargetRules Target)
@@ -121,6 +122,15 @@ public class RemotePlay : ModuleRules
         //PublicDelayLoadDLLs.Add("basisu_MD.dll");
         //RuntimeDependencies.Add(Path.Combine(LibraryPath, "basisu_MD.dll"));
     }
+
+	public void Link_SimulCasterServer(ReadOnlyTargetRules Target)
+    {
+		PrivateIncludePaths.Add(Path.Combine(RemotePlayRootDirectory, "SimulCasterServer/src"));
+		PrivateIncludePaths.Add(Path.Combine(RemotePlayRootDirectory, "SimulCasterServer/src/NONEXISTANT"));
+
+		PublicLibraryPaths.Add(Path.Combine(LibrariesDirectory, "SimulCasterServer", GetConfigName(Target)));
+		PublicAdditionalLibraries.Add("SimulCasterServer.lib");
+	}
 
     private string GetPlatformName(ReadOnlyTargetRules Target)
     {

@@ -168,13 +168,14 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 		avs::uid uid = missingUIDs[h];
 		put(uid);
 
-		size_t prims = src->getMeshPrimitiveArrayCount(uid);
-		put(prims);
+		avs::Mesh mesh;
+		src->getMesh(uid, mesh);
+
+		put(mesh.primitiveArrays.size());
+
 		std::set<avs::uid> accessors;
-		for(size_t j = 0; j < prims; j++)
+		for(avs::PrimitiveArray primitiveArray : mesh.primitiveArrays)
 		{
-			avs::PrimitiveArray primitiveArray;
-			src->getMeshPrimitiveArray(uid, j, primitiveArray);
 			put(primitiveArray.attributeCount);
 			put(primitiveArray.indices_accessor);
 			put(primitiveArray.material);
@@ -191,8 +192,7 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 		std::set<avs::uid> bufferViews;
 		for(avs::uid accessorID : accessors)
 		{
-			avs::Accessor accessor;
-			src->getAccessor(accessorID, accessor);
+			avs::Accessor accessor = mesh.accessors[accessorID];
 			put(accessorID);
 			put(accessor.type);
 			put(accessor.componentType);
@@ -206,8 +206,7 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 		std::set<avs::uid> buffers;
 		for(avs::uid bufferViewID : bufferViews)
 		{
-			avs::BufferView bufferView;
-			src->getBufferView(bufferViewID, bufferView);
+			avs::BufferView bufferView = mesh.bufferViews[bufferViewID];
 			put(bufferViewID);
 			put(bufferView.buffer);
 			put(bufferView.byteOffset);
@@ -219,11 +218,10 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 		put(buffers.size());
 		for(avs::uid bufferID : buffers)
 		{
-			avs::GeometryBuffer b;
-			src->getBuffer(bufferID, b);
+			avs::GeometryBuffer buffer = mesh.buffers[bufferID];
 			put(bufferID);
-			put(b.byteLength);
-			put(b.data, b.byteLength);
+			put(buffer.byteLength);
+			put(buffer.data, buffer.byteLength);
 		}
 
 		req->EncodedResource(uid);
