@@ -205,6 +205,10 @@ void URemotePlayCaptureComponent::CullHiddenCubeSegments(TArray<bool>& FaceInter
 	// Convert FOV from degrees to radians and increase it to deal with lag
 	const float FOV = FMath::DegreesToRadians(ClientCamInfo.FOV); 
 
+	const float CubeWidth = TextureTarget->GetSurfaceWidth();
+	const float HalfWidth = CubeWidth / 2;
+	const float QuadSize = (CubeWidth / Monitor->BlocksPerCubeFaceAcross);
+
 	FMatrix ProjectionMatrix;
 	if (static_cast<int32>(ERHIZBuffer::IsInverted) == 1)
 	{
@@ -219,10 +223,6 @@ void URemotePlayCaptureComponent::CullHiddenCubeSegments(TArray<bool>& FaceInter
 
 	// Use to prevent shared vectors from being tested more than once
 	TMap<FVector, bool> VectorIntersectionMap;
-
-	const float CubeWidth = TextureTarget->GetSurfaceWidth();
-	const float HalfWidth = CubeWidth / 2;
-	const float QuadSize = (CubeWidth / Monitor->BlocksPerCubeFaceAcross);
 
 	// Unreal Engine coordinates: X is forward, Y is right, Z is up, 
 	const FVector StartPos = FVector(HalfWidth, -HalfWidth, -HalfWidth); // Bottom left of front face
@@ -345,10 +345,7 @@ void URemotePlayCaptureComponent::StartStreaming(FRemotePlayContext *Context)
 
 	ClientCamInfo.Orientation = GetComponentTransform().GetRotation();
 
-	if (Monitor->bDoCubemapCulling)
-	{
-		FacesToRender.Init(true, 6);
-	}
+	FacesToRender.Init(true, 6);
 }
 
 void URemotePlayCaptureComponent::StopStreaming()
