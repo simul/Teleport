@@ -43,6 +43,17 @@ void EncodeCameraPositionCS(uint2 ThreadID : SV_DispatchThreadID)
 	RWOutputColorTexture[Pos + int2(0,16)]	= Z;
 }
 
+// Check if this part of the cubemap is visible to the client
+bool FragmentIsVisible(int3 pos, uint CubeWidth)
+{
+	// Check if this part of the cubemap is visible to the client
+	int BlockSize = CubeWidth / BlocksPerFaceAcross;
+	int XIndex = (pos.x - (pos.x % BlockSize)) / BlockSize; 
+	int YIndex = (pos.y - (pos.y % BlockSize)) / BlockSize; 
+	int BlockIndex = (BlocksPerFaceAcross * YIndex) + XIndex + (pos.z * BlocksPerFaceAcross * BlocksPerFaceAcross);
+	return CullFlags[BlockIndex].x;
+}
+
 [numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
 void DecomposeCS(uint3 ThreadID : SV_DispatchThreadID)
 {
@@ -56,15 +67,8 @@ void DecomposeCS(uint3 ThreadID : SV_DispatchThreadID)
 	int3 pos = int3(ThreadID);
 	int2 FaceOffsets[] = { {0,0},{1,0},{2,0},{0,1},{1,1},{2,1} };
 
-	// Check if this part of the cubemap is visible to the client
-	int BlockSize = InputW / BlocksPerFaceAcross;
-	int XIndex = (pos.x - (pos.x % BlockSize)) / BlockSize; 
-	int YIndex = (pos.y - (pos.y % BlockSize)) / BlockSize; 
-	int BlockIndex = (BlocksPerFaceAcross * XIndex) + YIndex + (pos.z * BlocksPerFaceAcross * BlocksPerFaceAcross);
-	if (!CullFlags[BlockIndex].x)
-	{
+	if (!FragmentIsVisible(pos, InputW))
 		return;
-	}
 
 	float4 SceneColor = RWInputCubeAsArray[pos];
 	SceneColor.x = sqrt(SceneColor.x);
@@ -101,15 +105,8 @@ void DecomposeDepthCS(uint3 ThreadID : SV_DispatchThreadID)
 	pos.xy *= 2;
 	int2 FaceOffsets[] = { {0,0},{1,0},{2,0},{0,1},{1,1},{2,1} };
 
-	// Check if this part of the cubemap is visible to the client
-	int BlockSize = InputW / BlocksPerFaceAcross;
-	int XIndex = (pos.x - (pos.x % BlockSize)) / BlockSize; 
-	int YIndex = (pos.y - (pos.y % BlockSize)) / BlockSize; 
-	int BlockIndex = (BlocksPerFaceAcross * XIndex) + YIndex + (pos.z * BlocksPerFaceAcross * BlocksPerFaceAcross);
-	if (!CullFlags[BlockIndex].x)
-	{
+	if (!FragmentIsVisible(pos, InputW))
 		return;
-	}
 
 	float d00 = GetDepth(pos,InputW);
 	float d01 = GetDepth(pos+int3(1,0,0), InputW);

@@ -202,7 +202,7 @@ void URemotePlayCaptureComponent::CullHiddenCubeSegments(TArray<bool>& FaceInter
 	const FVector Up = ClientCamInfo.Orientation.GetUpVector();
 	const FLookAtMatrix ViewMatrix = FLookAtMatrix(FVector::ZeroVector, Forward, Up);
 
-	// Convert FOV from degrees to radians and increase it to deal with lag
+	// Convert FOV from degrees to radians 
 	const float FOV = FMath::DegreesToRadians(ClientCamInfo.FOV); 
 
 	const float CubeWidth = TextureTarget->GetSurfaceWidth();

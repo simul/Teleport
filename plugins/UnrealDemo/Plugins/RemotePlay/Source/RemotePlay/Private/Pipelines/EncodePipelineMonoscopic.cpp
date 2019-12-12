@@ -511,7 +511,8 @@ void FEncodePipelineMonoscopic::DispatchDecomposeCubemapShader(FRHICommandListIm
 	typedef FProjectCubemapCS<EProjectCubemapVariant::EncodeCameraPosition> EncodeCameraPositionShaderType;
 	
 	TResourceArray<FShaderFlag> BlockCullFlags;
-	for (auto Flag : BlockIntersectionFlags)
+
+	for (auto& Flag : BlockIntersectionFlags)
 	{
 		BlockCullFlags.Add({ Flag, 0, 0, 0 });
 	}
