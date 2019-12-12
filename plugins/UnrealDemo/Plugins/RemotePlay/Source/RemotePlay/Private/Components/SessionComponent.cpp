@@ -604,6 +604,8 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 	}
 
 	FCameraInfo& ClientCamInfo = CaptureComponent->GetClientCameraInfo();
+	ClientCamInfo.Width = handshake.startDisplayInfo.width;
+	ClientCamInfo.Height = handshake.startDisplayInfo.height;
 	ClientCamInfo.FOV = handshake.FOV;
 	ClientCamInfo.isVR = handshake.isVR;
 
@@ -680,12 +682,7 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 
 void URemotePlaySessionComponent::RecvDisplayInfo(const ENetPacket* Packet)
 {
-	struct DisplayInfo
-	{
-		uint32 Width;
-		uint32 Height;
-	};
-	if (Packet->dataLength != sizeof(DisplayInfo))
+	if (Packet->dataLength != sizeof(avs::DisplayInfo))
 	{
 		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Received malformed display info packet of length: %d"), Packet->dataLength);
 		return;
@@ -693,13 +690,13 @@ void URemotePlaySessionComponent::RecvDisplayInfo(const ENetPacket* Packet)
 	if (!RemotePlayContext)
 		return;
 
-	DisplayInfo displayInfo;
+	avs::DisplayInfo displayInfo;
 	FPlatformMemory::Memcpy(&displayInfo, Packet->data, Packet->dataLength);
 
 	URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
 	FCameraInfo& ClientCamInfo = CaptureComponent->GetClientCameraInfo();
-	ClientCamInfo.Width = displayInfo.Width;
-	ClientCamInfo.Height = displayInfo.Height;
+	ClientCamInfo.Width = displayInfo.width;
+	ClientCamInfo.Height = displayInfo.height;
 }
 
 void URemotePlaySessionComponent::RecvHeadPose(const ENetPacket* Packet)
@@ -760,7 +757,7 @@ void URemotePlaySessionComponent::RecvHeadPose(const ENetPacket* Packet)
 	// Unreal thinks the Euler angle starts from facing X, but actually it's Y.
 	//Euler.Z += 180.0f;
 	FQuat FlatPose = FQuat::MakeFromEuler(Euler);
-	ClientCamInfo.Orientation = FlatPose;
+	ClientCamInfo.Orientation = HeadPoseUE;
 	check(PlayerController.IsValid());
 	PlayerController->SetControlRotation(FlatPose.Rotator());
 }

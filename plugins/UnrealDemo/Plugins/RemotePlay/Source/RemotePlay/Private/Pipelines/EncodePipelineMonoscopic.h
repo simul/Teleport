@@ -18,7 +18,7 @@ public:
 	void Initialize(const FRemotePlayEncodeParameters& InParams, struct FRemotePlayContext *context, ARemotePlayMonitor* InMonitor, avs::Queue* InColorQueue, avs::Queue* InDepthQueue) override;
 	void Release() override;
 	void CullHiddenCubeSegments(FSceneInterface* InScene, FCameraInfo& CameraInfo, int32 FaceSize, uint32 Divisor) override;
-	void PrepareFrame(FSceneInterface* InScene, UTexture* InSourceTexture, FTransform& CameraTransform) override;
+	void PrepareFrame(FSceneInterface* InScene, UTexture* InSourceTexture, FTransform& CameraTransform, const TArray<bool>& BlockIntersectionFlags) override;
 	void EncodeFrame(FSceneInterface* InScene, UTexture* InSourceTexture, FTransform& CameraTransform, bool forceIDR) override;
 	FSurfaceTexture *GetSurfaceTexture() override
 	{
@@ -30,14 +30,20 @@ private:
 	void Initialize_RenderThread(FRHICommandListImmediate& RHICmdList);
 	void Release_RenderThread(FRHICommandListImmediate& RHICmdList);
 	void CullHiddenCubeSegments_RenderThread(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, FCameraInfo CameraInfo, int32 FaceSize, uint32 Divisor);
-	void PrepareFrame_RenderThread(FRHICommandListImmediate& RHICmdList, FTextureRenderTargetResource* TargetResource, ERHIFeatureLevel::Type FeatureLevel, FVector CameraPosition);
+	void PrepareFrame_RenderThread(FRHICommandListImmediate& RHICmdList, FTextureRenderTargetResource* TargetResource, ERHIFeatureLevel::Type FeatureLevel, FVector CameraPosition, TArray<bool> BlockIntersectionFlags);
 	void EncodeFrame_RenderThread(FRHICommandListImmediate& RHICmdList, FTransform CameraTransform, bool forceIDR);
 
 	template<typename ShaderType>
 	void DispatchProjectCubemapShader(FRHICommandListImmediate& RHICmdList, FTextureRHIRef TextureRHI, FUnorderedAccessViewRHIRef TextureUAVRHI, ERHIFeatureLevel::Type FeatureLevel);
 
-	void DispatchDecomposeCubemapShader(FRHICommandListImmediate& RHICmdList, FTextureRHIRef TextureRHI, FUnorderedAccessViewRHIRef TextureUAVRHI, ERHIFeatureLevel::Type FeatureLevel,FVector CameraPosition);
+	void DispatchDecomposeCubemapShader(FRHICommandListImmediate& RHICmdList, FTextureRHIRef TextureRHI, FUnorderedAccessViewRHIRef TextureUAVRHI, ERHIFeatureLevel::Type FeatureLevel,FVector CameraPosition, const TArray<bool>& BlockIntersectionFlags);
 	
+	struct FShaderFlag
+	{
+		uint32 flag = 0;
+		uint32 pad0, pad1, pad2 = 0;
+	};
+
 	struct FRemotePlayContext* RemotePlayContext;
 
 	FRemotePlayEncodeParameters Params;
