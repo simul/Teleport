@@ -43,14 +43,14 @@ void EncodeCameraPositionCS(uint2 ThreadID : SV_DispatchThreadID)
 	RWOutputColorTexture[Pos + int2(0,16)]	= Z;
 }
 
-// Check if this part of the cubemap is visible to the client
+// Checks if this part of the cubemap is visible to the client
 bool FragmentIsVisible(int3 pos, uint CubeWidth)
 {
-	// Check if this part of the cubemap is visible to the client
+	pos.y = CubeWidth - pos.y;
 	int BlockSize = CubeWidth / BlocksPerFaceAcross;
 	int XIndex = (pos.x - (pos.x % BlockSize)) / BlockSize; 
 	int YIndex = (pos.y - (pos.y % BlockSize)) / BlockSize; 
-	int BlockIndex = (BlocksPerFaceAcross * YIndex) + XIndex + (pos.z * BlocksPerFaceAcross * BlocksPerFaceAcross);
+	int BlockIndex = (BlocksPerFaceAcross * XIndex) + YIndex + (pos.z * BlocksPerFaceAcross * BlocksPerFaceAcross);
 	return CullFlags[BlockIndex].x;
 }
 
