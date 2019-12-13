@@ -208,7 +208,7 @@ void URemotePlayCaptureComponent::CullHiddenCubeSegments(TArray<bool>& FaceInter
 	const FLookAtMatrix ViewMatrix = FLookAtMatrix(FVector::ZeroVector, Forward, Up);
 
 	// Convert FOV from degrees to radians 
-	const float FOV = FMath::DegreesToRadians(ClientCamInfo.FOV); 
+	const float FOV = FMath::DegreesToRadians(ClientCamInfo.FOV);
 
 	const float CubeWidth = TextureTarget->GetSurfaceWidth();
 	const float HalfWidth = CubeWidth / 2;
@@ -267,6 +267,7 @@ void URemotePlayCaptureComponent::CullHiddenCubeSegments(TArray<bool>& FaceInter
 				// Bottom left, top left, bottom right, top right
 				FVector Points[4] = { QuadPos, TopLeft, QuadPos + RightVec, TopLeft + RightVec };
 
+				// VArray is just for debugging
 				for (auto& V : Points)
 				{
 					VArray.Add(V);
