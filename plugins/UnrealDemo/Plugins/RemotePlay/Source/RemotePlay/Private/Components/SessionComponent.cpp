@@ -219,7 +219,7 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	ENetEvent Event;
 	while (enet_host_service(ServerHost, &Event, 0) > 0)
 	{
-		switch (Event.type)
+		switch (Event.type) 
 		{
 		case ENET_EVENT_TYPE_CONNECT:
 			check(ClientPeer == nullptr);
@@ -564,40 +564,38 @@ void URemotePlaySessionComponent::ApplyPlayerInput(float DeltaTime)
 	while (InputQueue.ButtonsPressed.Num() > 0)
 	{
 		PlayerController->InputKey(InputQueue.ButtonsPressed.Pop(), EInputEvent::IE_Pressed, 1.0f, true);
-	}
+	} 
 	while (InputQueue.ButtonsReleased.Num() > 0)
 	{
 		PlayerController->InputKey(InputQueue.ButtonsReleased.Pop(), EInputEvent::IE_Released, 1.0f, true);
-	}
+	}  
 }
 void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 {
 	if (Packet->dataLength != sizeof(avs::Handshake))
-	{
+	{ 
 		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Received malformed handshake packet of length: %d"), Packet->dataLength);
 		return;
-	}
+	}  
 	avs::Handshake handshake;
-	FPlatformMemory::Memcpy(&handshake, Packet->data, Packet->dataLength);
+	FPlatformMemory::Memcpy(&handshake,  Packet->data, Packet->dataLength);
 	if (handshake.isReadyToReceivePayloads != true)
-	{ 
-		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Handshake not ready to receive."));
-		return;
-	}
-
+	{  
+		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Handshake not ready to receive.")); 
+		return; 
+	}  
 	if(handshake.usingHands)
-	{
-		GeometryStreamingService.AddControllersToStream();
+	{   
+		GeometryStreamingService.AddControllersToStream(); 
 	}
-
 	RemotePlayContext->axesStandard = handshake.axesStandard;
 	URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
 	const int32 StreamingPort = ServerHost->address.port + 1;
 
 	if(!RemotePlayContext->NetworkPipeline.IsValid())
-	{
-		FRemotePlayNetworkParameters NetworkParams;
-		NetworkParams.RemoteIP = Client_GetIPAddress();
+	{ 
+		FRemotePlayNetworkParameters NetworkParams; 
+		NetworkParams.RemoteIP = Client_GetIPAddress(); 
 		NetworkParams.LocalPort = StreamingPort;
 		NetworkParams.RemotePort = NetworkParams.LocalPort + 1;
 		NetworkParams.ClientBandwidthLimit = handshake.maxBandwidthKpS;
@@ -606,7 +604,7 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 		RemotePlayContext->NetworkPipeline.Reset(new FNetworkPipeline);
 		RemotePlayContext->NetworkPipeline->Initialize(Monitor, NetworkParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get(), RemotePlayContext->GeometryQueue.Get());
 	}
-
+	 
 	FCameraInfo& ClientCamInfo = CaptureComponent->GetClientCameraInfo();
 	ClientCamInfo.FOV = handshake.FOV;
 	ClientCamInfo.isVR = handshake.isVR;

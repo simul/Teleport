@@ -69,14 +69,25 @@ public class RemotePlay : ModuleRules
 	}
     private void Link_libavstream(ReadOnlyTargetRules Target)
     {
-		string LibraryPath = Path.Combine(LibrariesDirectory,"libavstream/lib/Release");
-        string Platform = GetPlatformName(Target);
 
         PrivateIncludePaths.Add(RemotePlayRootDirectory + "/libavstream/Include");
-        PublicLibraryPaths.Add(LibraryPath);
+		string LibraryPath = Path.Combine(LibrariesDirectory, "lib/Release");
+		PublicLibraryPaths.Add(LibraryPath);
+		//PublicLibraryPaths.Add("C:/RemotePlay/plugins/UnrealDemo/Plugins/RemotePlay/Libraries/lib/Release");
 		PublicAdditionalLibraries.Add("libavstream.lib");
 
-        PublicDelayLoadDLLs.Add("libavstream.dll");
+		// SRT:
+		string SrtLibraryPath = Path.Combine(LibrariesDirectory, "Release");
+		PublicLibraryPaths.Add(SrtLibraryPath);
+		PublicAdditionalLibraries.Add("srt_static.lib");
+		string PthreadsLibraryPath = Path.Combine(RemotePlayRootDirectory, "/thirdparty/srt/submodules/pthread-win32/bin/x64_MSVC2015.Release");
+		PublicLibraryPaths.Add(PthreadsLibraryPath);
+		//PublicLibraryPaths.Add("C:/RemotePlay/thirdparty/srt/submodules/pthread-win32/bin/x64_MSVC2015.Release");
+		PublicAdditionalLibraries.Add("pthread_lib.lib");
+		PublicAdditionalLibraries.Add("ws2_32.lib");
+//set(PTHREAD_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/thirdparty/srt/submodules/pthread-win32)
+
+		PublicDelayLoadDLLs.Add("libavstream.dll");
         RuntimeDependencies.Add(Path.Combine(LibraryPath, "libavstream.dll"));
 
         // Temporary path
@@ -84,7 +95,8 @@ public class RemotePlay : ModuleRules
 
         PublicAdditionalLibraries.Add("cudart.lib");
 
-        if (Platform == "Win64" || Platform == "Win32")
+		string Platform = GetPlatformName(Target);
+		if (Platform == "Win64" || Platform == "Win32")
         {
             PublicAdditionalLibraries.Add("dxgi.lib");
             PublicAdditionalLibraries.Add("d3d12.lib");
@@ -102,7 +114,7 @@ public class RemotePlay : ModuleRules
         PublicLibraryPaths.Add(Path.Combine(RemotePlayRootDirectory, "build/x64/thirdparty/enet/Release"));
         PublicLibraryPaths.Add(Path.Combine(RemotePlayRootDirectory, "thirdparty/enet/Release"));
         PublicLibraryPaths.Add(Path.Combine(RemotePlayRootDirectory, "thirdparty/enet/x64/Release"));
-        PublicLibraryPaths.Add(Path.Combine(LibrariesDirectory, "enet/Release"));
+        PublicLibraryPaths.Add(Path.Combine(LibrariesDirectory, "thirdparty/enet/Release"));
 
         PublicAdditionalLibraries.Add("enet.lib");
     }
@@ -112,9 +124,9 @@ public class RemotePlay : ModuleRules
 
         PrivateIncludePaths.Add(Path.Combine(RemotePlayRootDirectory, "thirdparty/basis_universal"));
 
-        PublicLibraryPaths.Add(Path.Combine(LibrariesDirectory, "basis_universal", GetConfigName(Target)));
-		PublicLibraryPaths.Add(Path.Combine(LibrariesDirectory, "basis_universal/Release"));
-		PublicLibraryPaths.Add(Path.Combine(LibrariesDirectory, "basis_universal/thirdparty/basis_universal", GetConfigName(Target)));
+        PublicLibraryPaths.Add(Path.Combine(LibrariesDirectory, "thirdparty/basis_universal", GetConfigName(Target)));
+		PublicLibraryPaths.Add(Path.Combine(LibrariesDirectory, "thirdparty/basis_universal/Release"));
+		PublicLibraryPaths.Add(Path.Combine(LibrariesDirectory, "thirdparty/basis_universal/thirdparty/basis_universal", GetConfigName(Target)));
         PublicAdditionalLibraries.Add("basisu.lib");
 
         //PublicDelayLoadDLLs.Add("basisu_MD.dll");
@@ -134,7 +146,7 @@ public class RemotePlay : ModuleRules
         }
     }
 
-	//ModuleDirectory C:\Simul\RemotePlay\plugins\UnrealDemo\Plugins\RemotePlay\Source\RemotePlay
+	//ModuleDirectory C:/Simul/RemotePlay/plugins/UnrealDemo/Plugins/RemotePlay/Source/RemotePlay
     private string LibrariesDirectory
     {
         get

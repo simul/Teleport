@@ -229,6 +229,7 @@ void FEncodePipelineMonoscopic::EncodeFrame(FSceneInterface* InScene, UTexture* 
 	{
 		return;
 	}
+	// only proceed if network is ready to stream.
 	const ERHIFeatureLevel::Type FeatureLevel = InScene->GetFeatureLevel();
 
 	auto SourceTarget = CastChecked<UTextureRenderTargetCube>(InSourceTexture);

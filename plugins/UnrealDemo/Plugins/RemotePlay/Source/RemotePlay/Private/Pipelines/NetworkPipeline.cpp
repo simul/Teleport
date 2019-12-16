@@ -29,7 +29,7 @@ void FNetworkPipeline::Initialize(ARemotePlayMonitor *m,const FRemotePlayNetwork
 	NetworkSink.Reset(new avs::NetworkSink);
 	VideoPipes.SetNum(DepthQueue?2:1);
 	VideoPipes[0].SourceQueue = ColorQueue;
-	if (DepthQueue)
+	if (DepthQueue) 
 		VideoPipes[1].SourceQueue = DepthQueue;
 	GeometryPipes.SetNum(1);
 	GeometryPipes[0].SourceQueue = GeometryQueue;
@@ -39,12 +39,11 @@ void FNetworkPipeline::Initialize(ARemotePlayMonitor *m,const FRemotePlayNetwork
 	SinkParams.socketBufferSize = GNetworkPipelineSocketBufferSize;
 	SinkParams.throttleToRateKpS = std::min(m->ThrottleKpS,(int64)InParams.ClientBandwidthLimit);// Assuming 60Hz on the other size. k per sec
 	SinkParams.socketBufferSize = InParams.ClientBufferSize;
-	if (!NetworkSink->configure(NumInputs, InParams.LocalPort, TCHAR_TO_UTF8(*InParams.RemoteIP), InParams.RemotePort, SinkParams))
+	if (!NetworkSink->configure(NumInputs,  nullptr,InParams.LocalPort, TCHAR_TO_UTF8(*InParams.RemoteIP), InParams.RemotePort, SinkParams))
 	{
 		UE_LOG(LogRemotePlay, Error, TEXT("Failed to configure network sink"));
 		return;
 	}
-
 
 	// Each video stream has an input Queue, a forwarder, and a packetizer.
 	// The Geometry queue consists of an input Queue, a Forwarder, and a Geometry packetizer.
@@ -57,7 +56,7 @@ void FNetworkPipeline::Initialize(ARemotePlayMonitor *m,const FRemotePlayNetwork
 		{
 			UE_LOG(LogRemotePlay, Error, TEXT("Failed to configure network video pipeline"));
 			return;
-		}
+		} 
 	}
 	for (int32_t i = 0; i < GeometryPipes.Num(); ++i)
 	{
@@ -80,6 +79,8 @@ void FNetworkPipeline::Initialize(ARemotePlayMonitor *m,const FRemotePlayNetwork
 void FNetworkPipeline::Release()
 {
 	Pipeline.Reset(); 
+	if(NetworkSink)
+		NetworkSink->deconfigure();
 	NetworkSink.Reset();
 	VideoPipes.Empty();
 	GeometryPipes.Empty();
