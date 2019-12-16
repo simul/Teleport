@@ -186,7 +186,6 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 				accessors.insert(primitiveArray.attributes[k].accessor);
 			}
 		}
-		req->EncodedResource(uid);
 
 		put(accessors.size());
 		std::set<avs::uid> bufferViews;
@@ -227,6 +226,8 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 			put(b.data, b.byteLength);
 		}
 
+		req->EncodedResource(uid);
+
 		float sizeDifference = buffer.size() - oldBufferSize;
 		UE_CLOG(sizeDifference > Monitor->GeometryBufferCutoffSize, LogRemotePlay, Warning, TEXT("Mesh(%llu) was encoded as %.2fMB. Cutoff is: %.2fMB"), uid, sizeDifference / 1048576.0f, Monitor->GeometryBufferCutoffSize / 1048576.0f);
 	}
@@ -241,23 +242,23 @@ avs::Result GeometryEncoder::encodeNodes(avs::GeometrySourceBackendInterface * s
 	put(missingUIDs.size());
 	for (const avs::uid &uid : missingUIDs) 
 	{
-		std::shared_ptr<avs::DataNode> node;
+		avs::DataNode node;
 		src->getNode(uid, node);
 
 		put(uid);
-		auto transform = node->transform;
+		avs::Transform transform = node.transform;
 		avs::ConvertTransform(avs::AxesStandard::UnrealStyle, req->GetAxesStandard(), transform);
 
 		put(transform);
-		put(node->data_uid);
-		put(node->data_type); 
-		put(node->materials.size());
-		for (const auto& id : node->materials)
+		put(node.data_uid);
+		put(node.data_type); 
+		put(node.materials.size());
+		for (const auto& id : node.materials)
 		{
 			put(id);
 		}
-		put(node->childrenUids.size());
-		for (const auto& id : node->childrenUids)
+		put(node.childrenUids.size());
+		for (const auto& id : node.childrenUids)
 		{
 			put(id);
 		}

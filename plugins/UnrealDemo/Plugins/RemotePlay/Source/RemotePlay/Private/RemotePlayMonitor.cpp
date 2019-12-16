@@ -18,19 +18,17 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 		ClientIP = RemotePlaySettings->ClientIP;
 		VideoEncodeFrequency = RemotePlaySettings->VideoEncodeFrequency;
 		StreamGeometry = RemotePlaySettings->StreamGeometry;
-		StreamGeometryContinuously = RemotePlaySettings->StreamGeometryContinuously;
 	}
 	else
 	{
 		VideoEncodeFrequency = 2;
 		StreamGeometry = true;
-		StreamGeometryContinuously = true;
 	}
 	bOverrideTextureTarget = false;
 	SceneCaptureTextureTarget = nullptr;
 	bDeferOutput = false;
-	bDoCubemapCulling = false;
-	BlocksPerCubeFace = 8; 
+	bDoCubemapCulling = true;
+	BlocksPerCubeFaceAcross = 1;
 	TargetFPS = 60;
 	IDRInterval = 0; // Value of 0 means only first frame will be IDR
 	RateControlMode = EncoderRateControlMode::RC_CBR_LOWDELAY_HQ;

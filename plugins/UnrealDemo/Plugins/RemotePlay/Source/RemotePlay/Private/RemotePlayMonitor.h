@@ -62,9 +62,6 @@ public:
 	uint32 StreamGeometry : 1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Geometry)
-	uint32 StreamGeometryContinuously : 1;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Geometry)
 	uint8 GeometryTicksPerSecond;
 
 	// Size we stop encoding nodes at.
@@ -90,8 +87,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	uint32 bDoCubemapCulling : 1;
 
+	// The number of blocks per cube face will be this value squared
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
-	int32 BlocksPerCubeFace;
+	int32 BlocksPerCubeFaceAcross;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	int32 TargetFPS;

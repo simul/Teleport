@@ -28,14 +28,7 @@ public:
 
 	virtual void EncodedResource(avs::uid resource_uid) override;
 	virtual void RequestResource(avs::uid resource_uid) override;
-	virtual void ConfirmResource(avs::uid resource_uid);
-
-	virtual void GetResourcesClientNeeds(
-		std::vector<avs::uid>& outMeshIds, 
-		std::vector<avs::uid>& outTextureIds, 
-		std::vector<avs::uid>& outMaterialIds,
-		std::vector<avs::uid>& outShadowIds,
-		std::vector<avs::uid>& outNodeIds) override;
+	virtual void ConfirmResource(avs::uid resource_uid) override;
 
 	virtual void GetResourcesToStream(std::vector<avs::MeshNodeResources>& outMeshResources, std::vector<avs::LightNodeResources>& outLightResources) override;
 
@@ -43,8 +36,6 @@ public:
 	{
 		return RemotePlayContext->axesStandard;
 	}
-
-	inline void SetStreamingContinuously(bool val) { bStreamingContinuously = val; }
 
 	void Initialise(UWorld *World, GeometrySource *geomSource);
 	void StartStreaming(struct FRemotePlayContext *RemotePlayContext);
@@ -68,17 +59,12 @@ public:
 
 	bool IsStreamingActor(AActor* actor);
 
-	void SetShowClientSideActor(avs::uid actor_uid, bool show);
+	void HideActor(avs::uid actorID);
+	void ShowActor(avs::uid actorID);
+	void SetActorVisible(avs::uid actorID, bool isVisible);
 
-	void HideActor(avs::uid actor_uid);
-	void ShowActor(avs::uid actor_uid);
-
-	//Causes the controllers to be added to the list of streamed actors.
-	void AddControllersToStream();
-
-	// avs::GeometryTransferState
-	size_t getNumRequiredNodes() const;
-	avs::uid getRequiredNode(size_t index) const;
+	//Adds the hand actors to the list of streamed actors.
+	void AddHandsToStream();
 private:
 	struct FRemotePlayContext* RemotePlayContext;
 	class ARemotePlayMonitor* Monitor;
@@ -91,20 +77,11 @@ private:
 	GeometrySource *geometrySource;
 	GeometryEncoder geometryEncoder;
 
-	bool bStreamingContinuously = false;
 	std::unordered_map<avs::uid, bool> sentResources; //Tracks the resources sent to the user; <resource identifier, doesClientHave>.
 	std::unordered_map<avs::uid, float> unconfirmedResourceTimes; //Tracks time since an unconfirmed resource was sent; <resource identifier, time since sent>.
-	std::map<FName, avs::uid> actorUids; //Actors that the client needs to draw, and should be sent to them; <Level Unique Name, Node UID of root mesh>.
+	std::map<FName, avs::uid> actorIDs; //Actors that the client needs to draw, and should be sent to them; <Level Unique Name, Node ID of root mesh>.
 	std::unordered_map<avs::uid, AActor*> streamedActors; //Actors that should be streamed to the client.
 	std::unordered_map<avs::uid, AActor*> hiddenActors; //Actors that are currently hidden on the server.
-
-	//Recursive function to retrieve the resource UIDs from a node, and its child nodes.
-	void GetNodeResourceUIDs(
-		avs::uid nodeUID, 
-		std::vector<avs::uid>& outMeshIds, 
-		std::vector<avs::uid>& outTextureIds, 
-		std::vector<avs::uid>& outMaterialIds, 
-		std::vector<avs::uid>& outNodeIds);
 
 	//Recursively obtains the resources from the mesh node, and its child nodes.
 	void GetMeshNodeResources(avs::uid node_uid, std::vector<avs::MeshNodeResources>& outMeshResources);
