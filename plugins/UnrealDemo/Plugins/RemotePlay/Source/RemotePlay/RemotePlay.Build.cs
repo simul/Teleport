@@ -83,7 +83,7 @@ public class RemotePlay : ModuleRules
 		PublicAdditionalLibraries.Add("srt_static.lib");
 		string PthreadsLibraryPath = Path.Combine(RemotePlayRootDirectory, "/thirdparty/srt/submodules/pthread-win32/bin/x64_MSVC2015.Release");
 		PublicLibraryPaths.Add(PthreadsLibraryPath);
-		//PublicLibraryPaths.Add("C:/RemotePlay/thirdparty/srt/submodules/pthread-win32/bin/x64_MSVC2015.Release");
+		PublicLibraryPaths.Add(RemotePlayRootDirectory+"/thirdparty/srt/submodules/pthread-win32/bin/x64_MSVC2015.Release");
 		PublicAdditionalLibraries.Add("pthread_lib.lib");
 		PublicAdditionalLibraries.Add("ws2_32.lib");
 //set(PTHREAD_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/thirdparty/srt/submodules/pthread-win32)
