@@ -292,8 +292,13 @@ void URemotePlayCaptureComponent::CullHiddenCubeSegments(TArray<bool>& FaceInter
 						VectorIntersectionMap.Add(TPair<FVector, bool>(V, false));	
 					}
 				}	
+
+				int32 QuadIndex = (i * Monitor->BlocksPerCubeFaceAcross * Monitor->BlocksPerCubeFaceAcross) + (j * Monitor->BlocksPerCubeFaceAcross) + k;
+				if (QuadIndex == Monitor->CullQuadIndex)
+				{
+					Intersects = false;
+				}
 				
-				// Quad Index = (i * BlocksPerCubeFaceAcross * BlocksPerCubeFaceAcross) + (j * BlocksPerCubeFaceAcross) + k;
 				QuadIntersectionResults.Add(Intersects);
 
 				if (Intersects)
@@ -310,7 +315,6 @@ void URemotePlayCaptureComponent::CullHiddenCubeSegments(TArray<bool>& FaceInter
 
 
 }
-
 
 bool URemotePlayCaptureComponent::VectorIntersectsFrustum(const FVector& Vector, const FMatrix& ViewProjection)
 {

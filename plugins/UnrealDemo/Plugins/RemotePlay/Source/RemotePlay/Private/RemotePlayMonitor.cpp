@@ -30,6 +30,7 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 	bDoCubemapCulling = true;
 	BlocksPerCubeFaceAcross = 1;
 	TargetFPS = 60;
+	CullQuadIndex = -1;
 	IDRInterval = 0; // Value of 0 means only first frame will be IDR
 	RateControlMode = EncoderRateControlMode::RC_CBR_LOWDELAY_HQ;
 	AverageBitrate = 40000000; // 40mb/s
