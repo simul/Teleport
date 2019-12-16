@@ -91,6 +91,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	int32 BlocksPerCubeFaceAcross;
 
+	// This culls a quad at the index. For debugging only
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	int32 CullQuadIndex;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	int32 TargetFPS;
 
