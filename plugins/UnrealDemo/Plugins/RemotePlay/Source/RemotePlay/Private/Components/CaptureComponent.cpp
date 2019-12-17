@@ -113,7 +113,7 @@ const FRemotePlayEncodeParameters &URemotePlayCaptureComponent::GetEncodeParams(
 
 void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Scene)
 {
-	// Do render to scene capture or do encoding if not streaming
+	// Do not render to scene capture or do encoding if not streaming
 	if (!bIsStreaming)
 		return;
 
@@ -167,11 +167,6 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 		}
 		FTransform Transform = GetComponentTransform();
 
-		/*for (auto& v : QuadsToRender)
-		{
-			v = true;
-		}
-		QuadsToRender[Monitor->Index] = false;*/
 		RemotePlayContext->EncodePipeline->PrepareFrame(Scene, TextureTarget, Transform, QuadsToRender);
 		if (RemotePlayReflectionCaptureComponent && EncodeParams.bDecomposeCube)
 		{
@@ -194,6 +189,10 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 
 bool URemotePlayCaptureComponent::ShouldRenderFace(int32 FaceId) const
 {
+	if (FacesToRender.Num() <= FaceId)
+	{
+		return true;
+	}
 	return FacesToRender[FaceId];
 }
 
@@ -235,7 +234,7 @@ void URemotePlayCaptureComponent::CullHiddenCubeSegments(TArray<bool>& FaceInter
 	TArray<FVector> VArray;
 
 	// First Quat is to get position, forward and side vectors relative to front face
-	// Second qauternion is rotate to match Unreal's cubemap face rotations
+	// Second qauternion is rotated to match Unreal's cubemap face rotations
 	static const FQuat FrontQuat = FQuat(1, 0, 0, -90); // No need to multiply as first qauternion is identity
 	static const FQuat BackQuat = FQuat(0, 0, 1, 180) * FQuat(1, 0, 0, 90);
 	static const FQuat RightQuat = FQuat(0, 0, 1, 90) * FQuat(0, 1, 0, 180);
@@ -355,6 +354,7 @@ void URemotePlayCaptureComponent::StartStreaming(FRemotePlayContext *Context)
 
 	ClientCamInfo.Orientation = GetComponentTransform().GetRotation();
 
+	FacesToRender.Reset();
 	FacesToRender.Init(true, 6);
 }
 
