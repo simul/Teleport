@@ -36,6 +36,9 @@ public:
 
 	/// Create or get the singleton instance of RemotePlayMonitor for the given UWorld.
 	static ARemotePlayMonitor* Instantiate(UWorld* world);
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = SRT)
+	int32 RequiredLatencyMs;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
 	FString SessionName;

@@ -11,6 +11,7 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 	: Super(ObjectInitializer), DetectionSphereRadius(1000), DetectionSphereBufferDistance(200), HandActor(nullptr),
 	GeometryTicksPerSecond(2), GeometryBufferCutoffSize(1048576) /*1MB*/, ConfirmationWaitTime(15.0f), EstimatedDecodingFrequency(10)
 {
+	RequiredLatencyMs=30;
 	// Defaults from settings class.
 	const URemotePlaySettings *RemotePlaySettings = GetDefault<URemotePlaySettings>();
 	if (RemotePlaySettings)

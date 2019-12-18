@@ -91,7 +91,7 @@ void GeometrySource::Initialise(ARemotePlayMonitor* monitor, UWorld* world)
 	if(Monitor->ResetCache)
 	{
 		//Clear all stored data, if the reset cache flag is set.
-		ClearData();
+		ClearData(); 
 	}
 	else
 	{

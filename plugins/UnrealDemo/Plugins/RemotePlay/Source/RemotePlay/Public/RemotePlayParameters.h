@@ -54,4 +54,7 @@ struct FRemotePlayNetworkParameters
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = RemotePlay)
 	int32 ClientBufferSize;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = RemotePlay)
+	int32 RequiredLatencyMs;
 };

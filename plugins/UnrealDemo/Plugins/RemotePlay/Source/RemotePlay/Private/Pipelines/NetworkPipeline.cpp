@@ -39,6 +39,7 @@ void FNetworkPipeline::Initialize(ARemotePlayMonitor *m,const FRemotePlayNetwork
 	SinkParams.socketBufferSize = GNetworkPipelineSocketBufferSize;
 	SinkParams.throttleToRateKpS = std::min(m->ThrottleKpS,(int64)InParams.ClientBandwidthLimit);// Assuming 60Hz on the other size. k per sec
 	SinkParams.socketBufferSize = InParams.ClientBufferSize;
+	SinkParams.requiredLatencyMs=InParams.RequiredLatencyMs;
 	if (!NetworkSink->configure(NumInputs,  nullptr,InParams.LocalPort, TCHAR_TO_UTF8(*InParams.RemoteIP), InParams.RemotePort, SinkParams))
 	{
 		UE_LOG(LogRemotePlay, Error, TEXT("Failed to configure network sink"));
@@ -70,15 +71,15 @@ void FNetworkPipeline::Initialize(ARemotePlayMonitor *m,const FRemotePlayNetwork
 		}
 	}
 	Pipeline->add(NetworkSink.Get());
-
+	 
 #if WITH_REMOTEPLAY_STATS
 	LastTimestamp = FPlatformTime::Seconds();
 #endif // WITH_REMOTEPLAY_STATS
 }
-
+  
 void FNetworkPipeline::Release()
 {
-	Pipeline.Reset(); 
+	Pipeline.Reset();
 	if(NetworkSink)
 		NetworkSink->deconfigure();
 	NetworkSink.Reset();

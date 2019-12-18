@@ -380,7 +380,7 @@ void URemotePlaySessionComponent::StartStreaming()
 	if (CaptureComponent->CaptureSource == ESceneCaptureSource::SCS_SceneColorSceneDepth)
 	{
 		RemotePlayContext->bCaptureDepth = true;
-		RemotePlayContext->DepthQueue.Reset(new avs::Queue);
+		RemotePlayContext->DepthQueue.Reset(new avs::Queue); 
 		RemotePlayContext->DepthQueue->configure(16); 
 	}
 	else
@@ -407,6 +407,7 @@ void URemotePlaySessionComponent::StartStreaming()
 	setupCommand.server_id = Monitor->GetServerID();
 	setupCommand.use_10_bit_decoding = Monitor->bUse10BitEncoding;
 	setupCommand.use_yuv_444_decoding = Monitor->bUseYUV444Decoding;
+	setupCommand.requiredLatencyMs=Monitor->RequiredLatencyMs;
 
 	std::vector<avs::uid> resourcesClientNeeds;
 	//If this is a reconnect we don't want the client throwing away resources it will need, so we send a list of resources it will need; but only if we're actually streaming geometry.
@@ -596,7 +597,11 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 		NetworkParams.RemotePort = NetworkParams.LocalPort + 1;
 		NetworkParams.ClientBandwidthLimit = handshake.maxBandwidthKpS;
 		NetworkParams.ClientBufferSize = handshake.udpBufferSize;
-
+		if (Monitor&&Monitor->RequiredLatencyMs)
+		{
+			NetworkParams.RequiredLatencyMs=Monitor->RequiredLatencyMs;
+		}
+		 
 		RemotePlayContext->NetworkPipeline.Reset(new FNetworkPipeline);
 		RemotePlayContext->NetworkPipeline->Initialize(Monitor, NetworkParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get(), RemotePlayContext->GeometryQueue.Get());
 	}
