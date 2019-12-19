@@ -46,13 +46,24 @@ public:
 	FCameraInfo& GetClientCameraInfo();
 
 private: 
+	struct FQuad
+	{
+		FVector BottomLeft;
+		FVector TopLeft;
+		FVector BottomRight;
+		FVector TopRight;
+	};
+
 	void OnViewportDrawn();
 	FDelegateHandle ViewportDrawnDelegateHandle;
-	void CullHiddenCubeSegments(TArray<bool>& FaceIntersectionResults, TArray<bool>& QuadIntersectionResults);
+	void CullHiddenCubeSegments();
+	static void CreateCubeQuads(TArray<FQuad>& Quads, uint32 BlocksPerFaceAcross, float CubeWidth);
 	static bool VectorIntersectsFrustum(const FVector& Vector, const FMatrix& ViewProjection);
 
 	FCameraInfo ClientCamInfo;
 
+	TArray<FQuad> CubeQuads;
+	TArray<bool> QuadsToRender;
 	TArray<bool> FacesToRender;
 
 	struct FRemotePlayContext* RemotePlayContext;

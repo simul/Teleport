@@ -133,15 +133,9 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 		}
 	}
 
-	TArray<bool> QuadsToRender;
 	if (Monitor->bDoCubemapCulling)
 	{
-		FacesToRender.Reset();
-		CullHiddenCubeSegments(FacesToRender, QuadsToRender);
-	}
-	else
-	{
-		QuadsToRender.Init(true, 6);
+		CullHiddenCubeSegments();
 	}
 
 	// Aidan: The parent function belongs to SceneCaptureComponentCube and is located in SceneCaptureComponent.cpp. 
@@ -196,23 +190,21 @@ bool URemotePlayCaptureComponent::ShouldRenderFace(int32 FaceId) const
 	return FacesToRender[FaceId];
 }
 
-void URemotePlayCaptureComponent::CullHiddenCubeSegments(TArray<bool>& FaceIntersectionResults, TArray<bool>& QuadIntersectionResults)
+void URemotePlayCaptureComponent::CullHiddenCubeSegments()
 {
+	assert(CubeQuads.Num >= 6);
+
 	// Aidan: Currently not going to do this on GPU because doing it on game thread allows us to  
 	// share the output with the capture component to cull faces from rendering.
 	ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
 
-	const FVector Forward = ClientCamInfo.Orientation.GetForwardVector() * 500;
+	const FVector LookAt = ClientCamInfo.Orientation.GetForwardVector() * 10;
 	const FVector Up = ClientCamInfo.Orientation.GetUpVector();
-	const FLookAtMatrix ViewMatrix = FLookAtMatrix(FVector::ZeroVector, Forward, Up);
+	const FLookAtMatrix ViewMatrix = FLookAtMatrix(FVector::ZeroVector, LookAt, Up);
 
 	// Convert FOV from degrees to radians 
 	const float FOV = FMath::DegreesToRadians(ClientCamInfo.FOV);
-
-	const float CubeWidth = TextureTarget->GetSurfaceWidth();
-	const float HalfWidth = CubeWidth / 2;
-	const float QuadSize = (CubeWidth / Monitor->BlocksPerCubeFaceAcross);
-
+	
 	FMatrix ProjectionMatrix;
 	if (static_cast<int32>(ERHIZBuffer::IsInverted) == 1)
 	{
@@ -228,91 +220,124 @@ void URemotePlayCaptureComponent::CullHiddenCubeSegments(TArray<bool>& FaceInter
 	// Use to prevent shared vectors from being tested more than once
 	TMap<FVector, bool> VectorIntersectionMap;
 
+	const uint32 BlocksPerFace = Monitor->BlocksPerCubeFaceAcross * Monitor->BlocksPerCubeFaceAcross;
+
+	const FVector* Vertices = reinterpret_cast<FVector*>(&CubeQuads[0]);
+
+	// Iterate through all six faces
+	for (uint32 i = 0; i < 6; ++i)
+	{
+		bool FaceIntersects = false;
+
+		// Iterate through each of the face's quads
+		for (uint32 j = 0; j < BlocksPerFace; ++j)
+		{
+			uint32 QuadIndex = i * BlocksPerFace + j; 
+			
+			bool Intersects = false;
+			
+			// Iterate through each of the quad's vertices
+			for (uint32 k = 0; k < 4; ++k)
+			{
+				uint32 VIndex = (QuadIndex * 4) + k;
+				const auto& V = Vertices[VIndex];
+				const bool* Value = VectorIntersectionMap.Find(V);
+				if (Value && *Value)
+				{
+					Intersects = true;
+					break;
+				}
+				else
+				{
+					if (VectorIntersectsFrustum(V, VP))
+					{
+						Intersects = true;
+						VectorIntersectionMap.Add(TPair<FVector, bool>(V, true));
+						break;
+					}
+					VectorIntersectionMap.Add(TPair<FVector, bool>(V, false));
+				}
+			}
+			
+			// For debugging only! Cull only the quad selected by the user 
+			if (Monitor->CullQuadIndex >= 0 && Monitor->CullQuadIndex < CubeQuads.Num())
+			{
+				if (QuadIndex == Monitor->CullQuadIndex)
+				{
+					Intersects = false;
+				}
+				else
+				{
+					Intersects = true;
+				}
+			}
+				
+			QuadsToRender[QuadIndex] = Intersects;
+
+			if (Intersects)
+			{
+				FaceIntersects = true;
+			}
+		}
+		FacesToRender[i] = FaceIntersects;
+	}
+}
+
+void URemotePlayCaptureComponent::CreateCubeQuads(TArray<FQuad>& Quads, uint32 BlocksPerFaceAcross, float CubeWidth)
+{
+	const float HalfWidth = CubeWidth / 2;
+	const float QuadSize = CubeWidth / (float)BlocksPerFaceAcross;
+
 	// Unreal Engine coordinates: X is forward, Y is right, Z is up, 
 	const FVector StartPos = FVector(HalfWidth, -HalfWidth, -HalfWidth); // Bottom left of front face
 
-	TArray<FVector> VArray;
+	// Aidan: First qauternion is rotated to match Unreal's cubemap face rotations
+	// Second quaternion is to get position, forward and side vectors relative to front face
+	// In quaternion multiplication, the rhs or second qauternion is applied first
+	static const float Rad90 = FMath::DegreesToRadians(90);
+	static const float Rad180 = FMath::DegreesToRadians(180);
+	static const FQuat FrontQuat = FQuat(FVector::ForwardVector, -Rad90); // No need to multiply as second qauternion would be identity
+	static const FQuat BackQuat = (FQuat(FVector::ForwardVector, Rad90) * FQuat(FVector::UpVector, Rad180)).GetNormalized(SMALL_NUMBER);
+	static const FQuat RightQuat = FQuat(FVector::RightVector, Rad180) * FQuat(FVector::UpVector, Rad90).GetNormalized(SMALL_NUMBER);
+	static const FQuat LeftQuat = FQuat(FVector::UpVector, -Rad90); // No need to multiply as first quaternion would be identity
+	static const FQuat TopQuat = FQuat(FVector::UpVector, -Rad90) * FQuat(FVector::RightVector, -Rad90).GetNormalized(SMALL_NUMBER);
+	static const FQuat BottomQuat = FQuat(FVector::UpVector, Rad90) * FQuat(FVector::RightVector, Rad90).GetNormalized(SMALL_NUMBER);
 
-	// First Quat is to get position, forward and side vectors relative to front face
-	// Second qauternion is rotated to match Unreal's cubemap face rotations
-	static const FQuat FrontQuat = FQuat(1, 0, 0, -90); // No need to multiply as first qauternion is identity
-	static const FQuat BackQuat = FQuat(0, 0, 1, 180) * FQuat(1, 0, 0, 90);
-	static const FQuat RightQuat = FQuat(0, 0, 1, 90) * FQuat(0, 1, 0, 180);
-	static const FQuat LeftQuat = FQuat(1, 0, 0, -90); // No need to multiply as second quaternion is identity
-	static const FQuat TopQuat = FQuat(0, 1, 0, -90) * FQuat(0, 0, 1, -90);
-	static const FQuat BottomQuat = FQuat(0, 1, 0, 90) * FQuat(0, 0, 1, 90);
+	static const FQuat FaceQuats[6] = { FrontQuat, BackQuat, RightQuat, LeftQuat, TopQuat, BottomQuat };
 
-	FQuat FaceQuats[6] = { FrontQuat, BackQuat, RightQuat, LeftQuat, TopQuat, BottomQuat };
+	const uint32 NumQuads = BlocksPerFaceAcross * BlocksPerFaceAcross * 6;
+
+	Quads.Empty();
+	Quads.Reserve(NumQuads);
 
 	// Iterate through all six faces
 	for (uint32 i = 0; i < 6; ++i)
 	{
 		const FQuat& q = FaceQuats[i];
-		const FVector Axis = { q.X, q.Y, q.Z };
-		const FVector RightVec = FVector::RightVector.RotateAngleAxis(q.W, Axis) * QuadSize;
-		const FVector UpVec = FVector::UpVector.RotateAngleAxis(q.W, Axis) * QuadSize;
-		FVector Pos = StartPos.RotateAngleAxis(q.W, Axis);
-
-		bool FaceIntersects = false;
+		const FVector RightVec = q.RotateVector(FVector::RightVector) * QuadSize;
+		const FVector UpVec = q.RotateVector(FVector::UpVector) * QuadSize;
+		FVector Pos = q.RotateVector(StartPos);
 
 		// Go right
-		for (int32 j = 0; j < Monitor->BlocksPerCubeFaceAcross; ++j)
+		for (uint32 j = 0; j < BlocksPerFaceAcross; ++j)
 		{
 			FVector QuadPos = Pos;
 			// Go up
-			for (int32 k = 0; k < Monitor->BlocksPerCubeFaceAcross; ++k)
+			for (uint32 k = 0; k < BlocksPerFaceAcross; ++k)
 			{
-				FVector TopLeft = QuadPos + UpVec;
-				// Bottom left, top left, bottom right, top right
-				FVector Points[4] = { QuadPos, TopLeft, QuadPos + RightVec, TopLeft + RightVec };
+				FQuad Quad;
+				Quad.BottomLeft = QuadPos;
+				Quad.TopLeft = QuadPos + UpVec;
+				Quad.BottomRight = QuadPos + RightVec;
+				Quad.TopRight = Quad.TopLeft + RightVec;
 
-				// VArray is just for debugging
-				for (auto& V : Points)
-				{
-					VArray.Add(V);
-				}
-				bool Intersects = false;
-				for(const auto& V : Points)
-				{
-					bool* Value = VectorIntersectionMap.Find(V);
-					if (Value && *Value)
-					{		
-						Intersects = true;
-						break;		
-					}
-					else
-					{
-						if (VectorIntersectsFrustum(V, VP))
-						{
-							Intersects = true;
-							VectorIntersectionMap.Add(TPair<FVector, bool>(V, true));
-							break;
-						}
-						VectorIntersectionMap.Add(TPair<FVector, bool>(V, false));	
-					}
-				}	
+				QuadPos = Quad.TopLeft;
 
-				int32 QuadIndex = (i * Monitor->BlocksPerCubeFaceAcross * Monitor->BlocksPerCubeFaceAcross) + (j * Monitor->BlocksPerCubeFaceAcross) + k;
-				if (QuadIndex == Monitor->CullQuadIndex)
-				{
-					Intersects = false;
-				}
-				
-				QuadIntersectionResults.Add(Intersects);
-
-				if (Intersects)
-				{
-					FaceIntersects = true;
-				}
-
-				QuadPos = TopLeft;
+				Quads.Emplace(MoveTemp(Quad));
 			}
 			Pos += RightVec;
 		}
-		FaceIntersectionResults.Add(FaceIntersects);
 	}
-
-
 }
 
 bool URemotePlayCaptureComponent::VectorIntersectsFrustum(const FVector& Vector, const FMatrix& ViewProjection)
@@ -326,6 +351,15 @@ bool URemotePlayCaptureComponent::VectorIntersectsFrustum(const FVector& Vector,
 	const float RHW = 1.0f / Result.W;
 	Result.X *= RHW;
 	Result.Y *= RHW; 
+
+	// Move from projection space to normalized 0..1 UI space
+	/*const float NormX = (Result.X / 2.f) + 0.5f;
+	const float NormY = 1.f - (Result.Y / 2.f) - 0.5f;
+
+	if (NormX < 0.0f || NormX > 1.0f || NormY < 0.0f || NormY > 1.0f)
+	{
+		return false;
+	}*/
 
 	if (Result.X < -1.0f || Result.X > 1.0f || Result.Y < -1.0f || Result.Y > 1.0f)
 	{
@@ -354,7 +388,9 @@ void URemotePlayCaptureComponent::StartStreaming(FRemotePlayContext *Context)
 
 	ClientCamInfo.Orientation = GetComponentTransform().GetRotation();
 
-	FacesToRender.Reset();
+	CreateCubeQuads(CubeQuads, Monitor->BlocksPerCubeFaceAcross, TextureTarget->GetSurfaceWidth());
+
+	QuadsToRender.Init(true, CubeQuads.Num());
 	FacesToRender.Init(true, 6);
 }
 
@@ -362,6 +398,8 @@ void URemotePlayCaptureComponent::StopStreaming()
 {
 	bIsStreaming = false;
 	bCaptureEveryFrame = false;
+	CubeQuads.Empty();
+	QuadsToRender.Empty();
 	FacesToRender.Empty();
 
 	if (!RemotePlayContext)
