@@ -87,7 +87,7 @@ void URemotePlayCaptureComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	IStreamingManager::Get().AddViewInformation(GetComponentLocation(), W, W / FMath::Tan(FOV));
 
 	ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
-	if (bCaptureEveryFrame && Monitor && Monitor->bDisableMainCamera)
+	if (bIsStreaming && bCaptureEveryFrame && Monitor && Monitor->bDisableMainCamera)
 	{
 		CaptureScene();
 	}
@@ -113,6 +113,10 @@ const FRemotePlayEncodeParameters &URemotePlayCaptureComponent::GetEncodeParams(
 
 void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Scene)
 {
+	// Do not render to scene capture or do encoding if not streaming
+	if (!bIsStreaming)
+		return;
+
 	ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
 	if (Monitor&&Monitor->VideoEncodeFrequency > 1)
 	{
@@ -128,13 +132,18 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 			return;
 		}
 	}
+
+	if (Monitor->bDoCubemapCulling)
+	{
+		CullHiddenCubeSegments();
+	}
+
 	// Aidan: The parent function belongs to SceneCaptureComponentCube and is located in SceneCaptureComponent.cpp. 
 	// The parent function calls UpdateSceneCaptureContents function in SceneCaptureRendering.cpp.
 	// UpdateSceneCaptureContents enqueues the rendering commands to render to the scene capture cube's render target.
 	// The parent function is called from the static function UpdateDeferredCaptures located in
 	// SceneCaptureComponent.cpp. UpdateDeferredCaptures is called by the BeginRenderingViewFamily function in SceneRendering.cpp.
 	// Therefore the rendering commands queued after this function call below directly follow the scene capture cube's commands in the queue.
-
 	Super::UpdateSceneCaptureContents(Scene);
 
 	if (TextureTarget&&RemotePlayContext)
@@ -151,15 +160,8 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 			}
 		}
 		FTransform Transform = GetComponentTransform();
-	
-		if (Monitor->bDoCubemapCulling)
-		{
-			TArray<bool> FaceIntersectionResults;
-			TArray<bool> QuadIntersectionResults;
-			CullHiddenCubeSegments(FaceIntersectionResults, QuadIntersectionResults);
-		}
 
-		RemotePlayContext->EncodePipeline->PrepareFrame(Scene, TextureTarget, Transform);
+		RemotePlayContext->EncodePipeline->PrepareFrame(Scene, TextureTarget, Transform, QuadsToRender);
 		if (RemotePlayReflectionCaptureComponent && EncodeParams.bDecomposeCube)
 		{
 			RemotePlayReflectionCaptureComponent->UpdateContents(
@@ -179,137 +181,191 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 	}
 }
 
-void URemotePlayCaptureComponent::CullHiddenCubeSegments(TArray<bool>& FaceIntersectionResults, TArray<bool>& QuadIntersectionResults)
+bool URemotePlayCaptureComponent::ShouldRenderFace(int32 FaceId) const
 {
+	if (FacesToRender.Num() <= FaceId)
+	{
+		return true;
+	}
+	return FacesToRender[FaceId];
+}
+
+void URemotePlayCaptureComponent::CullHiddenCubeSegments()
+{
+	assert(CubeQuads.Num >= 6);
+
 	// Aidan: Currently not going to do this on GPU because doing it on game thread allows us to  
 	// share the output with the capture component to cull faces from rendering.
 	ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
-	assert(Monitor->BlocksPerCubeFace % 2 == 0);
 
-	float W = TextureTarget->GetSurfaceWidth();
+	const FVector LookAt = ClientCamInfo.Orientation.GetForwardVector() * 10;
+	const FVector Up = ClientCamInfo.Orientation.GetUpVector();
+	const FLookAtMatrix ViewMatrix = FLookAtMatrix(FVector::ZeroVector, LookAt, Up);
 
-	//const FVector Forward = ClientCamInfo.Orientation.GetForwardVector();
-	//const FVector Up = ClientCamInfo.Orientation.GetUpVector();
-	FLookAtMatrix ViewMatrix = FLookAtMatrix(FVector::ZeroVector, ClientCamInfo.Orientation.GetForwardVector(), ClientCamInfo.Orientation.GetUpVector());
-
-	float FOV = FMath::DegreesToRadians(ClientCamInfo.FOV);
-
+	// Convert FOV from degrees to radians 
+	const float FOV = FMath::DegreesToRadians(ClientCamInfo.FOV);
+	
 	FMatrix ProjectionMatrix;
 	if (static_cast<int32>(ERHIZBuffer::IsInverted) == 1)
 	{
-		ProjectionMatrix = FReversedZPerspectiveMatrix(FOV, (float)ClientCamInfo.Width, (float)ClientCamInfo.Height, GNearClippingPlane, W / 2);
+		ProjectionMatrix = AdjustProjectionMatrixForRHI(FReversedZPerspectiveMatrix(FOV, (float)ClientCamInfo.Width, (float)ClientCamInfo.Height, 0, 0));
 	}
 	else
 	{
-		ProjectionMatrix = FPerspectiveMatrix(FOV, (float)ClientCamInfo.Width, (float)ClientCamInfo.Height, GNearClippingPlane, W / 2);
+		ProjectionMatrix = AdjustProjectionMatrixForRHI(FPerspectiveMatrix(FOV, (float)ClientCamInfo.Width, (float)ClientCamInfo.Height, 0, 0));
 	}
 
-	FMatrix VP = ViewMatrix * ProjectionMatrix;
+	const FMatrix VP = ViewMatrix * ProjectionMatrix;
 
 	// Use to prevent shared vectors from being tested more than once
 	TMap<FVector, bool> VectorIntersectionMap;
 
-	float QuadSize = (W / (float)Monitor->BlocksPerCubeFace) * 2;
+	const uint32 BlocksPerFace = Monitor->BlocksPerCubeFaceAcross * Monitor->BlocksPerCubeFaceAcross;
 
-	float halfWidth = W / 2;
-	// Unreal Engine coordinates: X is forward, Y is side, Z is up, 
-	const FVector OrigStartPos = { halfWidth, -halfWidth, -halfWidth }; // Bottom left of front face
-	const FVector OrigRightDir = { 0, 1, 0 }; // Going right
-	const FVector OrigUpDir = { 0, 0, 1 }; // Going up
+	const FVector* Vertices = reinterpret_cast<FVector*>(&CubeQuads[0]);
 
-	const uint32 HalfQuadsPerFace = Monitor->BlocksPerCubeFace / 2;
-
-	TArray<FVector> VArray;
-
-	// Quaternions for rotating front face to get the points of the other faces.
-	FQuat FaceQuats[6] = 
+	// Iterate through all six faces
+	for (uint32 i = 0; i < 6; ++i)
 	{
-		{0, 0, 0, 1}, // Front face (identity as no rotation needed)
-		{0, 0, 1, 180}, // Back face
-		{0, 0, 1, 90}, // Right face
-		{0, 0, 1, -90}, // Left face
-		{0, 1, 0, -90}, // Top face
-		{0, 1, 0, 90}  // Bottom face
-	};
-	
+		bool FaceIntersects = false;
+
+		// Iterate through each of the face's quads
+		for (uint32 j = 0; j < BlocksPerFace; ++j)
+		{
+			uint32 QuadIndex = i * BlocksPerFace + j; 
+			
+			bool Intersects = false;
+			
+			// Iterate through each of the quad's vertices
+			for (uint32 k = 0; k < 4; ++k)
+			{
+				uint32 VIndex = (QuadIndex * 4) + k;
+				const auto& V = Vertices[VIndex];
+				const bool* Value = VectorIntersectionMap.Find(V);
+				if (Value && *Value)
+				{
+					Intersects = true;
+					break;
+				}
+				else
+				{
+					if (VectorIntersectsFrustum(V, VP))
+					{
+						Intersects = true;
+						VectorIntersectionMap.Add(TPair<FVector, bool>(V, true));
+						break;
+					}
+					VectorIntersectionMap.Add(TPair<FVector, bool>(V, false));
+				}
+			}
+			
+			// For debugging only! Cull only the quad selected by the user 
+			if (Monitor->CullQuadIndex >= 0 && Monitor->CullQuadIndex < CubeQuads.Num())
+			{
+				if (QuadIndex == Monitor->CullQuadIndex)
+				{
+					Intersects = false;
+				}
+				else
+				{
+					Intersects = true;
+				}
+			}
+				
+			QuadsToRender[QuadIndex] = Intersects;
+
+			if (Intersects)
+			{
+				FaceIntersects = true;
+			}
+		}
+		FacesToRender[i] = FaceIntersects;
+	}
+}
+
+void URemotePlayCaptureComponent::CreateCubeQuads(TArray<FQuad>& Quads, uint32 BlocksPerFaceAcross, float CubeWidth)
+{
+	const float HalfWidth = CubeWidth / 2;
+	const float QuadSize = CubeWidth / (float)BlocksPerFaceAcross;
+
+	// Unreal Engine coordinates: X is forward, Y is right, Z is up, 
+	const FVector StartPos = FVector(HalfWidth, -HalfWidth, -HalfWidth); // Bottom left of front face
+
+	// Aidan: First qauternion is rotated to match Unreal's cubemap face rotations
+	// Second quaternion is to get position, forward and side vectors relative to front face
+	// In quaternion multiplication, the rhs or second qauternion is applied first
+	static const float Rad90 = FMath::DegreesToRadians(90);
+	static const float Rad180 = FMath::DegreesToRadians(180);
+	static const FQuat FrontQuat = FQuat(FVector::ForwardVector, -Rad90); // No need to multiply as second qauternion would be identity
+	static const FQuat BackQuat = (FQuat(FVector::ForwardVector, Rad90) * FQuat(FVector::UpVector, Rad180)).GetNormalized(SMALL_NUMBER);
+	static const FQuat RightQuat = FQuat(FVector::RightVector, Rad180) * FQuat(FVector::UpVector, Rad90).GetNormalized(SMALL_NUMBER);
+	static const FQuat LeftQuat = FQuat(FVector::UpVector, -Rad90); // No need to multiply as first quaternion would be identity
+	static const FQuat TopQuat = FQuat(FVector::UpVector, -Rad90) * FQuat(FVector::RightVector, -Rad90).GetNormalized(SMALL_NUMBER);
+	static const FQuat BottomQuat = FQuat(FVector::UpVector, Rad90) * FQuat(FVector::RightVector, Rad90).GetNormalized(SMALL_NUMBER);
+
+	static const FQuat FaceQuats[6] = { FrontQuat, BackQuat, RightQuat, LeftQuat, TopQuat, BottomQuat };
+
+	const uint32 NumQuads = BlocksPerFaceAcross * BlocksPerFaceAcross * 6;
+
+	Quads.Empty();
+	Quads.Reserve(NumQuads);
+
 	// Iterate through all six faces
 	for (uint32 i = 0; i < 6; ++i)
 	{
 		const FQuat& q = FaceQuats[i];
-		const FVector Axis = { q.X, q.Y, q.Z };
-		FVector Pos = OrigStartPos.RotateAngleAxis(q.W, Axis);
-		const FVector RightVec = OrigRightDir.RotateAngleAxis(q.W, Axis) * QuadSize;
-		const FVector UpVec = OrigUpDir.RotateAngleAxis(q.W, Axis) * QuadSize;
-
-		bool FaceIntersects = false;
+		const FVector RightVec = q.RotateVector(FVector::RightVector) * QuadSize;
+		const FVector UpVec = q.RotateVector(FVector::UpVector) * QuadSize;
+		FVector Pos = q.RotateVector(StartPos);
 
 		// Go right
-		for (uint32 j = 0; j < HalfQuadsPerFace; ++j)
+		for (uint32 j = 0; j < BlocksPerFaceAcross; ++j)
 		{
 			FVector QuadPos = Pos;
 			// Go up
-			for (uint32 k = 0; k < HalfQuadsPerFace; ++k)
+			for (uint32 k = 0; k < BlocksPerFaceAcross; ++k)
 			{
-				FVector TopLeft = QuadPos + UpVec;
-				// Bottom left, top left, bottom right, top right
-				FVector Points[4] = { QuadPos, TopLeft, QuadPos + RightVec, TopLeft + RightVec };
+				FQuad Quad;
+				Quad.BottomLeft = QuadPos;
+				Quad.TopLeft = QuadPos + UpVec;
+				Quad.BottomRight = QuadPos + RightVec;
+				Quad.TopRight = Quad.TopLeft + RightVec;
 
-				for (auto& V : Points)
-				{
-					VArray.Add(V);
-				}
-				bool Intersects = false;
-				for(const auto& V : Points)
-				{
-					bool* Value = VectorIntersectionMap.Find(V);
-					if (Value != nullptr && *Value)
-					{		
-						Intersects = true;
-						break;		
-					}
-					else
-					{
-						if (VectorIntersectsFrustum(V, VP))
-						{
-							Intersects = true;
-							VectorIntersectionMap.Add(TPair<FVector, bool>(V, true));
-							break;
-						}
-						else
-						{
-							VectorIntersectionMap.Add(TPair<FVector, bool>(V, false));
-						}
-					}
-				}	
-				
-				// Quad Index = (i * Monitor->BlocksPerCubeFace) + (j * HalfQuadsPerFace) + k;
-				QuadIntersectionResults.Add(Intersects);
+				QuadPos = Quad.TopLeft;
 
-				if (Intersects)
-				{
-					FaceIntersects = true;
-				}
-
-				QuadPos = TopLeft;
+				Quads.Emplace(MoveTemp(Quad));
 			}
 			Pos += RightVec;
 		}
-		FaceIntersectionResults.Add(FaceIntersects);
 	}
 }
 
 bool URemotePlayCaptureComponent::VectorIntersectsFrustum(const FVector& Vector, const FMatrix& ViewProjection)
 {
-	FVector4 ProjPos = ViewProjection.TransformVector(Vector);
-	ProjPos.X /= ProjPos.W;
-	ProjPos.Y /= ProjPos.W;
-	ProjPos.Z /= ProjPos.W;
-
-	if (ProjPos.X >= -1 && ProjPos.X <= 1 && ProjPos.Y >= -1 && ProjPos.Y <= 1)
+	FPlane Result = ViewProjection.TransformFVector4(FVector4(Vector, 1.0f));
+	if (Result.W <= 0.0f)
 	{
-		return true;
+		return false;
 	}
-	return false;
+	// the result of this will be x and y coords in -1..1 projection space
+	const float RHW = 1.0f / Result.W;
+	Result.X *= RHW;
+	Result.Y *= RHW; 
+
+	// Move from projection space to normalized 0..1 UI space
+	/*const float NormX = (Result.X / 2.f) + 0.5f;
+	const float NormY = 1.f - (Result.Y / 2.f) - 0.5f;
+
+	if (NormX < 0.0f || NormX > 1.0f || NormY < 0.0f || NormY > 1.0f)
+	{
+		return false;
+	}*/
+
+	if (Result.X < -1.0f || Result.X > 1.0f || Result.Y < -1.0f || Result.Y > 1.0f)
+	{
+		return false;
+	}
+	return true;
 }
 
 void URemotePlayCaptureComponent::StartStreaming(FRemotePlayContext *Context)
@@ -329,10 +385,23 @@ void URemotePlayCaptureComponent::StartStreaming(FRemotePlayContext *Context)
 	bIsStreaming = true;
 	bCaptureEveryFrame = true;
 	bSendKeyframe = false;
+
+	ClientCamInfo.Orientation = GetComponentTransform().GetRotation();
+
+	CreateCubeQuads(CubeQuads, Monitor->BlocksPerCubeFaceAcross, TextureTarget->GetSurfaceWidth());
+
+	QuadsToRender.Init(true, CubeQuads.Num());
+	FacesToRender.Init(true, 6);
 }
 
 void URemotePlayCaptureComponent::StopStreaming()
 {
+	bIsStreaming = false;
+	bCaptureEveryFrame = false;
+	CubeQuads.Empty();
+	QuadsToRender.Empty();
+	FacesToRender.Empty();
+
 	if (!RemotePlayContext)
 	{
 		UE_LOG(LogRemotePlay, Warning, TEXT("Capture: null RemotePlayContext"));
@@ -350,7 +419,6 @@ void URemotePlayCaptureComponent::StopStreaming()
 
 	RemotePlayContext = nullptr;
 
-	bCaptureEveryFrame = false;
 	UE_LOG(LogRemotePlay, Log, TEXT("Capture: Stopped streaming"));
 }
 

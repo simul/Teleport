@@ -36,6 +36,9 @@ public:
 
 	/// Create or get the singleton instance of RemotePlayMonitor for the given UWorld.
 	static ARemotePlayMonitor* Instantiate(UWorld* world);
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = SRT)
+	int32 RequiredLatencyMs;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = RemotePlay)
 	FString SessionName;
@@ -87,8 +90,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	uint32 bDoCubemapCulling : 1;
 
+	// The number of blocks per cube face will be this value squared
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
-	int32 BlocksPerCubeFace;
+	int32 BlocksPerCubeFaceAcross;
+
+	// This culls a quad at the index. For debugging only
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	int32 CullQuadIndex;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	int32 TargetFPS;

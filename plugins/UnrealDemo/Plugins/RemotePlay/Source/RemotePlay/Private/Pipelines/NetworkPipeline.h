@@ -20,7 +20,7 @@ public:
 	void Process();
 	avs::Pipeline *GetAvsPipeline();
 	float GetBandWidthKPS() const;
-private:
+private: 
 	struct VideoPipe
 	{
 		avs::Queue* SourceQueue;
@@ -33,7 +33,7 @@ private:
 		avs::Forwarder Forwarder;
 		avs::Packetizer Packetizer;
 	};
-	TUniquePtr<avs::Pipeline> Pipeline;
+	TUniquePtr<avs::Pipeline> Pipeline; 
 	TArray<VideoPipe> VideoPipes;
 	TArray<GeometryPipe> GeometryPipes;
 	TUniquePtr<avs::NetworkSink> NetworkSink;

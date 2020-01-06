@@ -13,6 +13,10 @@ SamplerState DefaultSampler;
 RWTexture2DArray<float4> RWInputCubeAsArray;
 RWTexture2D<float4> RWOutputColorTexture;
 
+// Each flag signifies if a cube face or cube face segment is visible to the client
+StructuredBuffer<int4> CullFlags;
+int BlocksPerFaceAcross;
+
 int2 Offset;
 float3 CubemapCameraPositionMetres;
 
@@ -39,6 +43,17 @@ void EncodeCameraPositionCS(uint2 ThreadID : SV_DispatchThreadID)
 	RWOutputColorTexture[Pos + int2(0,16)]	= Z;
 }
 
+// Checks if this part of the cubemap is visible to the client
+bool FragmentIsVisible(int3 pos, int CubeWidth)
+{
+	pos.y = CubeWidth - pos.y;
+	int BlockSize = CubeWidth / BlocksPerFaceAcross;
+	int XIndex = (pos.x - (pos.x % BlockSize)) / BlockSize; 
+	int YIndex = (pos.y - (pos.y % BlockSize)) / BlockSize; 
+	int BlockIndex = (BlocksPerFaceAcross * XIndex) + YIndex + (pos.z * BlocksPerFaceAcross * BlocksPerFaceAcross);
+	return CullFlags[BlockIndex].x;
+}
+
 [numthreads(THREADGROUP_SIZEX, THREADGROUP_SIZEY, 1)]
 void DecomposeCS(uint3 ThreadID : SV_DispatchThreadID)
 {
@@ -48,8 +63,13 @@ void DecomposeCS(uint3 ThreadID : SV_DispatchThreadID)
 	RWOutputColorTexture.GetDimensions(OutputW, OutputH);
 	if (ThreadID.x >= OutputW || ThreadID.y >= OutputH)
 		return;
+
 	int3 pos = int3(ThreadID);
 	int2 FaceOffsets[] = { {0,0},{1,0},{2,0},{0,1},{1,1},{2,1} };
+
+	if (!FragmentIsVisible(pos, InputW))
+		return;
+
 	float4 SceneColor = RWInputCubeAsArray[pos];
 	SceneColor.x = sqrt(SceneColor.x);
 	SceneColor.y = sqrt(SceneColor.y);
@@ -84,6 +104,10 @@ void DecomposeDepthCS(uint3 ThreadID : SV_DispatchThreadID)
 	int3 pos = int3(ThreadID);
 	pos.xy *= 2;
 	int2 FaceOffsets[] = { {0,0},{1,0},{2,0},{0,1},{1,1},{2,1} };
+
+	if (!FragmentIsVisible(pos, InputW))
+		return;
+
 	float d00 = GetDepth(pos,InputW);
 	float d01 = GetDepth(pos+int3(1,0,0), InputW);
 	float d10 = GetDepth(pos+int3(0,1,0), InputW);

@@ -134,7 +134,7 @@ void FRemotePlayModule::LogMessageHandler(avs::LogSeverity Severity, const char*
 		while (*Msg)
 		{
 			char c = *Msg;
-			errstr += c;// *(UTF8_TO_TCHAR(&c));
+			errstr += c;
 			if (c == '\n')
 			{
 				UE_LOG(LogRemotePlay, Warning, TEXT("%s"), *errstr);
@@ -148,7 +148,7 @@ void FRemotePlayModule::LogMessageHandler(avs::LogSeverity Severity, const char*
 		while (*Msg)
 		{
 			char c = *Msg;
-			outstr += UTF8_TO_TCHAR(c);
+			outstr += c;
 			if (c == '\n')
 			{
 				UE_LOG(LogRemotePlay, Warning, TEXT("%s"), *outstr);

@@ -215,7 +215,7 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	ENetEvent Event;
 	while (enet_host_service(ServerHost, &Event, 0) > 0)
 	{
-		switch (Event.type)
+		switch (Event.type) 
 		{
 		case ENET_EVENT_TYPE_CONNECT:
 			check(ClientPeer == nullptr);
@@ -380,7 +380,7 @@ void URemotePlaySessionComponent::StartStreaming()
 	if (CaptureComponent->CaptureSource == ESceneCaptureSource::SCS_SceneColorSceneDepth)
 	{
 		RemotePlayContext->bCaptureDepth = true;
-		RemotePlayContext->DepthQueue.Reset(new avs::Queue);
+		RemotePlayContext->DepthQueue.Reset(new avs::Queue); 
 		RemotePlayContext->DepthQueue->configure(16); 
 	}
 	else
@@ -407,6 +407,7 @@ void URemotePlaySessionComponent::StartStreaming()
 	setupCommand.server_id = Monitor->GetServerID();
 	setupCommand.use_10_bit_decoding = Monitor->bUse10BitEncoding;
 	setupCommand.use_yuv_444_decoding = Monitor->bUseYUV444Decoding;
+	setupCommand.requiredLatencyMs=Monitor->RequiredLatencyMs;
 
 	std::vector<avs::uid> resourcesClientNeeds;
 	//If this is a reconnect we don't want the client throwing away resources it will need, so we send a list of resources it will need; but only if we're actually streaming geometry.
@@ -560,56 +561,60 @@ void URemotePlaySessionComponent::ApplyPlayerInput(float DeltaTime)
 	while (InputQueue.ButtonsPressed.Num() > 0)
 	{
 		PlayerController->InputKey(InputQueue.ButtonsPressed.Pop(), EInputEvent::IE_Pressed, 1.0f, true);
-	}
+	} 
 	while (InputQueue.ButtonsReleased.Num() > 0)
 	{
 		PlayerController->InputKey(InputQueue.ButtonsReleased.Pop(), EInputEvent::IE_Released, 1.0f, true);
-	}
+	}  
 }
 void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 {
 	if (Packet->dataLength != sizeof(avs::Handshake))
-	{
+	{ 
 		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Received malformed handshake packet of length: %d"), Packet->dataLength);
 		return;
-	}
+	}  
 	avs::Handshake handshake;
-	FPlatformMemory::Memcpy(&handshake, Packet->data, Packet->dataLength);
+	FPlatformMemory::Memcpy(&handshake,  Packet->data, Packet->dataLength);
 	if (handshake.isReadyToReceivePayloads != true)
-	{ 
-		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Handshake not ready to receive."));
-		return;
-	}
-
+	{  
+		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Handshake not ready to receive.")); 
+		return; 
+	}  
 	if(handshake.usingHands)
-	{
+	{   
 		GeometryStreamingService.AddHandsToStream();
 	}
-
 	RemotePlayContext->axesStandard = handshake.axesStandard;
 	URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
 	const int32 StreamingPort = ServerHost->address.port + 1;
 
 	if(!RemotePlayContext->NetworkPipeline.IsValid())
-	{
-		FRemotePlayNetworkParameters NetworkParams;
-		NetworkParams.RemoteIP = Client_GetIPAddress();
+	{ 
+		FRemotePlayNetworkParameters NetworkParams; 
+		NetworkParams.RemoteIP = Client_GetIPAddress(); 
 		NetworkParams.LocalPort = StreamingPort;
 		NetworkParams.RemotePort = NetworkParams.LocalPort + 1;
 		NetworkParams.ClientBandwidthLimit = handshake.maxBandwidthKpS;
 		NetworkParams.ClientBufferSize = handshake.udpBufferSize;
-
+		if (Monitor&&Monitor->RequiredLatencyMs)
+		{
+			NetworkParams.RequiredLatencyMs=Monitor->RequiredLatencyMs;
+		}
+		 
 		RemotePlayContext->NetworkPipeline.Reset(new FNetworkPipeline);
 		RemotePlayContext->NetworkPipeline->Initialize(Monitor, NetworkParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get(), RemotePlayContext->GeometryQueue.Get());
 	}
-
+	 
 	FCameraInfo& ClientCamInfo = CaptureComponent->GetClientCameraInfo();
+	ClientCamInfo.Width = handshake.startDisplayInfo.width;
+	ClientCamInfo.Height = handshake.startDisplayInfo.height;
 	ClientCamInfo.FOV = handshake.FOV;
 	ClientCamInfo.isVR = handshake.isVR;
 
 	CaptureComponent->StartStreaming(RemotePlayContext);
 
-	if(Monitor && Monitor->StreamGeometry)
+	if (Monitor&&Monitor->StreamGeometry)
 	{
 		GeometryStreamingService.StartStreaming(RemotePlayContext);
 	}
@@ -680,12 +685,7 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 
 void URemotePlaySessionComponent::RecvDisplayInfo(const ENetPacket* Packet)
 {
-	struct DisplayInfo
-	{
-		uint32 Width;
-		uint32 Height;
-	};
-	if (Packet->dataLength != sizeof(DisplayInfo))
+	if (Packet->dataLength != sizeof(avs::DisplayInfo))
 	{
 		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Received malformed display info packet of length: %d"), Packet->dataLength);
 		return;
@@ -693,13 +693,13 @@ void URemotePlaySessionComponent::RecvDisplayInfo(const ENetPacket* Packet)
 	if (!RemotePlayContext)
 		return;
 
-	DisplayInfo displayInfo;
+	avs::DisplayInfo displayInfo;
 	FPlatformMemory::Memcpy(&displayInfo, Packet->data, Packet->dataLength);
 
 	URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
 	FCameraInfo& ClientCamInfo = CaptureComponent->GetClientCameraInfo();
-	ClientCamInfo.Width = displayInfo.Width;
-	ClientCamInfo.Height = displayInfo.Height;
+	ClientCamInfo.Width = displayInfo.width;
+	ClientCamInfo.Height = displayInfo.height;
 }
 
 void URemotePlaySessionComponent::RecvHeadPose(const ENetPacket* Packet)
@@ -760,7 +760,7 @@ void URemotePlaySessionComponent::RecvHeadPose(const ENetPacket* Packet)
 	// Unreal thinks the Euler angle starts from facing X, but actually it's Y.
 	//Euler.Z += 180.0f;
 	FQuat FlatPose = FQuat::MakeFromEuler(Euler);
-	ClientCamInfo.Orientation = FlatPose;
+	ClientCamInfo.Orientation = HeadPoseUE;
 	check(PlayerController.IsValid());
 	PlayerController->SetControlRotation(FlatPose.Rotator());
 }

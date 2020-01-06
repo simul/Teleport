@@ -19,6 +19,8 @@
 #include "Public/PipelineStateCache.h"
 #include "Public/ShaderParameters.h"
 #include "Public/ShaderParameterUtils.h"
+#include "HAL/UnrealMemory.h"
+#include "Containers/DynamicRHIResourceArray.h"
 #if PLATFORM_WINDOWS
 #include "AllowWindowsPlatformTypes.h"
 #include "libavstream/surfaces/surface_dx11.hpp"
@@ -60,9 +62,11 @@ public:
 	{
 		InputCubeMap.Bind(Initializer.ParameterMap, TEXT("InputCubeMap"));
 		RWInputCubeAsArray.Bind(Initializer.ParameterMap, TEXT("InputCubeAsArray"));
+		InputBlockCullFlagStructBuffer.Bind(Initializer.ParameterMap, TEXT("CullFlags"));
 		DefaultSampler.Bind(Initializer.ParameterMap, TEXT("DefaultSampler"));
 		OutputColorTexture.Bind(Initializer.ParameterMap, TEXT("OutputColorTexture"));
 		Offset.Bind(Initializer.ParameterMap, TEXT("Offset"));
+		BlocksPerFaceAcross.Bind(Initializer.ParameterMap, TEXT("BlocksPerFaceAcross"));
 		CubemapCameraPositionMetres.Bind(Initializer.ParameterMap, TEXT("CubemapCameraPositionMetres"));
 	}
 	 
@@ -70,6 +74,7 @@ public:
 		FRHICommandList& RHICmdList,
 		FTextureRHIRef InputCubeMapTextureRef,
 		FUnorderedAccessViewRHIRef InputCubeMapTextureUAVRef,
+		FShaderResourceViewRHIRef InputBlockCullFlagSRVRef,
 		FTexture2DRHIRef OutputColorTextureRef,
 		FUnorderedAccessViewRHIRef OutputColorTextureUAVRef)
 	{
@@ -78,20 +83,26 @@ public:
 		{
 			RWInputCubeAsArray.SetTexture(RHICmdList, ShaderRHI, InputCubeMapTextureRef, InputCubeMapTextureUAVRef);
 			check(RWInputCubeAsArray.IsUAVBound());
+			SetSRVParameter(RHICmdList, ShaderRHI, InputBlockCullFlagStructBuffer, InputBlockCullFlagSRVRef);
 		}
 		else
 		{
 			SetTextureParameter(RHICmdList, ShaderRHI, InputCubeMap, DefaultSampler, TStaticSamplerState<SF_Bilinear>::GetRHI(), InputCubeMapTextureRef);
 		}
 		OutputColorTexture.SetTexture(RHICmdList, ShaderRHI, OutputColorTextureRef, OutputColorTextureUAVRef);
+
 	}
+
 	void SetParameters(
-		FRHICommandList& RHICmdList,const FIntPoint& InOffset,
-		const FVector& InCubemapCameraPositionMetres)
+		FRHICommandList& RHICmdList,
+		const FIntPoint& InOffset,
+		const FVector& InCubemapCameraPositionMetres,
+		uint32 InBlocksPerFaceAcross)
 	{
 		FComputeShaderRHIParamRef ShaderRHI = GetComputeShader();
 		SetShaderValue(RHICmdList, ShaderRHI, Offset, InOffset);
 		SetShaderValue(RHICmdList, ShaderRHI, CubemapCameraPositionMetres, InCubemapCameraPositionMetres);
+		SetShaderValue(RHICmdList, ShaderRHI, BlocksPerFaceAcross, InBlocksPerFaceAcross);
 	}
 
 	void UnsetParameters(FRHICommandList& RHICmdList)
@@ -106,9 +117,11 @@ public:
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 		Ar << InputCubeMap;
 		Ar << RWInputCubeAsArray;
+		Ar << InputBlockCullFlagStructBuffer;
 		Ar << DefaultSampler;
 		Ar << OutputColorTexture;
 		Ar << Offset;
+		Ar << BlocksPerFaceAcross;
 		Ar << CubemapCameraPositionMetres;
 		return bShaderHasOutdatedParameters;
 	}
@@ -121,10 +134,12 @@ public:
 private:
 	FShaderResourceParameter InputCubeMap;
 	FRWShaderParameter RWInputCubeAsArray;
+	FShaderResourceParameter InputBlockCullFlagStructBuffer;
 	FShaderResourceParameter DefaultSampler;
 	FRWShaderParameter OutputColorTexture; 
 	FShaderParameter CubemapCameraPositionMetres;
 	FShaderParameter Offset; 
+	FShaderParameter BlocksPerFaceAcross;
 };
 
 IMPLEMENT_SHADER_TYPE(, FProjectCubemapCS<EProjectCubemapVariant::EncodeCameraPosition>, TEXT("/Plugin/RemotePlay/Private/ProjectCubemap.usf"), TEXT("EncodeCameraPositionCS"), SF_Compute)
@@ -202,7 +217,7 @@ void FEncodePipelineMonoscopic::CullHiddenCubeSegments(FSceneInterface* InScene,
 	);
 }
 
-void FEncodePipelineMonoscopic::PrepareFrame(FSceneInterface* InScene, UTexture* InSourceTexture, FTransform& CameraTransform)
+void FEncodePipelineMonoscopic::PrepareFrame(FSceneInterface* InScene, UTexture* InSourceTexture, FTransform& CameraTransform, const TArray<bool>& BlockIntersectionFlags)
 {
 	if (!InScene || !InSourceTexture)
 	{
@@ -214,10 +229,10 @@ void FEncodePipelineMonoscopic::PrepareFrame(FSceneInterface* InScene, UTexture*
 	auto SourceTarget = CastChecked<UTextureRenderTargetCube>(InSourceTexture);
 	FTextureRenderTargetResource* TargetResource = SourceTarget->GameThread_GetRenderTargetResource();
 	ENQUEUE_RENDER_COMMAND(RemotePlayPrepareFrame)(
-		[this, CameraTransform, TargetResource, FeatureLevel](FRHICommandListImmediate& RHICmdList)
+		[this, CameraTransform, BlockIntersectionFlags, TargetResource, FeatureLevel](FRHICommandListImmediate& RHICmdList)
 		{
 			SCOPED_DRAW_EVENT(RHICmdList, RemotePlayEncodePipelineMonoscopicPrepare);
-			PrepareFrame_RenderThread(RHICmdList, TargetResource, FeatureLevel, CameraTransform.GetTranslation());
+			PrepareFrame_RenderThread(RHICmdList, TargetResource, FeatureLevel, CameraTransform.GetTranslation(), BlockIntersectionFlags);
 		}
 	);
 }
@@ -229,6 +244,7 @@ void FEncodePipelineMonoscopic::EncodeFrame(FSceneInterface* InScene, UTexture* 
 	{
 		return;
 	}
+	// only proceed if network is ready to stream.
 	const ERHIFeatureLevel::Type FeatureLevel = InScene->GetFeatureLevel();
 
 	auto SourceTarget = CastChecked<UTextureRenderTargetCube>(InSourceTexture);
@@ -420,25 +436,14 @@ void FEncodePipelineMonoscopic::CullHiddenCubeSegments_RenderThread(FRHICommandL
 {
 	// Aidan: Currently not going to do this on GPU so this function is unused
 	// We will do this on cpu on game thread instead because we can share the output with the capture component to cull faces from rendering.
-	FLookAtMatrix ViewMatrix = FLookAtMatrix(FVector::ZeroVector, CameraInfo.Orientation.GetForwardVector(), CameraInfo.Orientation.GetUpVector());
-
-	float FOV = FMath::DegreesToRadians(CameraInfo.FOV);
-	FMatrix ProjectionMatrix;
-	if (static_cast<int32>(ERHIZBuffer::IsInverted) == 1)
-	{
-		ProjectionMatrix = FReversedZPerspectiveMatrix(FOV, (float)CameraInfo.Width, (float)CameraInfo.Height, GNearClippingPlane, GNearClippingPlane);
-	}
-	else
-	{
-		ProjectionMatrix = FPerspectiveMatrix(FOV, (float)CameraInfo.Width, (float)CameraInfo.Height, GNearClippingPlane, GNearClippingPlane);
-	}
 }
 
 void FEncodePipelineMonoscopic::PrepareFrame_RenderThread(
 	FRHICommandListImmediate& RHICmdList,
 	FTextureRenderTargetResource* TargetResource,
 	ERHIFeatureLevel::Type FeatureLevel,
-	FVector CameraPosition)
+	FVector CameraPosition,
+	TArray<bool> BlockIntersectionFlags)
 {
 	if (!UnorderedAccessViewRHIRef || !UnorderedAccessViewRHIRef->IsValid() || TargetResource->TextureRHI != SourceCubemapRHI)
 	{
@@ -448,7 +453,7 @@ void FEncodePipelineMonoscopic::PrepareFrame_RenderThread(
 	{
 		if (Params.bDecomposeCube)
 		{
-			DispatchDecomposeCubemapShader(RHICmdList, TargetResource->TextureRHI, UnorderedAccessViewRHIRef, FeatureLevel, CameraPosition);
+			DispatchDecomposeCubemapShader(RHICmdList, TargetResource->TextureRHI, UnorderedAccessViewRHIRef, FeatureLevel, CameraPosition, BlockIntersectionFlags);
 		}
 	}
 }
@@ -495,7 +500,7 @@ void FEncodePipelineMonoscopic::DispatchProjectCubemapShader(FRHICommandListImme
 
 void FEncodePipelineMonoscopic::DispatchDecomposeCubemapShader(FRHICommandListImmediate& RHICmdList, FTextureRHIRef TextureRHI
 	, FUnorderedAccessViewRHIRef TextureUAVRHI, ERHIFeatureLevel::Type FeatureLevel
-	,FVector CameraPosition)
+	,FVector CameraPosition, const TArray<bool>& BlockIntersectionFlags)
 {
 	FVector  t = CameraPosition *0.01f;
 	avs::vec3 pos_m ={t.X,t.Y,t.Z};
@@ -506,6 +511,28 @@ void FEncodePipelineMonoscopic::DispatchDecomposeCubemapShader(FRHICommandListIm
 	typedef FProjectCubemapCS<EProjectCubemapVariant::DecomposeDepth> DepthShaderType;
 	typedef FProjectCubemapCS<EProjectCubemapVariant::EncodeCameraPosition> EncodeCameraPositionShaderType;
 	
+	TResourceArray<FShaderFlag> BlockCullFlags;
+
+	for (auto& Flag : BlockIntersectionFlags)
+	{
+		BlockCullFlags.Add({ Flag, 0, 0, 0 });
+	}
+
+	FRHIResourceCreateInfo CreateInfo;
+	CreateInfo.ResourceArray = &BlockCullFlags;
+
+	FStructuredBufferRHIRef BlockCullFlagSB = RHICreateStructuredBuffer(
+		sizeof(FShaderFlag),
+		BlockCullFlags.Num() * sizeof(FShaderFlag),
+		BUF_ShaderResource,
+		CreateInfo
+	);
+
+	FShaderResourceViewRHIRef BlockCullFlagSRV = RHICreateShaderResourceView(BlockCullFlagSB);
+
+	// This is the number of segments each cube face is split into for culling
+	uint32 BlocksPerFaceAcross = (uint32)FMath::Sqrt(BlockCullFlags.Num() / 6);
+
 	int W = SourceCubemapRHI->GetSizeXYZ().X;
 	{
 		const uint32 NumThreadGroupsX = W / ShaderType::kThreadGroupSize;
@@ -514,8 +541,8 @@ void FEncodePipelineMonoscopic::DispatchDecomposeCubemapShader(FRHICommandListIm
 
 		TShaderMapRef<ShaderType> ComputeShader(GlobalShaderMap);
 		ComputeShader->SetInputsAndOutputs(RHICmdList, TextureRHI, TextureUAVRHI,
-			ColorSurfaceTexture.Texture, ColorSurfaceTexture.UAV);
-		ComputeShader->SetParameters(RHICmdList, FIntPoint(0, 0), CameraPositionMetres);
+			BlockCullFlagSRV, ColorSurfaceTexture.Texture, ColorSurfaceTexture.UAV);
+		ComputeShader->SetParameters(RHICmdList, FIntPoint(0, 0), CameraPositionMetres, BlocksPerFaceAcross);
 		SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*ComputeShader));
 		DispatchComputeShader(RHICmdList, *ComputeShader, NumThreadGroupsX, NumThreadGroupsY, NumThreadGroupsZ);
 		ComputeShader->UnsetParameters(RHICmdList);
@@ -527,13 +554,12 @@ void FEncodePipelineMonoscopic::DispatchDecomposeCubemapShader(FRHICommandListIm
 		const uint32 NumThreadGroupsZ = CubeFace_MAX;
 		TShaderMapRef<DepthShaderType> DepthShader(GlobalShaderMap);
 		DepthShader->SetInputsAndOutputs(RHICmdList, TextureRHI, TextureUAVRHI,
-			ColorSurfaceTexture.Texture, ColorSurfaceTexture.UAV);
-		DepthShader->SetParameters(RHICmdList, FIntPoint(0, W * 2), CameraPositionMetres);
+			BlockCullFlagSRV, ColorSurfaceTexture.Texture, ColorSurfaceTexture.UAV);
+		DepthShader->SetParameters(RHICmdList, FIntPoint(0, W * 2), CameraPositionMetres, BlocksPerFaceAcross);
 		SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*DepthShader));
 		DispatchComputeShader(RHICmdList, *DepthShader, NumThreadGroupsX, NumThreadGroupsY, NumThreadGroupsZ);
 		DepthShader->UnsetParameters(RHICmdList);
 	}
-
 
 	{
 		const uint32 NumThreadGroupsX = 4;
@@ -541,8 +567,8 @@ void FEncodePipelineMonoscopic::DispatchDecomposeCubemapShader(FRHICommandListIm
 		const uint32 NumThreadGroupsZ = 1;
 		TShaderMapRef<EncodeCameraPositionShaderType> EncodePosShader(GlobalShaderMap);
 		EncodePosShader->SetInputsAndOutputs(RHICmdList, TextureRHI, TextureUAVRHI,
-			ColorSurfaceTexture.Texture, ColorSurfaceTexture.UAV);
-		EncodePosShader->SetParameters(RHICmdList, FIntPoint(W*3-(32*4), W * 3-(3*8)), CameraPositionMetres);
+			BlockCullFlagSRV, ColorSurfaceTexture.Texture, ColorSurfaceTexture.UAV);
+		EncodePosShader->SetParameters(RHICmdList, FIntPoint(W*3-(32*4), W * 3-(3*8)), CameraPositionMetres, BlocksPerFaceAcross);
 		SetComputePipelineState(RHICmdList, GETSAFERHISHADER_COMPUTE(*EncodePosShader));
 		DispatchComputeShader(RHICmdList, *EncodePosShader, NumThreadGroupsX, NumThreadGroupsY, NumThreadGroupsZ);
 		EncodePosShader->UnsetParameters(RHICmdList);

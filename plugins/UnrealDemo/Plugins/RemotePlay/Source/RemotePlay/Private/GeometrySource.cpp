@@ -29,21 +29,21 @@
 
 //For progress bar while compressing textures.
 #include "ScopedSlowTask.h"
-
+ 
 #include "RemotePlayMonitor.h"
-
+ 
 #include <functional> //std::function
-
-#if 0
-#include <random>
-std::default_random_engine generator;
+  
+#if 0 
+#include <random> 
+std::default_random_engine generator; 
 std::uniform_int_distribution<int> distribution(1, 6);
 int dice_roll = distribution(generator);
 #endif
 #define LOG_MATERIAL_INTERFACE(materialInterface) UE_LOG(LogRemotePlay, Warning, TEXT("%s"), *("Decomposing <" + materialInterface->GetName() + ">: Error"));
 #define LOG_UNSUPPORTED_MATERIAL_EXPRESSION(materialInterface, name) UE_LOG(LogRemotePlay, Warning, TEXT("%s"), *("Decomposing <" + materialInterface->GetName() + ">: Unsupported expression with type name <" + name + ">"));
 #define LOG_UNSUPPORTED_MATERIAL_CHAIN_LENGTH(materialInterface, length) UE_LOG(LogRemotePlay, Warning, TEXT("%s"), *("Decomposing <" + materialInterface->GetName() + ">: Unsupported property chain length of <" + length + ">"));
-
+ 
 struct GeometrySource::Mesh
 {
 	avs::uid id;
@@ -76,13 +76,13 @@ GeometrySource::~GeometrySource()
 
 void GeometrySource::Initialise(ARemotePlayMonitor* monitor, UWorld* world)
 {
-	check(monitor);
+	check(monitor);  
 
 	Monitor = monitor;
 	if(Monitor->ResetCache)
 	{
 		//Clear all stored data, if the reset cache flag is set.
-		ClearData();
+		ClearData(); 
 	}
 	else
 	{
