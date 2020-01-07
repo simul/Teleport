@@ -23,31 +23,18 @@ FName GetLevelUniqueActorName(AActor* actor)
 	return *FPaths::Combine(actor->GetOutermost()->GetName(), actor->GetName());
 }
 
-//Remove duplicates, and 0s, from passed vector of UIDs..
-void UniqueUIDsOnly(std::vector<avs::uid>& cleanedUIDs)
-{
-	std::sort(cleanedUIDs.begin(), cleanedUIDs.end());
-	cleanedUIDs.erase(std::unique(cleanedUIDs.begin(), cleanedUIDs.end()), cleanedUIDs.end());
-	cleanedUIDs.erase(std::remove(cleanedUIDs.begin(), cleanedUIDs.end(), 0), cleanedUIDs.end());
-}
-
-FGeometryStreamingService::FGeometryStreamingService()
-{
-}
-
 FGeometryStreamingService::~FGeometryStreamingService()
 {
 	if(avsPipeline)	
 		avsPipeline->deconfigure();
 }
 
-void FGeometryStreamingService::Initialise(UWorld *World, GeometrySource *geomSource)
+void FGeometryStreamingService::Initialise(UWorld *World, GeometrySource* source)
 {
-	if(!geomSource)
-	{
-		return;
-	}
-	geometrySource = geomSource;
+	if(!source) return;
+	geometrySource = source;
+
+	requester.initialise(&geometrySource->GetStorage());
 
 	TArray<AActor*> staticMeshActors;
 	UGameplayStatics::GetAllActorsOfClass(World, AStaticMeshActor::StaticClass(), staticMeshActors);
@@ -62,7 +49,6 @@ void FGeometryStreamingService::Initialise(UWorld *World, GeometrySource *geomSo
 
 	Monitor = ARemotePlayMonitor::Instantiate(World);
 	geometrySource->Initialise(Monitor, World);
-	geometryEncoder.Initialise(Monitor);
 
 	//Decompose all relevant actors into streamable geometry.
 	for(auto actor : staticMeshActors)
@@ -104,7 +90,7 @@ void FGeometryStreamingService::StartStreaming(FRemotePlayContext *Context)
 	avsPipeline.Reset(new avs::Pipeline); 
 	avsGeometrySource.Reset(new avs::GeometrySource);
 	avsGeometryEncoder.Reset(new avs::GeometryEncoder);
-	avsGeometrySource->configure(&geometrySource->GetStorage(), this);
+	avsGeometrySource->configure(&geometrySource->GetStorage(), &requester);
 	avsGeometryEncoder->configure(&geometryEncoder);
 
 	avsPipeline->link({ avsGeometrySource.Get(), avsGeometryEncoder.Get(), RemotePlayContext->GeometryQueue.Get() });
@@ -121,14 +107,16 @@ void FGeometryStreamingService::StopStreaming()
 	avsPipeline.Reset();
 	RemotePlayContext = nullptr;
 
-	sentResources.clear();
+	requester.reset();
+
 	actorIDs.clear();
-	for (auto i : hiddenActors)
+	streamedActors.clear();
+
+	for(auto i : hiddenActors)
 	{
-		if (i.second)
+		if(i.second)
 			i.second->SetActorHiddenInGame(false);
 	}
-	streamedActors.clear();
 	hiddenActors.clear();
 }
  
@@ -138,22 +126,13 @@ void FGeometryStreamingService::Tick(float DeltaTime)
 	if (!avsPipeline)
 		return;
 
+	geometryEncoder.geometryBufferCutoffSize = Monitor->GeometryBufferCutoffSize;
+	requester.confirmationWaitTime = Monitor->ConfirmationWaitTime;
+
 	// We can now be confident that all streamable geometries have been initialized, so we will do internal setup.
 	// Each frame we manage a view of which streamable geometries should or shouldn't be rendered on our client.
 
-	//Increment time for unconfirmed resources, if they pass the max time then they are flagged to be sent again.
-	for(auto it = unconfirmedResourceTimes.begin(); it != unconfirmedResourceTimes.end(); it++)
-	{
-		it->second += DeltaTime;
-
-		if(it->second > Monitor->ConfirmationWaitTime)
-		{
-			UE_LOG(LogRemotePlay, Log, TEXT("Resource with UID %llu was not confirmed within %.2f seconds, and will be resent."), it->first, Monitor->ConfirmationWaitTime);
-
-			sentResources[it->first] = false;
-			it = unconfirmedResourceTimes.erase(it);
-		}
-	}
+	requester.tick(DeltaTime);
 
 	// For this client's POSITION and OTHER PROPERTIES,
 	// Use the Geometry Source to determine which Node uid's are relevant.
@@ -163,9 +142,11 @@ void FGeometryStreamingService::Tick(float DeltaTime)
 
 void FGeometryStreamingService::Reset()
 {
-	sentResources.clear();
-	streamedActors.clear();
+	requester.reset();
+
 	actorIDs.clear();
+	streamedActors.clear();
+	hiddenActors.clear();
 }
 
 void FGeometryStreamingService::HideActor(avs::uid actorID)
@@ -217,6 +198,8 @@ avs::uid FGeometryStreamingService::AddActor(AActor *newActor)
 	{
 		actorIDs[GetLevelUniqueActorName(newActor)] = actorID;
 		streamedActors[actorID] = newActor;
+
+		requester.startStreamingActor(actorID);
 	}
 
 	return actorID;
@@ -229,7 +212,8 @@ avs::uid FGeometryStreamingService::RemoveActor(AActor* oldActor)
 	avs::uid actorID = actorIDs[levelUniqueName];
 	actorIDs.erase(levelUniqueName);
 	streamedActors.erase(actorID);
-	unconfirmedResourceTimes.erase(actorID);
+
+	requester.stopStreamingActor(actorID);
 
 	return actorID;
 }
@@ -244,90 +228,4 @@ avs::uid FGeometryStreamingService::GetActorID(AActor* actor)
 bool FGeometryStreamingService::IsStreamingActor(AActor* actor)
 {
 	return actorIDs.find(GetLevelUniqueActorName(actor)) != actorIDs.end();
-}
-
-void FGeometryStreamingService::AddHandsToStream()
-{
-	const std::vector<avs::uid>& handIDs = geometrySource->GetStorage().getHandIDs();
-
-	if(handIDs.size() != 0)
-	{
-		actorIDs["RemotePlayHandActor1"] = handIDs[0];
-		actorIDs["RemotePlayHandActor2"] = handIDs[1];
-	
-	}
-}
-
-void FGeometryStreamingService::GetMeshNodeResources(avs::uid node_uid, std::vector<avs::MeshNodeResources>& outMeshResources)
-{
-	avs::DataNode thisNode;
-	geometrySource->GetStorage().getNode(node_uid, thisNode);
-	if(thisNode.data_uid == 0) return;
-
-	avs::MeshNodeResources meshNode;
-	meshNode.node_uid = node_uid;
-	meshNode.mesh_uid = thisNode.data_uid;
-
-	for(avs::uid material_uid : thisNode.materials)
-	{
-		avs::Material thisMaterial;
-		geometrySource->GetStorage().getMaterial(material_uid, thisMaterial);
-
-		avs::MaterialResources material;
-		material.material_uid = material_uid;
-
-		material.texture_uids =
-		{
-			thisMaterial.pbrMetallicRoughness.baseColorTexture.index,
-			thisMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index,
-			thisMaterial.normalTexture.index,
-			thisMaterial.occlusionTexture.index,
-			thisMaterial.emissiveTexture.index
-		};
-
-		UniqueUIDsOnly(material.texture_uids);
-
-		meshNode.materials.push_back(material);
-	}
-
-	for(avs::uid childNode_uid : thisNode.childrenUids)
-	{
-		GetMeshNodeResources(childNode_uid, outMeshResources);
-	}
-
-	outMeshResources.push_back(meshNode);
-}
-
-bool FGeometryStreamingService::HasResource(avs::uid resource_uid) const
-{
-	return sentResources.find(resource_uid) != sentResources.end() && sentResources.at(resource_uid) == true;
-}
-
-void FGeometryStreamingService::EncodedResource(avs::uid resource_uid)
-{
-	sentResources[resource_uid] = true;
-	unconfirmedResourceTimes[resource_uid] = 0;
-}
-
-void FGeometryStreamingService::RequestResource(avs::uid resource_uid)
-{
-	sentResources[resource_uid] = false;
-	unconfirmedResourceTimes.erase(resource_uid);
-}
-
-void FGeometryStreamingService::ConfirmResource(avs::uid resource_uid)
-{
-	unconfirmedResourceTimes.erase(resource_uid);
-	//Confirm again; incase something just elapsed the timer, but has yet to be sent.
-	sentResources[resource_uid] = true;
-}
-
-void FGeometryStreamingService::GetResourcesToStream(std::vector<avs::MeshNodeResources>& outMeshResources, std::vector<avs::LightNodeResources>& outLightResources)
-{
-	for(auto nodePair : actorIDs)
-	{
-		GetMeshNodeResources(nodePair.second, outMeshResources);
-	}
-
-	outLightResources = geometrySource->GetStorage().getLightNodes();
 }

@@ -1,13 +1,14 @@
 #pragma once
-#include <libavstream/geometry/mesh_interface.hpp>
+
+#include "libavstream/geometry/mesh_interface.hpp"
 
 class GeometryEncoder : public avs::GeometryEncoderBackendInterface
 {
 public:
+	int32_t geometryBufferCutoffSize;
+
 	GeometryEncoder();
 	~GeometryEncoder();
-
-	void Initialise(class ARemotePlayMonitor* Monitor);
 
 	// Inherited via GeometryEncoderBackendInterface
 	avs::Result encode(uint32_t timestamp, avs::GeometrySourceBackendInterface * target
@@ -36,8 +37,6 @@ protected:
 		memcpy(buffer.data() + pos, &data, sizeof(T));
 	}
 private:
-	class ARemotePlayMonitor* Monitor;
-
 	void putPayload(avs::GeometryPayloadType t);
 	static unsigned char GALU_code[];
 

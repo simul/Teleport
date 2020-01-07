@@ -2,12 +2,13 @@
 
 #pragma once
 
-#include "CoreMinimal.h"
-#include "GeometryEncoder.h"
-#include "GeometrySource.h"
-#include <libavstream/pipeline.hpp>
-
 #include <unordered_map>
+
+#include "GeometryEncoder.h"
+#include "GeometryRequester.h"
+#include "GeometrySource.h"
+
+#include "libavstream/pipeline.hpp"
 
 /*!
 	A Geometry Streaming Service instance manages the streaming of geometry to a particular connected client. It
@@ -17,27 +18,12 @@
 
 	It has an avs::Pipeline, which uses the source and encoder as backends to send data to the global Geometry Queue.
 */
-class FGeometryStreamingService : public avs::GeometryRequesterBackendInterface
+class FGeometryStreamingService
 {
 public:
-	FGeometryStreamingService();
 	virtual ~FGeometryStreamingService();
 
-	//avs::GeometryRequesterBackendInterface
-	virtual bool HasResource(avs::uid resource_uid) const override;
-
-	virtual void EncodedResource(avs::uid resource_uid) override;
-	virtual void RequestResource(avs::uid resource_uid) override;
-	virtual void ConfirmResource(avs::uid resource_uid) override;
-
-	virtual void GetResourcesToStream(std::vector<avs::MeshNodeResources>& outMeshResources, std::vector<avs::LightNodeResources>& outLightResources) override;
-
-	virtual avs::AxesStandard GetAxesStandard() const override
-	{
-		return RemotePlayContext->axesStandard;
-	}
-
-	void Initialise(UWorld *World, GeometrySource *geomSource);
+	void Initialise(UWorld *World, GeometrySource* source);
 	void StartStreaming(struct FRemotePlayContext *RemotePlayContext);
 	//Stop streaming to a client.
 	void StopStreaming();
@@ -63,11 +49,14 @@ public:
 	void ShowActor(avs::uid actorID);
 	void SetActorVisible(avs::uid actorID, bool isVisible);
 
-	//Adds the hand actors to the list of streamed actors.
-	void AddHandsToStream();
+	inline GeometryRequester& GetRequester()
+	{
+		return requester;
+	}
 private:
 	struct FRemotePlayContext* RemotePlayContext;
 	class ARemotePlayMonitor* Monitor;
+	GeometryRequester requester;
 
 	// The following MIGHT be moved later to a separate Pipeline class:
 	TUniquePtr<avs::Pipeline> avsPipeline;
@@ -77,12 +66,7 @@ private:
 	GeometrySource *geometrySource;
 	GeometryEncoder geometryEncoder;
 
-	std::unordered_map<avs::uid, bool> sentResources; //Tracks the resources sent to the user; <resource identifier, doesClientHave>.
-	std::unordered_map<avs::uid, float> unconfirmedResourceTimes; //Tracks time since an unconfirmed resource was sent; <resource identifier, time since sent>.
 	std::map<FName, avs::uid> actorIDs; //Actors that the client needs to draw, and should be sent to them; <Level Unique Name, Node ID of root mesh>.
 	std::unordered_map<avs::uid, AActor*> streamedActors; //Actors that should be streamed to the client.
 	std::unordered_map<avs::uid, AActor*> hiddenActors; //Actors that are currently hidden on the server.
-
-	//Recursively obtains the resources from the mesh node, and its child nodes.
-	void GetMeshNodeResources(avs::uid node_uid, std::vector<avs::MeshNodeResources>& outMeshResources);
 };

@@ -6,6 +6,7 @@
 #include "Rendering/StaticMeshVertexBuffer.h"
 #include "Rendering/PositionVertexBuffer.h"
 #include "StaticMeshResources.h"
+#include "Engine/MapBuildDataRegistry.h"
 
 //Basis Universal
 #include "basisu_comp.h"
@@ -707,8 +708,6 @@ void GeometrySource::PrepareMesh(Mesh* mesh)
 	}
 }
 
-#include "experimental/filesystem"
-#include <fstream>
 avs::uid GeometrySource::AddTexture(UTexture* texture)
 {
 	avs::uid textureID;

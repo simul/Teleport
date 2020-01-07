@@ -424,7 +424,7 @@ void URemotePlaySessionComponent::StartStreaming()
 		//Get resources the client will need to check it has.
 		std::vector<avs::MeshNodeResources> outMeshResources;
 		std::vector<avs::LightNodeResources> outLightResources;
-		GeometryStreamingService.GetResourcesToStream(outMeshResources, outLightResources);
+		GeometryStreamingService.GetRequester().getResourcesToStream(outMeshResources, outLightResources);
 
 		for(const avs::MeshNodeResources& meshResource : outMeshResources)
 		{
@@ -455,7 +455,7 @@ void URemotePlaySessionComponent::StartStreaming()
 		//If the client needs a resource it will tell us; we don't want to stream the data if the client already has it.
 		for(avs::uid resourceID : resourcesClientNeeds)
 		{
-			GeometryStreamingService.ConfirmResource(resourceID);
+			GeometryStreamingService.GetRequester().confirmResource(resourceID);
 		}
 	}
 	setupCommand.resourceCount = resourcesClientNeeds.size();
@@ -517,7 +517,7 @@ void URemotePlaySessionComponent::OnInnerSphereBeginOverlap(UPrimitiveComponent*
 		if(actor_uid != 0 && IsStreaming)
 		{
 			//Don't tell the client to show an actor it has yet to receive.
-			if(!GeometryStreamingService.HasResource(actor_uid))
+			if(!GeometryStreamingService.GetRequester().hasResource(actor_uid))
 			{
 				return;
 			}
@@ -583,9 +583,11 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 	}  
 	if(handshake.usingHands)
 	{   
-		GeometryStreamingService.AddHandsToStream();
+		GeometryStreamingService.GetRequester().addHandsToStream();
 	}
 	RemotePlayContext->axesStandard = handshake.axesStandard;
+	GeometryStreamingService.GetRequester().axesStandard = handshake.axesStandard;
+
 	URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
 	const int32 StreamingPort = ServerHost->address.port + 1;
 
@@ -652,7 +654,7 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 
 		for(avs::uid uid : resourceRequests)
 		{
-			GeometryStreamingService.RequestResource(uid);
+			GeometryStreamingService.GetRequester().requestResource(uid);
 		}
 		break;
 	}
@@ -806,7 +808,7 @@ void URemotePlaySessionComponent::RecvClientMessage(const ENetPacket* packet)
 
 			for(avs::uid uid : confirmedResources)
 			{
-				GeometryStreamingService.ConfirmResource(uid);
+				GeometryStreamingService.GetRequester().confirmResource(uid);
 			}
 
 			break;

@@ -1,13 +1,12 @@
 #pragma once
-#include <libavstream/geometry/mesh_interface.hpp>
+
 #include <map>
 #include <unordered_map>
-#include <CoreMinimal.h>
-#include <Runtime/Engine/Classes/Components/LightComponent.h>
-#include <Runtime/Engine/Classes/Engine/MapBuildDataRegistry.h>
 
-#include <GeometryStore.h>
-//#include "../../../../../../../SimulCasterServer/src/GeometryStore.h"
+#include "libavstream/geometry/mesh_interface.hpp"
+#include "GeometryStore.h"
+
+#include "Components/LightComponent.h"
 
 /*! The Geometry Source keeps all the geometry ready for streaming, and returns geometry
 	data in glTF-style when asked for.
@@ -103,7 +102,7 @@ protected:
 	//	textureSample : The expression we want to extract/decompose the data from.
 	//	outTexture : Texture related to the chain to output into.
 	//Returns the amount of expressions that were handled in the chain.
-	size_t DecomposeTextureSampleExpression(UMaterialInterface* materialInterface, UMaterialExpressionTextureSample* textureSample, avs::TextureAccessor& outTexture);
+	size_t DecomposeTextureSampleExpression(UMaterialInterface* materialInterface, class UMaterialExpressionTextureSample* textureSample, avs::TextureAccessor& outTexture);
 };
 
 struct ShadowMapData
