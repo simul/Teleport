@@ -160,7 +160,7 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 			//	FThreadStats::AddMessage(GET_STATFNAME(Stat), EStatOperation::Set, double(Value));
 			Bandwidth *=0.9f;
 			if (RemotePlayContext&&RemotePlayContext->NetworkPipeline.IsValid())
-				Bandwidth+=0.1f*RemotePlayContext->NetworkPipeline->GetBandWidthKPS();
+				Bandwidth+=0.1f*RemotePlayContext->NetworkPipeline->getBandWidthKPS();
 			FScopeBandwidth Context(BandwidthStatID, Bandwidth);
 		} 
 		if (PlayerPawn != PlayerController->GetPawn())
@@ -170,7 +170,7 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 		}
 		if (RemotePlayContext&&RemotePlayContext->NetworkPipeline.IsValid())
 		{
-			RemotePlayContext->NetworkPipeline->Process();
+			RemotePlayContext->NetworkPipeline->process();
 		}
 
 		static float timeSinceLastGeometryStream = 0;
@@ -240,10 +240,9 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	}
 	if (GEngine)
 	{
-	//	avs::Context::instance()->
 		if (RemotePlayContext&&RemotePlayContext->NetworkPipeline.IsValid())
 		{
-			auto *pipeline=RemotePlayContext->NetworkPipeline->GetAvsPipeline();
+			auto *pipeline=RemotePlayContext->NetworkPipeline->getAvsPipeline();
 			if (pipeline)
 			{
 				GEngine->AddOnScreenDebugMessage(135, 1.0f, FColor::White, FString::Printf(TEXT("Start Timestamp %d"), pipeline->GetStartTimestamp()));
@@ -262,7 +261,6 @@ void URemotePlaySessionComponent::StartSession(int32 ListenPort, int32 Discovery
 		GeometryStreamingService.Reset();
 	ENetAddress ListenAddress;
 	ListenAddress.host = ENET_HOST_ANY;
-	//enet_address_set_host(&ListenAddress, "192.168.3.6");
 	ListenAddress.port = ListenPort;
 	// ServerHost will live for the lifetime of the session.
 	ServerHost = enet_host_create(&ListenAddress, 1, static_cast<enet_uint8>(avs::RemotePlaySessionChannel::RPCH_NumChannels), 0, 0);
@@ -478,7 +476,8 @@ void URemotePlaySessionComponent::StopStreaming()
 	GeometryStreamingService.StopStreaming();
 	if (ClientPeer)
 	{
-		Client_SendCommand(TEXT("v 0 0 0"));
+		avs::ShutdownCommand shutdownCommand;
+		Client_SendCommand(shutdownCommand);
 	}
 	if (RemotePlayContext)
 	{
@@ -489,7 +488,7 @@ void URemotePlaySessionComponent::StopStreaming()
 		}
 		if (RemotePlayContext->NetworkPipeline.IsValid())
 		{
-			RemotePlayContext->NetworkPipeline->Release();
+			RemotePlayContext->NetworkPipeline->release();
 			RemotePlayContext->NetworkPipeline.Reset();
 		}
 		RemotePlayContext->ColorQueue.Reset();
@@ -605,7 +604,7 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 		}
 		 
 		RemotePlayContext->NetworkPipeline.Reset(new FNetworkPipeline);
-		RemotePlayContext->NetworkPipeline->Initialize(Monitor, NetworkParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get(), RemotePlayContext->GeometryQueue.Get());
+		RemotePlayContext->NetworkPipeline->initialise(Monitor, NetworkParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get(), RemotePlayContext->GeometryQueue.Get());
 	}
 	 
 	FCameraInfo& ClientCamInfo = CaptureComponent->GetClientCameraInfo();
@@ -845,24 +844,6 @@ void URemotePlaySessionComponent::RecvInput(const ENetPacket* Packet)
 	InputJoystick.Y = InputState.JoystickY;
 	TranslateButtons(InputState.ButtonsPressed, InputQueue.ButtonsPressed);
 	TranslateButtons(InputState.ButtonsReleased, InputQueue.ButtonsReleased);
-}
-
-inline bool URemotePlaySessionComponent::Client_SendCommand(const FString& Cmd) const
-{
-	check(ClientPeer);
-	// Convert the string to UTF8:
-	TStringConversion<FTCHARToUTF8_Convert> utf8((const TCHAR*)(*Cmd));
-	// first we send a payload type id. We here send the id that means "this is a text packet".
-	std::vector<uint8_t> packet_buffer;
-	avs::TextCommand textCommand;
-	size_t cmdSize = avs::GetCommandSize(textCommand.commandPayloadType);
-	packet_buffer.resize(cmdSize+utf8.Length()+1);
-	memcpy(packet_buffer.data() + cmdSize, utf8.Get(), utf8.Length()+1);// 1 extra char, should be zero!
-	check(packet_buffer[packet_buffer.size() - 1] == (uint8_t)0);
-	memcpy(packet_buffer.data(), &textCommand.commandPayloadType, cmdSize);
-	ENetPacket* Packet = enet_packet_create(packet_buffer.data(),packet_buffer.size(), ENET_PACKET_FLAG_RELIABLE);
-	check(Packet);
-	return enet_peer_send(ClientPeer, static_cast<enet_uint8>(avs::RemotePlaySessionChannel::RPCH_Control), Packet) == 0;
 }
 
 bool URemotePlaySessionComponent::Client_SendCommand(const avs::Command &avsCommand) const

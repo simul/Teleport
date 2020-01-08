@@ -4,8 +4,8 @@
 
 #include <unordered_map>
 
-#include "GeometryEncoder.h"
-#include "GeometryRequester.h"
+#include "SimulCasterServer/GeometryEncoder.h"
+#include "SimulCasterServer/GeometryRequester.h"
 #include "GeometrySource.h"
 
 #include "libavstream/pipeline.hpp"
@@ -49,14 +49,14 @@ public:
 	void ShowActor(avs::uid actorID);
 	void SetActorVisible(avs::uid actorID, bool isVisible);
 
-	inline GeometryRequester& GetRequester()
+	inline SCServer::GeometryRequester& GetRequester()
 	{
 		return requester;
 	}
 private:
 	struct FRemotePlayContext* RemotePlayContext;
 	class ARemotePlayMonitor* Monitor;
-	GeometryRequester requester;
+	SCServer::GeometryRequester requester;
 
 	// The following MIGHT be moved later to a separate Pipeline class:
 	TUniquePtr<avs::Pipeline> avsPipeline;
@@ -64,7 +64,7 @@ private:
 	TUniquePtr<avs::GeometryEncoder> avsGeometryEncoder;
 
 	GeometrySource *geometrySource;
-	GeometryEncoder geometryEncoder;
+	SCServer::GeometryEncoder geometryEncoder;
 
 	std::map<FName, avs::uid> actorIDs; //Actors that the client needs to draw, and should be sent to them; <Level Unique Name, Node ID of root mesh>.
 	std::unordered_map<avs::uid, AActor*> streamedActors; //Actors that should be streamed to the client.

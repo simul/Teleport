@@ -4,7 +4,7 @@
 #include <unordered_map>
 
 #include "libavstream/geometry/mesh_interface.hpp"
-#include "GeometryStore.h"
+#include "SimulCasterServer/GeometryStore.h"
 
 #include "Components/LightComponent.h"
 
@@ -41,7 +41,7 @@ public:
 	//Split-off so all texture compression can happen at once with a progress bar.
 	void CompressTextures();
 
-	inline GeometryStore& GetStorage()
+	inline SCServer::GeometryStore& GetStorage()
 	{
 		return storage;
 	}
@@ -51,7 +51,7 @@ protected:
 
 	class ARemotePlayMonitor* Monitor;
 
-	GeometryStore storage;
+	SCServer::GeometryStore storage;
 
 	std::map<avs::uid, std::vector<avs::vec3>> scaledPositionBuffers;
 	std::map<avs::uid, std::vector<FVector2D>> processedUVs;
