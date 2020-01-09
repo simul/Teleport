@@ -3,12 +3,16 @@
 #pragma once
 
 #include <unordered_map>
+#include <memory>
 
-#include "SimulCasterServer/GeometryEncoder.h"
-#include "SimulCasterServer/GeometryRequester.h"
+#include "SimulCasterServer/GeometryStreamingService.h"
+
 #include "GeometrySource.h"
 
-#include "libavstream/pipeline.hpp"
+namespace SCServer
+{
+	struct CasterContext;
+}
 
 /*!
 	A Geometry Streaming Service instance manages the streaming of geometry to a particular connected client. It
@@ -18,55 +22,31 @@
 
 	It has an avs::Pipeline, which uses the source and encoder as backends to send data to the global Geometry Queue.
 */
-class FGeometryStreamingService
+class FGeometryStreamingService : public SCServer::GeometryStreamingService
 {
 public:
-	virtual ~FGeometryStreamingService();
+	FGeometryStreamingService();
+	virtual ~FGeometryStreamingService() = default;
 
-	void Initialise(UWorld *World, GeometrySource* source);
-	void StartStreaming(struct FRemotePlayContext *RemotePlayContext);
-	//Stop streaming to a client.
-	void StopStreaming();
-	void Tick(float DeltaTime);
+	void initialise(GeometrySource* source);
 
-	//Reset GeometryStreamingService to default state.
-	void Reset();
+	void stopStreaming() override;
 
 	//Add actor to be streamed to the client.
 	//	newActor : Actor to be sent to the client.
 	//Returns uid of the actor the client is now responsible for, or 0 if the actor is not supported.
-	avs::uid AddActor(AActor *newActor);
+	avs::uid addActor(AActor *newActor);
 	//Remove actor from list of actors the client needs.
 	//	oldActor : Actor to be removed from the list.
 	//Returns uid of actor the client is no longer responsible for, or 0 if the actor was never being streamed.
-	avs::uid RemoveActor(AActor* oldActor);
+	avs::uid removeActor(AActor* oldActor);
 
-	avs::uid GetActorID(AActor* actor);
+	avs::uid getActorID(AActor* actor);
 
-	bool IsStreamingActor(AActor* actor);
-
-	void HideActor(avs::uid actorID);
-	void ShowActor(avs::uid actorID);
-	void SetActorVisible(avs::uid actorID, bool isVisible);
-
-	inline SCServer::GeometryRequester& GetRequester()
-	{
-		return requester;
-	}
+	bool isStreamingActor(AActor* actor);
 private:
-	struct FRemotePlayContext* RemotePlayContext;
-	class ARemotePlayMonitor* Monitor;
-	SCServer::GeometryRequester requester;
+	GeometrySource* geometrySource;
 
-	// The following MIGHT be moved later to a separate Pipeline class:
-	TUniquePtr<avs::Pipeline> avsPipeline;
-	TUniquePtr<avs::GeometrySource> avsGeometrySource;
-	TUniquePtr<avs::GeometryEncoder> avsGeometryEncoder;
-
-	GeometrySource *geometrySource;
-	SCServer::GeometryEncoder geometryEncoder;
-
-	std::map<FName, avs::uid> actorIDs; //Actors that the client needs to draw, and should be sent to them; <Level Unique Name, Node ID of root mesh>.
-	std::unordered_map<avs::uid, AActor*> streamedActors; //Actors that should be streamed to the client.
-	std::unordered_map<avs::uid, AActor*> hiddenActors; //Actors that are currently hidden on the server.
+	virtual void showActor_Internal(void* actorPtr) override;
+	virtual void hideActor_Internal(void* actorPtr) override;
 };

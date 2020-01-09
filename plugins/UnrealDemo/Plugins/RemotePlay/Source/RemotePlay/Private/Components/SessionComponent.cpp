@@ -7,6 +7,7 @@
 #include "RemotePlayModule.h"
 #include "RemotePlaySettings.h"
 #include "RemotePlayMonitor.h"
+#include "UnrealCasterContext.h"
 
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
@@ -129,7 +130,7 @@ void URemotePlaySessionComponent::BeginPlay()
 		StartSession(AutoListenPort, AutoDiscoveryPort);
 	}
 
-	GeometryStreamingService.Initialise(GetWorld(), IRemotePlay::Get().GetGeometrySource());
+	GeometryStreamingService.initialise(IRemotePlay::Get().GetGeometrySource());
 }
 
 void URemotePlaySessionComponent::EndPlay(const EEndPlayReason::Type Reason)
@@ -140,10 +141,7 @@ void URemotePlaySessionComponent::EndPlay(const EEndPlayReason::Type Reason)
 
 void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
-	if (!ServerHost || !PlayerController.IsValid())
-	{
-		return;
-	}
+	if(!ServerHost || !PlayerController.IsValid()) return;
 
 	if(PlayerPawn.IsValid() && Monitor->StreamGeometry)
 	{
@@ -151,28 +149,31 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 		DetectionSphereOuter->SetSphereRadius(Monitor->DetectionSphereRadius + Monitor->DetectionSphereBufferDistance);
 	}
 	 
-	if (ClientPeer)
+	if(ClientPeer)
 	{
-		if (BandwidthStatID.IsValidStat())
-		{ 
+		if(BandwidthStatID.IsValidStat())
+		{
 			//SET_FLOAT_STAT(StatID, 50.0f);
 			//if (FThreadStats::IsCollectingData() )
 			//	FThreadStats::AddMessage(GET_STATFNAME(Stat), EStatOperation::Set, double(Value));
-			Bandwidth *=0.9f;
-			if (RemotePlayContext&&RemotePlayContext->NetworkPipeline.IsValid())
-				Bandwidth+=0.1f*RemotePlayContext->NetworkPipeline->getBandWidthKPS();
+			Bandwidth *= 0.9f;
+			if(UnrealCasterContext && UnrealCasterContext->NetworkPipeline)
+				Bandwidth += 0.1f * UnrealCasterContext->NetworkPipeline->getBandWidthKPS();
 			FScopeBandwidth Context(BandwidthStatID, Bandwidth);
-		} 
-		if (PlayerPawn != PlayerController->GetPawn())
+		}
+		if(PlayerPawn != PlayerController->GetPawn())
 		{
 			if(PlayerController->GetPawn())
 				SwitchPlayerPawn(PlayerController->GetPawn());
 		}
-		if (RemotePlayContext&&RemotePlayContext->NetworkPipeline.IsValid())
+		if(UnrealCasterContext && UnrealCasterContext->NetworkPipeline)
 		{
-			RemotePlayContext->NetworkPipeline->process();
+			UnrealCasterContext->NetworkPipeline->process();
 		}
 
+#if 0
+		clientMessaging.tick(DeltaTime);
+#else
 		static float timeSinceLastGeometryStream = 0;
 		timeSinceLastGeometryStream += DeltaTime;
 
@@ -181,7 +182,7 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 		//Only tick the geometry streaming service a set amount of times per second.
 		if(timeSinceLastGeometryStream >= TIME_BETWEEN_GEOMETRY_TICKS)
 		{
-			GeometryStreamingService.Tick(TIME_BETWEEN_GEOMETRY_TICKS);
+			GeometryStreamingService.tick(TIME_BETWEEN_GEOMETRY_TICKS);
 
 			//Tell the client to change the visibility of actors that have changed whether they are within streamable bounds.
 			if(!ActorsEnteredBounds.empty() || !ActorsLeftBounds.empty())
@@ -206,6 +207,7 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 
 			timeSinceLastGeometryStream -= TIME_BETWEEN_GEOMETRY_TICKS;
 		}
+#endif
 	}
 	else
 	{
@@ -240,9 +242,9 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	}
 	if (GEngine)
 	{
-		if (RemotePlayContext&&RemotePlayContext->NetworkPipeline.IsValid())
+		if (UnrealCasterContext&&UnrealCasterContext->NetworkPipeline)
 		{
-			auto *pipeline=RemotePlayContext->NetworkPipeline->getAvsPipeline();
+			auto *pipeline=UnrealCasterContext->NetworkPipeline->getAvsPipeline();
 			if (pipeline)
 			{
 				GEngine->AddOnScreenDebugMessage(135, 1.0f, FColor::White, FString::Printf(TEXT("Start Timestamp %d"), pipeline->GetStartTimestamp()));
@@ -255,10 +257,9 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 
 void URemotePlaySessionComponent::StartSession(int32 ListenPort, int32 DiscoveryPort)
 {
-	if (!PlayerController.IsValid() || !PlayerController->IsLocalController())
-		return;
-	if(Monitor->ResetCache)
-		GeometryStreamingService.Reset();
+	if (!PlayerController.IsValid() || !PlayerController->IsLocalController()) return;
+	if(Monitor->ResetCache) GeometryStreamingService.reset();
+
 	ENetAddress ListenAddress;
 	ListenAddress.host = ENET_HOST_ANY;
 	ListenAddress.port = ListenPort;
@@ -366,10 +367,10 @@ void URemotePlaySessionComponent::StartStreaming()
 	if (!CaptureComponent)
 		return;
 	
-	delete RemotePlayContext;
-	RemotePlayContext = new FRemotePlayContext;
-	RemotePlayContext->ColorQueue.Reset(new avs::Queue);
-	RemotePlayContext->ColorQueue->configure(16);
+	delete UnrealCasterContext;
+	UnrealCasterContext = new FUnrealCasterContext;
+	UnrealCasterContext->ColorQueue.reset(new avs::Queue);
+	UnrealCasterContext->ColorQueue->configure(16);
 
 #if 0
 
@@ -377,17 +378,17 @@ void URemotePlaySessionComponent::StartStreaming()
 	// So we're encoding depth as alpha: no need for a separate source.
 	if (CaptureComponent->CaptureSource == ESceneCaptureSource::SCS_SceneColorSceneDepth)
 	{
-		RemotePlayContext->bCaptureDepth = true;
-		RemotePlayContext->DepthQueue.Reset(new avs::Queue); 
-		RemotePlayContext->DepthQueue->configure(16); 
+		UnrealCasterContext->bCaptureDepth = true;
+		UnrealCasterContext->DepthQueue.Reset(new avs::Queue); 
+		UnrealCasterContext->DepthQueue->configure(16); 
 	}
 	else
 #endif
 	{
-		RemotePlayContext->bCaptureDepth = false;
+		UnrealCasterContext->isCapturingDepth = false;
 	}
-	RemotePlayContext->GeometryQueue.Reset(new avs::Queue);
-	RemotePlayContext->GeometryQueue->configure(16);
+	UnrealCasterContext->GeometryQueue.reset(new avs::Queue);
+	UnrealCasterContext->GeometryQueue->configure(16);
 
 	const auto& EncodeParams = CaptureComponent->GetEncodeParams();
 	const int32 StreamingPort = ServerHost->address.port + 1;
@@ -416,13 +417,13 @@ void URemotePlaySessionComponent::StartStreaming()
 		DetectionSphereInner->GetOverlappingActors(actorsOverlappingOnStart);
 		for(AActor* actor : actorsOverlappingOnStart)
 		{
-			GeometryStreamingService.AddActor(actor);
+			GeometryStreamingService.addActor(actor);
 		}
 
 		//Get resources the client will need to check it has.
 		std::vector<avs::MeshNodeResources> outMeshResources;
 		std::vector<avs::LightNodeResources> outLightResources;
-		GeometryStreamingService.GetRequester().getResourcesToStream(outMeshResources, outLightResources);
+		GeometryStreamingService.getResourcesToStream(outMeshResources, outLightResources);
 
 		for(const avs::MeshNodeResources& meshResource : outMeshResources)
 		{
@@ -453,7 +454,7 @@ void URemotePlaySessionComponent::StartStreaming()
 		//If the client needs a resource it will tell us; we don't want to stream the data if the client already has it.
 		for(avs::uid resourceID : resourcesClientNeeds)
 		{
-			GeometryStreamingService.GetRequester().confirmResource(resourceID);
+			GeometryStreamingService.confirmResource(resourceID);
 		}
 	}
 	setupCommand.resourceCount = resourcesClientNeeds.size();
@@ -473,27 +474,27 @@ void URemotePlaySessionComponent::ReleasePlayerPawn()
 
 void URemotePlaySessionComponent::StopStreaming()
 {
-	GeometryStreamingService.StopStreaming();
+	GeometryStreamingService.stopStreaming();
 	if (ClientPeer)
 	{
 		avs::ShutdownCommand shutdownCommand;
 		Client_SendCommand(shutdownCommand);
 	}
-	if (RemotePlayContext)
+	if (UnrealCasterContext)
 	{
-		if (RemotePlayContext->EncodePipeline.IsValid())
+		if (UnrealCasterContext->EncodePipeline)
 		{
-			RemotePlayContext->EncodePipeline->Release();
-			RemotePlayContext->EncodePipeline.Reset();
+			UnrealCasterContext->EncodePipeline->Release();
+			UnrealCasterContext->EncodePipeline.reset();
 		}
-		if (RemotePlayContext->NetworkPipeline.IsValid())
+		if (UnrealCasterContext->NetworkPipeline)
 		{
-			RemotePlayContext->NetworkPipeline->release();
-			RemotePlayContext->NetworkPipeline.Reset();
+			UnrealCasterContext->NetworkPipeline->release();
+			UnrealCasterContext->NetworkPipeline.reset();
 		}
-		RemotePlayContext->ColorQueue.Reset();
-		RemotePlayContext->DepthQueue.Reset();
-		RemotePlayContext->GeometryQueue.Reset();
+		UnrealCasterContext->ColorQueue.reset();
+		UnrealCasterContext->DepthQueue.reset();
+		UnrealCasterContext->GeometryQueue.reset();
 	}
 	if (PlayerPawn.IsValid())
 	{
@@ -503,8 +504,8 @@ void URemotePlaySessionComponent::StopStreaming()
 			CaptureComponent->StopStreaming();
 		}
 	}
-	delete RemotePlayContext;
-	RemotePlayContext = nullptr;
+	delete UnrealCasterContext;
+	UnrealCasterContext = nullptr;
 	IsStreaming = false;
 }
 
@@ -512,11 +513,11 @@ void URemotePlaySessionComponent::OnInnerSphereBeginOverlap(UPrimitiveComponent*
 {
 	if(IsStreaming)
 	{
-		avs::uid actor_uid = GeometryStreamingService.AddActor(OtherActor);
+		avs::uid actor_uid = GeometryStreamingService.addActor(OtherActor);
 		if(actor_uid != 0 && IsStreaming)
 		{
 			//Don't tell the client to show an actor it has yet to receive.
-			if(!GeometryStreamingService.GetRequester().hasResource(actor_uid))
+			if(!GeometryStreamingService.hasResource(actor_uid))
 			{
 				return;
 			}
@@ -528,7 +529,7 @@ void URemotePlaySessionComponent::OnInnerSphereBeginOverlap(UPrimitiveComponent*
 		}
 		else
 		{
-			UE_LOG(LogRemotePlay, Warning, TEXT("Actor \"%s\" overlapped with \"%s\", but the actor is not supported! Only use supported component types, and check collision settings!"), *OverlappedComponent->GetName(), *OtherActor->GetName())
+			UE_LOG(LogRemotePlay, Warning, TEXT("Actor \"%s\" overlapped with \"%s\", but the actor is not supported! Only use supported component types, and check collision Settings!"), *OverlappedComponent->GetName(), *OtherActor->GetName())
 		}
 	}
 }
@@ -537,7 +538,7 @@ void URemotePlaySessionComponent::OnOuterSphereEndOverlap(UPrimitiveComponent * 
 {
 	if(IsStreaming)
 	{
-		avs::uid actor_uid = GeometryStreamingService.RemoveActor(OtherActor);
+		avs::uid actor_uid = GeometryStreamingService.removeActor(OtherActor);
 		if(actor_uid != 0)
 		{
 			ActorsLeftBounds.push_back(actor_uid);
@@ -582,15 +583,15 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 	}  
 	if(handshake.usingHands)
 	{   
-		GeometryStreamingService.GetRequester().addHandsToStream();
+		GeometryStreamingService.addHandsToStream();
 	}
-	RemotePlayContext->axesStandard = handshake.axesStandard;
-	GeometryStreamingService.GetRequester().axesStandard = handshake.axesStandard;
+	UnrealCasterContext->axesStandard = handshake.axesStandard;
+	GeometryStreamingService.axesStandard = handshake.axesStandard;
 
 	URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
 	const int32 StreamingPort = ServerHost->address.port + 1;
 
-	if(!RemotePlayContext->NetworkPipeline.IsValid())
+	if(!UnrealCasterContext->NetworkPipeline)
 	{ 
 		FRemotePlayNetworkParameters NetworkParams; 
 		NetworkParams.RemoteIP = Client_GetIPAddress(); 
@@ -603,8 +604,9 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 			NetworkParams.RequiredLatencyMs=Monitor->RequiredLatencyMs;
 		}
 		 
-		RemotePlayContext->NetworkPipeline.Reset(new FNetworkPipeline);
-		RemotePlayContext->NetworkPipeline->initialise(Monitor, NetworkParams, RemotePlayContext->ColorQueue.Get(), RemotePlayContext->DepthQueue.Get(), RemotePlayContext->GeometryQueue.Get());
+		UnrealCasterContext->NetworkPipeline.reset(new FNetworkPipeline);
+		FNetworkPipeline* unrealNetworkPipeline = static_cast<FNetworkPipeline*>(UnrealCasterContext->NetworkPipeline.get());
+		unrealNetworkPipeline->initialise(Monitor, NetworkParams, UnrealCasterContext->ColorQueue.get(), UnrealCasterContext->DepthQueue.get(), UnrealCasterContext->GeometryQueue.get());
 	}
 	 
 	FCameraInfo& ClientCamInfo = CaptureComponent->GetClientCameraInfo();
@@ -613,11 +615,11 @@ void URemotePlaySessionComponent::RecvHandshake(const ENetPacket* Packet)
 	ClientCamInfo.FOV = handshake.FOV;
 	ClientCamInfo.isVR = handshake.isVR;
 
-	CaptureComponent->StartStreaming(RemotePlayContext);
+	CaptureComponent->StartStreaming(UnrealCasterContext);
 
 	if (Monitor&&Monitor->StreamGeometry)
 	{
-		GeometryStreamingService.StartStreaming(RemotePlayContext);
+		GeometryStreamingService.startStreaming(UnrealCasterContext);
 	}
 
 	avs::AcknowledgeHandshakeCommand ack;
@@ -653,7 +655,7 @@ void URemotePlaySessionComponent::DispatchEvent(const ENetEvent& Event)
 
 		for(avs::uid uid : resourceRequests)
 		{
-			GeometryStreamingService.GetRequester().requestResource(uid);
+			GeometryStreamingService.requestResource(uid);
 		}
 		break;
 	}
@@ -691,7 +693,7 @@ void URemotePlaySessionComponent::RecvDisplayInfo(const ENetPacket* Packet)
 		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Received malformed display info packet of length: %d"), Packet->dataLength);
 		return;
 	}
-	if (!RemotePlayContext)
+	if (!UnrealCasterContext)
 		return;
 
 	avs::DisplayInfo displayInfo;
@@ -715,17 +717,17 @@ void URemotePlaySessionComponent::RecvHeadPose(const ENetPacket* Packet)
 		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Received malformed head pose packet of length: %d"), Packet->dataLength);
 		return;
 	}
-	if (!RemotePlayContext)
+	if (!UnrealCasterContext)
 		return;
-	if (RemotePlayContext->axesStandard == avs::AxesStandard::NotInitialized)
+	if (UnrealCasterContext->axesStandard == avs::AxesStandard::NotInitialized)
 		return;
 	HeadPose headPose;
 	FPlatformMemory::Memcpy(&headPose, Packet->data, Packet->dataLength);
 
 	// Here we set the angle of the player pawn.
 	// Convert quaternion from Simulcaster coordinate system (X right, Y forward, Z up) to UE4 coordinate system (left-handed, X left, Y forward, Z up).
-	avs::ConvertRotation(RemotePlayContext->axesStandard,avs::AxesStandard::UnrealStyle, headPose.OrientationQuat);
-	avs::ConvertPosition(RemotePlayContext->axesStandard, avs::AxesStandard::UnrealStyle, headPose.Position);
+	avs::ConvertRotation(UnrealCasterContext->axesStandard,avs::AxesStandard::UnrealStyle, headPose.OrientationQuat);
+	avs::ConvertPosition(UnrealCasterContext->axesStandard, avs::AxesStandard::UnrealStyle, headPose.Position);
 	FVector NewCameraPos(headPose.Position.x, headPose.Position.y, headPose.Position.z);
 	// back to centimetres...
 	NewCameraPos *= 100.0f;
@@ -787,12 +789,12 @@ void URemotePlaySessionComponent::RecvClientMessage(const ENetPacket* packet)
 
 			for(avs::uid actor_uid : drawn)
 			{
-				GeometryStreamingService.HideActor(actor_uid);
+				GeometryStreamingService.hideActor(actor_uid);
 			}
 
 			for(avs::uid actor_uid : toRelease)
 			{
-				GeometryStreamingService.ShowActor(actor_uid);
+				GeometryStreamingService.showActor(actor_uid);
 			}
 		}
 		case avs::ClientMessagePayloadType::ReceivedResources:
@@ -807,7 +809,7 @@ void URemotePlaySessionComponent::RecvClientMessage(const ENetPacket* packet)
 
 			for(avs::uid uid : confirmedResources)
 			{
-				GeometryStreamingService.GetRequester().confirmResource(uid);
+				GeometryStreamingService.confirmResource(uid);
 			}
 
 			break;

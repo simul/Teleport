@@ -15,7 +15,7 @@ public:
 
 
 	/* Begin IEncodePipeline interface */
-	void Initialize(const FRemotePlayEncodeParameters& InParams, struct FRemotePlayContext *context, ARemotePlayMonitor* InMonitor, avs::Queue* InColorQueue, avs::Queue* InDepthQueue) override;
+	void Initialize(const FRemotePlayEncodeParameters& InParams, struct SCServer::CasterContext* context, ARemotePlayMonitor* InMonitor, avs::Queue* InColorQueue, avs::Queue* InDepthQueue) override;
 	void Release() override;
 	void CullHiddenCubeSegments(FSceneInterface* InScene, FCameraInfo& CameraInfo, int32 FaceSize, uint32 Divisor) override;
 	void PrepareFrame(FSceneInterface* InScene, UTexture* InSourceTexture, FTransform& CameraTransform, const TArray<bool>& BlockIntersectionFlags) override;
@@ -44,7 +44,7 @@ private:
 		uint32 pad0, pad1, pad2 = 0;
 	};
 
-	struct FRemotePlayContext* RemotePlayContext;
+	struct SCServer::CasterContext* CasterContext;
 
 	FRemotePlayEncodeParameters Params;
 	FSurfaceTexture ColorSurfaceTexture;

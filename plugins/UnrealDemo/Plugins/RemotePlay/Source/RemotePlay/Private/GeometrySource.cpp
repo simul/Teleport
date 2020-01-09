@@ -136,7 +136,7 @@ void GeometrySource::Initialise(ARemotePlayMonitor* monitor, UWorld* world)
 	//Add the hand actors, and their resources, to the geometry source.
 	if(handMeshComponent)
 	{
-		std::vector<avs::uid> oldHandIDs = storage.getHandIDs();
+		std::vector<std::pair<void*, avs::uid>> oldHands = storage.getHands();
 
 		avs::uid firstHandID = AddNode(handMeshComponent);
 
@@ -148,14 +148,15 @@ void GeometrySource::Initialise(ARemotePlayMonitor* monitor, UWorld* world)
 		firstHand.data_type = avs::NodeDataType::Hand;
 
 		//Whether we created a new node for the hand model, or it already existed; i.e whether the hand actor has changed.
-		bool isSameHandNode = oldHandIDs.size() != 0 && firstHandID == oldHandIDs[0];
+		bool isSameHandNode = oldHands.size() != 0 && firstHandID == oldHands[0].second;
 
 		//Set the ID of the second hand, and set it to be the same as the first hand.
-		avs::uid secondHandID = isSameHandNode ? oldHandIDs[1] : avs::GenerateUid();
+		avs::uid secondHandID = isSameHandNode ? oldHands[1].second : avs::GenerateUid();
 		//Copy first hand to make second.
 		storage.storeNode(secondHandID, avs::DataNode{firstHand});
 
-		storage.setHandIDs(firstHandID, secondHandID);
+		///GGMP: It might be dangerous to use nullptr, but I don't know what to assign the secondHand; as it needs to have a different pointer to the first hand.
+		storage.setHands({handMeshComponent, firstHandID}, {nullptr, secondHandID});
 	}
 }
 

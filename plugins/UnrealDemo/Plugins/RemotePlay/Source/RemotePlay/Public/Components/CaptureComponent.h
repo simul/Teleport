@@ -7,7 +7,7 @@
 #include "RemotePlayParameters.h"
 #include "Pipelines/EncodePipelineInterface.h"
 #include "Pipelines/NetworkPipeline.h"
-#include "RemotePlayContext.h"
+
 #include "CaptureComponent.generated.h"
 
 //! This component is added to the player pawn. Derived from the SceneCaptureCube component, it
@@ -19,7 +19,7 @@ class REMOTEPLAY_API URemotePlayCaptureComponent : public USceneCaptureComponent
 	GENERATED_BODY()
 public:
 	URemotePlayCaptureComponent();
-	~URemotePlayCaptureComponent();
+	~URemotePlayCaptureComponent() = default;
 
 	/* Begin UActorComponent interface */
 	virtual void BeginPlay() override;
@@ -31,8 +31,7 @@ public:
 
 	void UpdateSceneCaptureContents(FSceneInterface* Scene) override;
 
-	void StartStreaming(FRemotePlayContext *Context);
-
+	void StartStreaming(struct FUnrealCasterContext* Context);
 	void StopStreaming();
 
 	void RequestKeyframe();
@@ -66,7 +65,7 @@ private:
 	TArray<bool> QuadsToRender;
 	TArray<bool> FacesToRender;
 
-	struct FRemotePlayContext* RemotePlayContext;
+	struct FUnrealCasterContext* UnrealCasterContext;
 	class URemotePlayReflectionCaptureComponent *RemotePlayReflectionCaptureComponent;
 	bool bIsStreaming;
 	bool bSendKeyframe;

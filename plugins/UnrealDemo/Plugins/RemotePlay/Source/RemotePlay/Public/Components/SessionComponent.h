@@ -5,6 +5,9 @@
 #include "Components/ActorComponent.h"
 #include "RemotePlayDiscoveryService.h"
 #include "GeometryStreamingService.h"
+
+#include "SimulCasterServer/ClientMessaging.h"
+
 #include "SessionComponent.generated.h"
 
 class APawn;
@@ -78,6 +81,8 @@ private:
 	UFUNCTION()
 	void OnOuterSphereEndOverlap(UPrimitiveComponent *OverlappedComponent, AActor *OtherActor, UPrimitiveComponent *OtherComp, int32 OtherBodyIndex);
 
+	SCServer::ClientMessaging clientMessaging;
+
 	TWeakObjectPtr<APlayerController> PlayerController;
 	TWeakObjectPtr<APawn> PlayerPawn;
 
@@ -103,7 +108,7 @@ private:
 	FRemotePlayDiscoveryService DiscoveryService;
 	FGeometryStreamingService GeometryStreamingService;
 	 
-	struct FRemotePlayContext* RemotePlayContext;
+	struct FUnrealCasterContext* UnrealCasterContext;
 #if STATS || ENABLE_STATNAMEDEVENTS_UOBJECT
 	/** Stat id of this object, 0 if nobody asked for it yet */
 	mutable TStatId				BandwidthStatID;

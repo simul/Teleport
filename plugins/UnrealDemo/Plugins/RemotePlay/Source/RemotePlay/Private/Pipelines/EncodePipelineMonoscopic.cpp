@@ -9,7 +9,7 @@
 #include "RHIStaticStates.h"
 #include "SceneInterface.h"
 #include "SceneUtils.h"
-#include "RemotePlayContext.h"
+#include "SimulCasterServer/CasterContext.h"
 #include "RemotePlayMonitor.h"
 
 #include "Engine/TextureRenderTargetCube.h"
@@ -173,10 +173,10 @@ static inline FVector2D CreateWorldZToDeviceZTransform(float FOV)
 	return FVector2D{1.0f / DepthAdd, SubtractValue};
 }
 
-void FEncodePipelineMonoscopic::Initialize(const FRemotePlayEncodeParameters& InParams, struct FRemotePlayContext *context, ARemotePlayMonitor* InMonitor, avs::Queue* InColorQueue, avs::Queue* InDepthQueue)
+void FEncodePipelineMonoscopic::Initialize(const FRemotePlayEncodeParameters& InParams, SCServer::CasterContext* context, ARemotePlayMonitor* InMonitor, avs::Queue* InColorQueue, avs::Queue* InDepthQueue)
 {
 	check(InColorQueue);
-	RemotePlayContext = context;
+	CasterContext = context;
 	Params = InParams;
 	ColorQueue = InColorQueue;
 	DepthQueue = InDepthQueue;
@@ -466,7 +466,7 @@ void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediat
 	FQuat r = CameraTransform.GetRotation();
 	const FVector s = CameraTransform.GetScale3D();
 	avs::Transform CamTransform = { t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z };
-	avs::ConvertTransform(avs::AxesStandard::UnrealStyle, RemotePlayContext->axesStandard, CamTransform);
+	avs::ConvertTransform(avs::AxesStandard::UnrealStyle, CasterContext->axesStandard, CamTransform);
 	for (auto& Encoder : Encoders)
 	{
 		Encoder.setCameraTransform(CamTransform);
@@ -504,7 +504,7 @@ void FEncodePipelineMonoscopic::DispatchDecomposeCubemapShader(FRHICommandListIm
 {
 	FVector  t = CameraPosition *0.01f;
 	avs::vec3 pos_m ={t.X,t.Y,t.Z};
-	avs::ConvertPosition(avs::AxesStandard::UnrealStyle, RemotePlayContext->axesStandard, pos_m);
+	avs::ConvertPosition(avs::AxesStandard::UnrealStyle, CasterContext->axesStandard, pos_m);
 	const FVector &CameraPositionMetres =*((const FVector*)&pos_m);
 	TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 	typedef FProjectCubemapCS<EProjectCubemapVariant::DecomposeCubemaps> ShaderType;

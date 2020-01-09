@@ -3,187 +3,41 @@
 
 #include "GeometryStreamingService.h"
 
-#include <algorithm>
+#include "Engine/Classes/Components/MeshComponent.h"
 
-#include "Components/StreamableGeometryComponent.h"
-#include "RemotePlayContext.h"
-#include "Kismet/GameplayStatics.h"
-#include "Engine/StaticMeshActor.h"
-#include "Engine.h"
-#include <libavstream/geometry/mesh_interface.hpp>
-#include <libavstream/mesh.hpp>
-#include <libavstream/geometryencoder.hpp>
- 
+#include "SimulCasterServer/CasterContext.h"
+
 #include "RemotePlayMonitor.h"
 
-#pragma optimize("",off)
+#pragma optimize("", off)
 
-FName GetLevelUniqueActorName(AActor* actor)
-{
-	return *FPaths::Combine(actor->GetOutermost()->GetName(), actor->GetName());
-}
+FGeometryStreamingService::FGeometryStreamingService()
+	:SCServer::GeometryStreamingService(ARemotePlayMonitor::GetCasterSettings())
+{}
 
-FGeometryStreamingService::~FGeometryStreamingService()
-{
-	if(avsPipeline)	
-		avsPipeline->deconfigure();
-}
-
-void FGeometryStreamingService::Initialise(UWorld *World, GeometrySource* source)
+void FGeometryStreamingService::initialise(GeometrySource* source)
 {
 	if(!source) return;
 	geometrySource = source;
 
-	requester.initialise(&geometrySource->GetStorage());
+	geometryStore = &geometrySource->GetStorage();
+}
 
-	TArray<AActor*> staticMeshActors;
-	UGameplayStatics::GetAllActorsOfClass(World, AStaticMeshActor::StaticClass(), staticMeshActors);
-
-	TArray<AActor*> lightActors;
-	UGameplayStatics::GetAllActorsOfClass(World, ALight::StaticClass(), lightActors);
-
-	ECollisionChannel remotePlayChannel;
-	FCollisionResponseParams profileResponses;
-	//Returns the collision channel used by RemotePlay; uses the object type of the profile to determine the channel.
-	UCollisionProfile::GetChannelAndResponseParams("RemotePlaySensor", remotePlayChannel, profileResponses);
-
-	Monitor = ARemotePlayMonitor::Instantiate(World);
-	geometrySource->Initialise(Monitor, World);
-
-	//Decompose all relevant actors into streamable geometry.
-	for(auto actor : staticMeshActors)
+void FGeometryStreamingService::stopStreaming()
+{
+	for(auto idActorPair : getHiddenActors())
 	{
-		UMeshComponent *rootMesh = Cast<UMeshComponent>(actor->GetComponentByClass(UMeshComponent::StaticClass()));
-		
-		//Decompose the meshes that would cause an overlap event to occur with the "RemotePlaySensor" profile.
-		if(rootMesh->GetGenerateOverlapEvents() && rootMesh->GetCollisionResponseToChannel(remotePlayChannel) != ECollisionResponse::ECR_Ignore)
+		if(idActorPair.second)
 		{
-			geometrySource->AddNode(rootMesh);
+			AActor* actor = static_cast<AActor*>(idActorPair.second);
+			actor->SetActorHiddenInGame(false);
 		}
 	}
 
-	//Decompose all relevant light actors into streamable geometry.
-	for (auto actor : lightActors)
-	{
-		auto sgc = actor->GetComponentByClass(UStreamableGeometryComponent::StaticClass());
-		if (sgc)
-		{
-			//TArray<UTexture2D*> shadowAndLightMaps = static_cast<UStreamableGeometryComponent*>(sgc)->GetLightAndShadowMaps();
-			ULightComponent* lightComponent = static_cast<UStreamableGeometryComponent*>(sgc)->GetLightComponent();
-			if (lightComponent)
-			{
-				//ShadowMapData smd(lc);
-				geometrySource->AddNode(lightComponent);
-			}
-		}
-	}
-
-	geometrySource->CompressTextures();
+	GeometryStreamingService::stopStreaming();
 }
 
-void FGeometryStreamingService::StartStreaming(FRemotePlayContext *Context)
-{
-	if (RemotePlayContext == Context) return;
-
-	RemotePlayContext = Context;
-
-	avsPipeline.Reset(new avs::Pipeline); 
-	avsGeometrySource.Reset(new avs::GeometrySource);
-	avsGeometryEncoder.Reset(new avs::GeometryEncoder);
-	avsGeometrySource->configure(&geometrySource->GetStorage(), &requester);
-	avsGeometryEncoder->configure(&geometryEncoder);
-
-	avsPipeline->link({ avsGeometrySource.Get(), avsGeometryEncoder.Get(), RemotePlayContext->GeometryQueue.Get() });
-}
-
-void FGeometryStreamingService::StopStreaming()
-{ 
-	if(avsPipeline)
-		avsPipeline->deconfigure();
-	if (avsGeometrySource)
-		avsGeometrySource->deconfigure();
-	if (avsGeometryEncoder)
-		avsGeometryEncoder->deconfigure();
-	avsPipeline.Reset();
-	RemotePlayContext = nullptr;
-
-	requester.reset();
-
-	actorIDs.clear();
-	streamedActors.clear();
-
-	for(auto i : hiddenActors)
-	{
-		if(i.second)
-			i.second->SetActorHiddenInGame(false);
-	}
-	hiddenActors.clear();
-}
- 
-void FGeometryStreamingService::Tick(float DeltaTime)
-{
-	// Might not be initialized... YET
-	if (!avsPipeline)
-		return;
-
-	geometryEncoder.geometryBufferCutoffSize = Monitor->GeometryBufferCutoffSize;
-	requester.confirmationWaitTime = Monitor->ConfirmationWaitTime;
-
-	// We can now be confident that all streamable geometries have been initialized, so we will do internal setup.
-	// Each frame we manage a view of which streamable geometries should or shouldn't be rendered on our client.
-
-	requester.tick(DeltaTime);
-
-	// For this client's POSITION and OTHER PROPERTIES,
-	// Use the Geometry Source to determine which Node uid's are relevant.
-	
-	avsPipeline->process();
-}
-
-void FGeometryStreamingService::Reset()
-{
-	requester.reset();
-
-	actorIDs.clear();
-	streamedActors.clear();
-	hiddenActors.clear();
-}
-
-void FGeometryStreamingService::HideActor(avs::uid actorID)
-{
-	auto actorPair = streamedActors.find(actorID);
-	if(actorPair != streamedActors.end())
-	{
-		actorPair->second->SetActorHiddenInGame(true);
-		hiddenActors[actorID] = actorPair->second;
-	}
-	else
-	{
-		UE_LOG(LogRemotePlay, Warning, TEXT("Tried to hide non-streamed actor with UID of %d!"), actorID);
-	}
-}
-
-void FGeometryStreamingService::ShowActor(avs::uid actorID)
-{
-	auto actorPair = hiddenActors.find(actorID);
-	if(actorPair != hiddenActors.end())
-	{
-		actorPair->second->SetActorHiddenInGame(false);
-		hiddenActors.erase(actorPair);
-	}
-	else
-	{
-		UE_LOG(LogRemotePlay, Warning, TEXT("Tried to show non-hidden actor with UID of %d!"), actorID);
-	}
-}
-
-void FGeometryStreamingService::SetActorVisible(avs::uid actorID, bool isVisible)
-{
-	if(isVisible) ShowActor(actorID);
-	else HideActor(actorID);
-}
-
-avs::uid FGeometryStreamingService::AddActor(AActor *newActor)
+avs::uid FGeometryStreamingService::addActor(AActor* newActor)
 {
 	UActorComponent* meshComponent = newActor->GetComponentByClass(UMeshComponent::StaticClass());
 	if(!meshComponent)
@@ -194,38 +48,33 @@ avs::uid FGeometryStreamingService::AddActor(AActor *newActor)
 
 	avs::uid actorID = geometrySource->GetNode(Cast<UMeshComponent>(meshComponent));
 	
-	if(actorID != 0)
-	{
-		actorIDs[GetLevelUniqueActorName(newActor)] = actorID;
-		streamedActors[actorID] = newActor;
-
-		requester.startStreamingActor(actorID);
-	}
-
+	GeometryStreamingService::addActor(newActor, actorID);
 	return actorID;
 }
 
-avs::uid FGeometryStreamingService::RemoveActor(AActor* oldActor)
+avs::uid FGeometryStreamingService::removeActor(AActor* oldActor)
 {
-	FName levelUniqueName = GetLevelUniqueActorName(oldActor);
-
-	avs::uid actorID = actorIDs[levelUniqueName];
-	actorIDs.erase(levelUniqueName);
-	streamedActors.erase(actorID);
-
-	requester.stopStreamingActor(actorID);
-
-	return actorID;
+	return GeometryStreamingService::removeActor(static_cast<void*>(oldActor));
 }
 
-avs::uid FGeometryStreamingService::GetActorID(AActor* actor)
+avs::uid FGeometryStreamingService::getActorID(AActor* actor)
 {
-	auto idPair = actorIDs.find(GetLevelUniqueActorName(actor));
-
-	return idPair != actorIDs.end() ? idPair->second : 0;
+	return GeometryStreamingService::getActorID(actor);
 }
 
-bool FGeometryStreamingService::IsStreamingActor(AActor* actor)
+bool FGeometryStreamingService::isStreamingActor(AActor* actor)
 {
-	return actorIDs.find(GetLevelUniqueActorName(actor)) != actorIDs.end();
+	return GeometryStreamingService::isStreamingActor(actor);
+}
+
+void FGeometryStreamingService::showActor_Internal(void* actorPtr)
+{
+	AActor* actor = static_cast<AActor*>(actorPtr);
+	actor->SetActorHiddenInGame(false);
+}
+
+void FGeometryStreamingService::hideActor_Internal(void* actorPtr)
+{
+	AActor* actor = static_cast<AActor*>(actorPtr);
+	actor->SetActorHiddenInGame(true);
 }
