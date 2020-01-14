@@ -1,19 +1,18 @@
 // Copyright 2018 Simul.co
 #define WIN32_LEAN_AND_MEAN
 
-#include "Components/CaptureComponent.h"
-#include "RemotePlayModule.h"
-#include "Pipelines/EncodePipelineMonoscopic.h"
-#include "Pipelines/NetworkPipeline.h"
+#include "RemotePlayCaptureComponent.h"
 
+#include "ContentStreaming.h"
 #include "Engine.h"
 #include "Engine/GameViewportClient.h"
-
 #include "GameFramework/Actor.h"
-#include "RemotePlaySettings.h"
+
+#include "Pipelines/EncodePipelineMonoscopic.h"
+#include "RemotePlayModule.h"
 #include "RemotePlayMonitor.h"
 #include "RemotePlayReflectionCaptureComponent.h"
-#include "ContentStreaming.h"
+#include "RemotePlaySettings.h"
 #include "UnrealCasterContext.h"
 
 URemotePlayCaptureComponent::URemotePlayCaptureComponent()
@@ -90,7 +89,7 @@ void URemotePlayCaptureComponent::TickComponent(float DeltaTime, ELevelTick Tick
 	}
 }
 
-const FRemotePlayEncodeParameters &URemotePlayCaptureComponent::GetEncodeParams()
+const FUnrealCasterEncoderSettings& URemotePlayCaptureComponent::GetEncoderSettings()
 {
 	if (EncodeParams.bDecomposeCube)
 	{
@@ -195,21 +194,22 @@ void URemotePlayCaptureComponent::CullHiddenCubeSegments()
 	// share the output with the capture component to cull faces from rendering.
 	ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
 
-	const FVector LookAt = ClientCamInfo.Orientation.GetForwardVector() * 10;
-	const FVector Up = ClientCamInfo.Orientation.GetUpVector();
+	FQuat UnrealOrientation = FQuat(ClientCamInfo.orientation.x, ClientCamInfo.orientation.y, ClientCamInfo.orientation.z, ClientCamInfo.orientation.w);
+	const FVector LookAt = UnrealOrientation.GetForwardVector() * 10;
+	const FVector Up = UnrealOrientation.GetUpVector();
 	const FLookAtMatrix ViewMatrix = FLookAtMatrix(FVector::ZeroVector, LookAt, Up);
 
 	// Convert FOV from degrees to radians 
-	const float FOV = FMath::DegreesToRadians(ClientCamInfo.FOV);
+	const float FOV = FMath::DegreesToRadians(ClientCamInfo.fov);
 	
 	FMatrix ProjectionMatrix;
 	if (static_cast<int32>(ERHIZBuffer::IsInverted) == 1)
 	{
-		ProjectionMatrix = AdjustProjectionMatrixForRHI(FReversedZPerspectiveMatrix(FOV, (float)ClientCamInfo.Width, (float)ClientCamInfo.Height, 0, 0));
+		ProjectionMatrix = AdjustProjectionMatrixForRHI(FReversedZPerspectiveMatrix(FOV, ClientCamInfo.width, ClientCamInfo.height, 0, 0));
 	}
 	else
 	{
-		ProjectionMatrix = AdjustProjectionMatrixForRHI(FPerspectiveMatrix(FOV, (float)ClientCamInfo.Width, (float)ClientCamInfo.Height, 0, 0));
+		ProjectionMatrix = AdjustProjectionMatrixForRHI(FPerspectiveMatrix(FOV, ClientCamInfo.width, ClientCamInfo.height, 0, 0));
 	}
 
 	const FMatrix VP = ViewMatrix * ProjectionMatrix;
@@ -365,9 +365,9 @@ bool URemotePlayCaptureComponent::VectorIntersectsFrustum(const FVector& Vector,
 	return true;
 }
 
-void URemotePlayCaptureComponent::StartStreaming(FUnrealCasterContext* Context)
+void URemotePlayCaptureComponent::startStreaming(SCServer::CasterContext* context)
 {
-	UnrealCasterContext = Context;
+	UnrealCasterContext = static_cast<FUnrealCasterContext*>(context);
 
 	ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
 	if (!ViewportDrawnDelegateHandle.IsValid())
@@ -383,7 +383,8 @@ void URemotePlayCaptureComponent::StartStreaming(FUnrealCasterContext* Context)
 	bCaptureEveryFrame = true;
 	bSendKeyframe = false;
 
-	ClientCamInfo.Orientation = GetComponentTransform().GetRotation();
+	FQuat UnrealOrientation = GetComponentTransform().GetRotation();
+	ClientCamInfo.orientation = {UnrealOrientation.X, UnrealOrientation.Y, UnrealOrientation.Z, UnrealOrientation.W};
 
 	CreateCubeQuads(CubeQuads, Monitor->BlocksPerCubeFaceAcross, TextureTarget->GetSurfaceWidth());
 
@@ -391,7 +392,7 @@ void URemotePlayCaptureComponent::StartStreaming(FUnrealCasterContext* Context)
 	FacesToRender.Init(true, 6);
 }
 
-void URemotePlayCaptureComponent::StopStreaming()
+void URemotePlayCaptureComponent::stopStreaming()
 {
 	bIsStreaming = false;
 	bCaptureEveryFrame = false;
@@ -419,7 +420,7 @@ void URemotePlayCaptureComponent::StopStreaming()
 	UE_LOG(LogRemotePlay, Log, TEXT("Capture: Stopped streaming"));
 }
 
-void URemotePlayCaptureComponent::RequestKeyframe()
+void URemotePlayCaptureComponent::requestKeyframe()
 {
 	bSendKeyframe = true;
 }
@@ -428,7 +429,7 @@ void URemotePlayCaptureComponent::OnViewportDrawn()
 {
 }
 
-FCameraInfo& URemotePlayCaptureComponent::GetClientCameraInfo()
+SCServer::CameraInfo& URemotePlayCaptureComponent::getClientCameraInfo()
 {
 	return ClientCamInfo;
 }

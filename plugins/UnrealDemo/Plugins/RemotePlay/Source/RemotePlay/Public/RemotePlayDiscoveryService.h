@@ -6,17 +6,25 @@
 #include "Sockets.h"
 #include "IPAddress.h"
 
-class FRemotePlayDiscoveryService
+#include "SimulCasterServer/DiscoveryService.h"
+
+namespace SCServer
+{
+	struct CasterSettings;
+}
+
+class FRemotePlayDiscoveryService : public SCServer::DiscoveryService
 {
 public:
-	FRemotePlayDiscoveryService();
+	FRemotePlayDiscoveryService(const SCServer::CasterSettings& settings);
+	virtual ~FRemotePlayDiscoveryService() = default;
 
-	bool Initialize(class ARemotePlayMonitor*m,uint16 InDiscoveryPort=0, uint16 InServicePort=0);
-	void Shutdown();
-	void Tick();
-
+	virtual bool initialise(uint16_t inDiscoveryPort = 0, uint16_t inServicePort = 0) override;
+	virtual void shutdown() override;
+	virtual void tick() override;
 private:
 	class ISocketSubsystem* SocketSubsystem;
+	const SCServer::CasterSettings& settings;
 
 	TUniquePtr<FSocket> Socket;
 	uint16 ServicePort;
@@ -32,5 +40,4 @@ private:
 		}
 	};
 	TArray<FClient> Clients;
-	class ARemotePlayMonitor *Monitor;
 };

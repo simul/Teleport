@@ -14,11 +14,6 @@ class APawn;
 class APlayerController;
 class USphereComponent;
 
-typedef struct _ENetHost   ENetHost;
-typedef struct _ENetPeer   ENetPeer;
-typedef struct _ENetPacket ENetPacket;
-typedef struct _ENetEvent  ENetEvent;
-
 UCLASS(meta=(BlueprintSpawnableComponent))
 class REMOTEPLAY_API URemotePlaySessionComponent : public UActorComponent
 {
@@ -57,19 +52,8 @@ private:
 	void SwitchPlayerPawn(APawn* NewPawn);
 	void ReleasePlayerPawn();
 	void ApplyPlayerInput(float DeltaTime);
-
-	void DispatchEvent(const ENetEvent& Event);
-	void RecvHandshake(const ENetPacket* Packet);
-	void RecvDisplayInfo(const ENetPacket* Packet);
-	void RecvHeadPose(const ENetPacket* Packet);
-	void RecvInput(const ENetPacket* Packet);
-	void RecvClientMessage(const ENetPacket* Packet);
-
-	bool			Client_SendCommand(const avs::Command &avsCommand) const;
-	template<typename T>
-	bool			Client_SendCommand(const avs::Command &avsSetup, std::vector<T>& appendedList) const;
-	inline FString	Client_GetIPAddress() const;
-	inline uint16	Client_GetPort() const;
+	void SetHeadPose(avs::HeadPose& newHeadPose);
+	void ProcessNewInput(const avs::InputState& newInput);
 	
 	static void TranslateButtons(uint32_t ButtonMask, TArray<FKey>& OutKeys);
 	void StartStreaming();
@@ -81,15 +65,16 @@ private:
 	UFUNCTION()
 	void OnOuterSphereEndOverlap(UPrimitiveComponent *OverlappedComponent, AActor *OtherActor, UPrimitiveComponent *OtherComp, int32 OtherBodyIndex);
 
-	SCServer::ClientMessaging clientMessaging;
-
+	FGeometryStreamingService GeometryStreamingService;
+	std::shared_ptr<SCServer::DiscoveryService> DiscoveryService;
+	std::unique_ptr<SCServer::ClientMessaging> ClientMessaging; //Handles client message receival and reaction.
+	struct FUnrealCasterContext* UnrealCasterContext;
+	
 	TWeakObjectPtr<APlayerController> PlayerController;
 	TWeakObjectPtr<APawn> PlayerPawn;
 
 	TWeakObjectPtr<USphereComponent> DetectionSphereInner; //Detects when a steamable actor has moved close enough to the client to be sent to them.
 	TWeakObjectPtr<USphereComponent> DetectionSphereOuter; //Detects when a streamable actor has moved too far from the client.
-	std::vector<avs::uid> ActorsEnteredBounds; //Stores actors client needs to know have entered streaming bounds.
-	std::vector<avs::uid> ActorsLeftBounds; //Stores actors client needs to know have left streaming bounds.
 
 	struct FInputQueue
 	{
@@ -100,15 +85,9 @@ private:
 	FVector2D   InputTouchAxis;
 	FVector2D   InputJoystick;
 
-	ENetHost* ServerHost;
-	ENetPeer* ClientPeer;
-
 	bool IsStreaming = false;
 
-	FRemotePlayDiscoveryService DiscoveryService;
-	FGeometryStreamingService GeometryStreamingService;
-	 
-	struct FUnrealCasterContext* UnrealCasterContext;
+	
 #if STATS || ENABLE_STATNAMEDEVENTS_UOBJECT
 	/** Stat id of this object, 0 if nobody asked for it yet */
 	mutable TStatId				BandwidthStatID;
