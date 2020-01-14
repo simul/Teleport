@@ -87,7 +87,12 @@ public class RemotePlay : ModuleRules
 		PublicAdditionalLibraries.Add("pthread_lib.lib");
 		PublicAdditionalLibraries.Add("ws2_32.lib");
 
-		PublicDelayLoadDLLs.Add("libavstream.dll");
+        //set(PTHREAD_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/thirdparty/srt/submodules/pthread-win32)
+
+        // EFP
+        PublicAdditionalLibraries.Add("efp.lib");
+
+        PublicDelayLoadDLLs.Add("libavstream.dll");
         RuntimeDependencies.Add(Path.Combine(LibraryPath, "libavstream.dll"));
 
         // Temporary path

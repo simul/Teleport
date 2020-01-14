@@ -24,11 +24,11 @@ URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
 	bCaptureEveryFrame = true;
-	bCaptureOnMovement = false; 
+	bCaptureOnMovement = false;
 }
 
 void URemotePlayCaptureComponent::BeginPlay()
-{	
+{
 	ShowFlags.EnableAdvancedFeatures();
 	ShowFlags.SetTemporalAA(false);
 	ShowFlags.SetAntiAliasing(true);
@@ -47,7 +47,7 @@ void URemotePlayCaptureComponent::BeginPlay()
 	// Make sure that there is enough time in the render queue.
 	UKismetSystemLibrary::ExecuteConsoleCommand(GetWorld(), FString("g.TimeoutForBlockOnRenderFence 300000"));
 
-	Super::BeginPlay();	
+	Super::BeginPlay();
 
 	AActor* OwnerActor = GetTypedOuter<AActor>();
 	if (bRenderOwner)
@@ -201,7 +201,7 @@ void URemotePlayCaptureComponent::CullHiddenCubeSegments()
 
 	// Convert FOV from degrees to radians 
 	const float FOV = FMath::DegreesToRadians(ClientCamInfo.fov);
-	
+
 	FMatrix ProjectionMatrix;
 	if (static_cast<int32>(ERHIZBuffer::IsInverted) == 1)
 	{
@@ -229,10 +229,10 @@ void URemotePlayCaptureComponent::CullHiddenCubeSegments()
 		// Iterate through each of the face's quads
 		for (uint32 j = 0; j < BlocksPerFace; ++j)
 		{
-			uint32 QuadIndex = i * BlocksPerFace + j; 
-			
+			uint32 QuadIndex = i * BlocksPerFace + j;
+
 			bool Intersects = false;
-			
+
 			// Iterate through each of the quad's vertices
 			for (uint32 k = 0; k < 4; ++k)
 			{
@@ -255,7 +255,7 @@ void URemotePlayCaptureComponent::CullHiddenCubeSegments()
 					VectorIntersectionMap.Add(TPair<FVector, bool>(V, false));
 				}
 			}
-			
+
 			// For debugging only! Cull only the quad selected by the user 
 			if (Monitor->CullQuadIndex >= 0 && Monitor->CullQuadIndex < CubeQuads.Num())
 			{
@@ -268,7 +268,7 @@ void URemotePlayCaptureComponent::CullHiddenCubeSegments()
 					Intersects = true;
 				}
 			}
-				
+
 			QuadsToRender[QuadIndex] = Intersects;
 
 			if (Intersects)
@@ -287,7 +287,6 @@ void URemotePlayCaptureComponent::CreateCubeQuads(TArray<FQuad>& Quads, uint32 B
 
 	// Unreal Engine coordinates: X is forward, Y is right, Z is up, 
 	const FVector StartPos = FVector(HalfWidth, -HalfWidth, -HalfWidth); // Bottom left of front face
-
 	// Aidan: First qauternion is rotated to match Unreal's cubemap face rotations
 	// Second quaternion is to get position, forward and side vectors relative to front face
 	// In quaternion multiplication, the rhs or second qauternion is applied first
@@ -311,8 +310,8 @@ void URemotePlayCaptureComponent::CreateCubeQuads(TArray<FQuad>& Quads, uint32 B
 	for (uint32 i = 0; i < 6; ++i)
 	{
 		const FQuat& q = FaceQuats[i];
-		const FVector RightVec = q.RotateVector(FVector::RightVector) * QuadSize;
-		const FVector UpVec = q.RotateVector(FVector::UpVector) * QuadSize;
+		const FVector RightVec = q.RotateVector(FVector::RightVector).GetSafeNormal() * QuadSize;
+		const FVector UpVec = q.RotateVector(FVector::UpVector).GetSafeNormal() * QuadSize;
 		FVector Pos = q.RotateVector(StartPos);
 
 		// Go right
@@ -347,7 +346,7 @@ bool URemotePlayCaptureComponent::VectorIntersectsFrustum(const FVector& Vector,
 	// the result of this will be x and y coords in -1..1 projection space
 	const float RHW = 1.0f / Result.W;
 	Result.X *= RHW;
-	Result.Y *= RHW; 
+	Result.Y *= RHW;
 
 	// Move from projection space to normalized 0..1 UI space
 	/*const float NormX = (Result.X / 2.f) + 0.5f;
