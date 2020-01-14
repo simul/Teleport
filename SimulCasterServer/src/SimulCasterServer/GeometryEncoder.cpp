@@ -5,20 +5,9 @@
 
 #include "libavstream/common.hpp"
 
-#include "LogMacros.h"
+#include "CasterSettings.h"
 
-#include "RemotePlayMonitor.h"
-
-GeometryEncoder::GeometryEncoder()
-{}
-
-GeometryEncoder::~GeometryEncoder()
-{}
-
-void GeometryEncoder::Initialise(ARemotePlayMonitor* Monitor)
-{
-	this->Monitor = Monitor;
-}
+using namespace SCServer;
 
 //Clear a passed vector of UIDs that are believed to have already been sent to the client.
 //	outUIDs : Vector of all UIDs of resources that could potentially need to be sent across.
@@ -29,7 +18,7 @@ size_t GetNewUIDs(std::vector<avs::uid> & outUIDs, avs::GeometryRequesterBackend
 	//Remove uids the requester has.
 	for(auto it = outUIDs.begin(); it != outUIDs.end();)
 	{
-		if(req->HasResource(*it))
+		if(req->hasResource(*it))
 		{
 			it = outUIDs.erase(it);
 		}
@@ -41,6 +30,10 @@ size_t GetNewUIDs(std::vector<avs::uid> & outUIDs, avs::GeometryRequesterBackend
 
 	return outUIDs.size();
 }
+
+GeometryEncoder::GeometryEncoder(const CasterSettings& settings)
+	:settings(settings)
+{}
 
 unsigned char GeometryEncoder::GALU_code[] = { 0x01,0x00,0x80,0xFF };
 
@@ -62,11 +55,11 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp, avs::GeometrySourceBacke
 		std::vector<avs::MeshNodeResources> meshNodeResources;
 		std::vector<avs::LightNodeResources> lightNodeResources;
 
-		req->GetResourcesToStream(meshNodeResources, lightNodeResources);
+		req->getResourcesToStream(meshNodeResources, lightNodeResources);
 		//Encode mesh nodes first, as they should be sent before lighting data.
 		for(avs::MeshNodeResources meshResourceInfo : meshNodeResources)
 		{
-			if(!req->HasResource(meshResourceInfo.mesh_uid))
+			if(!req->hasResource(meshResourceInfo.mesh_uid))
 			{
 				encodeMeshes(src, req, {meshResourceInfo.mesh_uid});
 
@@ -89,7 +82,7 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp, avs::GeometrySourceBacke
 					if(!keepQueueing) break;
 				}
 
-				if(!req->HasResource(material.material_uid))
+				if(!req->hasResource(material.material_uid))
 				{
 					encodeMaterials(src, req, {material.material_uid});
 
@@ -99,7 +92,7 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp, avs::GeometrySourceBacke
 			}
 			if(!keepQueueing) break;
 
-			if(!req->HasResource(meshResourceInfo.node_uid))
+			if(!req->hasResource(meshResourceInfo.node_uid))
 			{
 				encodeNodes(src, req, {meshResourceInfo.node_uid});
 
@@ -110,7 +103,7 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp, avs::GeometrySourceBacke
 
 		for(avs::LightNodeResources lightResourceInfo : lightNodeResources)
 		{
-			if(!req->HasResource(lightResourceInfo.shadowmap_uid))
+			if(!req->hasResource(lightResourceInfo.shadowmap_uid))
 			{
 				encodeTextures(src, req, {lightResourceInfo.shadowmap_uid});
 
@@ -118,7 +111,7 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp, avs::GeometrySourceBacke
 				if(!keepQueueing) break;
 			}
 
-			if(!req->HasResource(lightResourceInfo.node_uid))
+			if(!req->hasResource(lightResourceInfo.node_uid))
 			{
 				encodeNodes(src, req, {lightResourceInfo.node_uid});
 
@@ -133,12 +126,6 @@ avs::Result GeometryEncoder::encode(uint32_t timestamp, avs::GeometrySourceBacke
 	queuedBuffer.push_back(GALU_code[1]);
 	queuedBuffer.push_back(GALU_code[2]);
 	queuedBuffer.push_back(GALU_code[3]);
-
-	if(queuedBuffer.size() > Monitor->GeometryBufferCutoffSize + 10240)
-	{
-		float cutoffDifference = queuedBuffer.size() - Monitor->GeometryBufferCutoffSize;
-		UE_LOG(LogRemotePlay, Warning, TEXT("Queued buffer size was %.2fMB; %.2fMB more than the cutoff(%.2fMB)."), queuedBuffer.size() / 1048576.0f, cutoffDifference / 1048576.0f, Monitor->GeometryBufferCutoffSize / 1048576.0f);
-	}
 
 	return avs::Result::OK;
 }
@@ -168,13 +155,14 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 		avs::uid uid = missingUIDs[h];
 		put(uid);
 
-		size_t prims = src->getMeshPrimitiveArrayCount(uid);
-		put(prims);
+		avs::Mesh mesh;
+		src->getMesh(uid, mesh);
+
+		put(mesh.primitiveArrays.size());
+
 		std::set<avs::uid> accessors;
-		for(size_t j = 0; j < prims; j++)
+		for(avs::PrimitiveArray primitiveArray : mesh.primitiveArrays)
 		{
-			avs::PrimitiveArray primitiveArray;
-			src->getMeshPrimitiveArray(uid, j, primitiveArray);
 			put(primitiveArray.attributeCount);
 			put(primitiveArray.indices_accessor);
 			put(primitiveArray.material);
@@ -191,8 +179,7 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 		std::set<avs::uid> bufferViews;
 		for(avs::uid accessorID : accessors)
 		{
-			avs::Accessor accessor;
-			src->getAccessor(accessorID, accessor);
+			avs::Accessor accessor = mesh.accessors[accessorID];
 			put(accessorID);
 			put(accessor.type);
 			put(accessor.componentType);
@@ -206,8 +193,7 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 		std::set<avs::uid> buffers;
 		for(avs::uid bufferViewID : bufferViews)
 		{
-			avs::BufferView bufferView;
-			src->getBufferView(bufferViewID, bufferView);
+			avs::BufferView bufferView = mesh.bufferViews[bufferViewID];
 			put(bufferViewID);
 			put(bufferView.buffer);
 			put(bufferView.byteOffset);
@@ -219,17 +205,13 @@ avs::Result GeometryEncoder::encodeMeshes(avs::GeometrySourceBackendInterface * 
 		put(buffers.size());
 		for(avs::uid bufferID : buffers)
 		{
-			avs::GeometryBuffer b;
-			src->getBuffer(bufferID, b);
+			avs::GeometryBuffer buffer = mesh.buffers[bufferID];
 			put(bufferID);
-			put(b.byteLength);
-			put(b.data, b.byteLength);
+			put(buffer.byteLength);
+			put(buffer.data, buffer.byteLength);
 		}
 
-		req->EncodedResource(uid);
-
-		float sizeDifference = buffer.size() - oldBufferSize;
-		UE_CLOG(sizeDifference > Monitor->GeometryBufferCutoffSize, LogRemotePlay, Warning, TEXT("Mesh(%llu) was encoded as %.2fMB. Cutoff is: %.2fMB"), uid, sizeDifference / 1048576.0f, Monitor->GeometryBufferCutoffSize / 1048576.0f);
+		req->encodedResource(uid);
 	}
 	return avs::Result::OK;
 }
@@ -247,7 +229,7 @@ avs::Result GeometryEncoder::encodeNodes(avs::GeometrySourceBackendInterface * s
 
 		put(uid);
 		avs::Transform transform = node.transform;
-		avs::ConvertTransform(avs::AxesStandard::UnrealStyle, req->GetAxesStandard(), transform);
+		avs::ConvertTransform(avs::AxesStandard::UnrealStyle, req->getAxesStandard(), transform);
 
 		put(transform);
 		put(node.data_uid);
@@ -263,7 +245,7 @@ avs::Result GeometryEncoder::encodeNodes(avs::GeometrySourceBackendInterface * s
 			put(id);
 		}
 
-		req->EncodedResource(uid); 
+		req->encodedResource(uid); 
 	}
 
 	return avs::Result::OK;
@@ -384,7 +366,7 @@ avs::Result GeometryEncoder::encodeMaterials(avs::GeometrySourceBackendInterface
 			}
 
 			//Flag we have encoded the material.
-			req->EncodedResource(uid);
+			req->encodedResource(uid);
 		}
 	}
 
@@ -448,10 +430,7 @@ avs::Result GeometryEncoder::encodeTexturesBackend(avs::GeometrySourceBackendInt
 			put(outTexture.sampler_uid);
 
 			//Flag we have encoded the texture.
-			req->EncodedResource(uid);
-
-			float sizeDifference = buffer.size() - oldBufferSize;
-			UE_CLOG(sizeDifference > Monitor->GeometryBufferCutoffSize, LogRemotePlay, Warning, TEXT("Texture \"%s\"(%llu) was encoded as %.2fMB. Cutoff is: %.2fMB"), ANSI_TO_TCHAR(outTexture.name.data()), uid, sizeDifference / 1048576.0f, Monitor->GeometryBufferCutoffSize / 1048576.0f);
+			req->encodedResource(uid);
 		}
 	}
 
@@ -461,7 +440,7 @@ avs::Result GeometryEncoder::encodeTexturesBackend(avs::GeometrySourceBackendInt
 bool GeometryEncoder::attemptQueueData()
 {
 	//If queueing the data will cause the queuedBuffer to exceed the cutoff size.
-	if(buffer.size() + queuedBuffer.size() > Monitor->GeometryBufferCutoffSize)
+	if(buffer.size() + queuedBuffer.size() > settings.geometryBufferCutoffSize)
 	{
 		//Never leave queuedBuffer empty, if there is something to queue up (even if it is too large).
 		if(queuedBuffer.size() == 0)

@@ -7,6 +7,7 @@
 #include "GameFramework/Actor.h"
 
 #include "libavstream/common.hpp" //uid
+#include "SimulCasterServer/CasterSettings.h"
 
 #include "RemotePlayMonitor.generated.h"
 
@@ -62,7 +63,7 @@ public:
 	UBlueprint* HandActor;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Geometry)
-	uint32 StreamGeometry : 1;
+	bool StreamGeometry;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Geometry)
 	uint8 GeometryTicksPerSecond;
@@ -76,7 +77,7 @@ public:
 	float ConfirmationWaitTime;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
-	uint32 bOverrideTextureTarget : 1;
+	bool bOverrideTextureTarget;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	class UTextureRenderTargetCube* SceneCaptureTextureTarget;
@@ -85,10 +86,10 @@ public:
 	int32 VideoEncodeFrequency;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
-	uint32 bDeferOutput : 1;
+	bool bDeferOutput;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
-	uint32 bDoCubemapCulling : 1;
+	bool bDoCubemapCulling;
 
 	// The number of blocks per cube face will be this value squared
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
@@ -114,34 +115,34 @@ public:
 	int32 MaxBitrate;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
-	uint32 bAutoBitRate : 1;
+	bool bAutoBitRate;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	int32 vbvBufferSizeInFrames;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
-	uint32 bUseAsyncEncoding : 1;
+	bool bUseAsyncEncoding;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
-	uint32 bUse10BitEncoding : 1;
+	bool bUse10BitEncoding;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
-	uint32 bUseYUV444Decoding : 1;
+	bool bUseYUV444Decoding;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
 	int32 DebugStream;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
-	uint32 DebugNetworkPackets:1;
+	bool DebugNetworkPackets;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
-	uint32 DebugControlPackets:1;
+	bool DebugControlPackets;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
-	uint32 Checksums : 1;
+	bool Checksums;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
-	uint32 ResetCache : 1;
+	bool ResetCache;
 
 	//An estimate of how frequently the client will decode the packets sent to it; used by throttling.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Debugging)
@@ -157,7 +158,7 @@ public:
 	uint8 CompressionLevel;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Camera)
-	uint32 bDisableMainCamera : 1;
+	bool bDisableMainCamera;
 
 
 	// In order:
@@ -166,13 +167,22 @@ public:
 	virtual void PostRegisterAllComponents() override;
 	virtual void PostInitializeComponents() override;
 	virtual void BeginPlay() override;
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 
 	inline avs::uid GetServerID()
 	{
-		return server_id;
+		return ServerID;
+	}
+
+	inline static const SCServer::CasterSettings& GetCasterSettings()
+	{
+		return Settings;
 	}
 private:
 	static TMap<UWorld*, ARemotePlayMonitor*> Monitors;
+	static SCServer::CasterSettings Settings;
 
-	avs::uid server_id = 0; //UID of the server; resets between sessions.
+	avs::uid ServerID = 0; //UID of the server; resets between sessions.
+
+	void UpdateCasterSettings();
 };

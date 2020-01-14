@@ -10,6 +10,10 @@
 
 DECLARE_LOG_CATEGORY_EXTERN(LogRemotePlay, Log, All);
 
+#if !UE_BUILD_SHIPPING || !UE_BUILD_TEST
+#define WITH_REMOTEPLAY_STATS 1
+#endif
+
 class FRemotePlayModule : public IRemotePlay
 {
 public:

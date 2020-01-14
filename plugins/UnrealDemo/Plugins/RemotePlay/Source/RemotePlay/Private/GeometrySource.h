@@ -1,19 +1,19 @@
 #pragma once
-#include <libavstream/geometry/mesh_interface.hpp>
+
 #include <map>
 #include <unordered_map>
-#include <CoreMinimal.h>
-#include <Runtime/Engine/Classes/Components/LightComponent.h>
-#include <Runtime/Engine/Classes/Engine/MapBuildDataRegistry.h>
 
-#include "basisu_comp.h"
+#include "libavstream/geometry/mesh_interface.hpp"
+#include "SimulCasterServer/GeometryStore.h"
+
+#include "Components/LightComponent.h"
 
 /*! The Geometry Source keeps all the geometry ready for streaming, and returns geometry
 	data in glTF-style when asked for.
 
 	It handles geometry for multiple clients, so each client will only want a subset.
 */
-class GeometrySource : public avs::GeometrySourceBackendInterface
+class GeometrySource
 {
 public:
 	GeometrySource();
@@ -30,82 +30,37 @@ public:
 	//Returns UID of node that represents the passed component; will add the node if it has not been processed before.
 	//	component : Scene component the node represents.
 	avs::uid GetNode(USceneComponent* component);
-
-	const std::vector<avs::uid>& GetHandActorUIDs()
-	{
-		return handIDs;
-	};
 	
 	//Adds the material to the geometry source, where it is processed into a streamable material.
 	//Returns the UID of the processed material information, or 0 if a nullptr is passed.
 	avs::uid AddMaterial(class UMaterialInterface *materialInterface);
 
 	avs::uid AddShadowMap(const FStaticShadowDepthMapData* shadowDepthMapData);
-	void Tick();
 
 	//Compresses any textures that were found during decomposition of actors.
 	//Split-off so all texture compression can happen at once with a progress bar.
 	void CompressTextures();
 
-	// Inherited via GeometrySourceBackendInterface
-	virtual std::vector<avs::uid> getNodeUIDs() const override;
-	virtual bool getNode(avs::uid node_uid, avs::DataNode& outNode) const override;
-	virtual const std::map<avs::uid, avs::DataNode>& getNodes() const override;
-
-	virtual size_t getMeshPrimitiveArrayCount(avs::uid mesh_uid) const override;
-	virtual bool getMeshPrimitiveArray(avs::uid mesh_uid, size_t array_index, avs::PrimitiveArray & primitiveArray) const override;
-	virtual bool getAccessor(avs::uid accessor_uid, avs::Accessor & accessor) const override;
-	virtual bool getBufferView(avs::uid buffer_view_uid, avs::BufferView & bufferView) const override;
-	virtual bool getBuffer(avs::uid buffer_uid, avs::GeometryBuffer & buffer) const override;
-
-	virtual std::vector<avs::uid> getTextureUIDs() const override;
-	virtual bool getTexture(avs::uid texture_uid, avs::Texture & outTexture) const override;
-
-	virtual std::vector<avs::uid> getMaterialUIDs() const override;
-	virtual bool getMaterial(avs::uid material_uid, avs::Material & outMaterial) const override;
-
-	virtual std::vector<avs::uid> getShadowMapUIDs() const override;
-	virtual bool getShadowMap(avs::uid shadow_uid, avs::Texture& outShadowMap) const override;
-	virtual const std::vector<avs::LightNodeResources>& getLightNodes() const;
+	inline SCServer::GeometryStore& GetStorage()
+	{
+		return storage;
+	}
 protected:
 	struct Mesh;
-
-	//Stores data on a texture that is to be compressed.
-	struct PrecompressedTexture
-	{
-		FString basisFilePath;
-		FTextureSource& textureSource;
-	};
+	struct MaterialChangedInfo;
 
 	class ARemotePlayMonitor* Monitor;
 
-	basisu::basis_compressor_params basisCompressorParams; //Parameters for basis compressor.
+	SCServer::GeometryStore storage;
 
-	// We store buffers, views and accessors in one big list. But we should
-	// PROBABLY refcount these so that unused ones can be cleared.
-	std::map<avs::uid, avs::Accessor> accessors;
-	std::map<avs::uid, avs::BufferView> bufferViews;
-	std::map<avs::uid, avs::GeometryBuffer> geometryBuffers;
 	std::map<avs::uid, std::vector<avs::vec3>> scaledPositionBuffers;
 	std::map<avs::uid, std::vector<FVector2D>> processedUVs;
 
-	std::unordered_map<UStaticMesh*, avs::uid> processedMeshes; //Meshes we have already stored in the GeometrySource; the pointer points to the uid of the stored mesh information.
-	std::unordered_map<UTexture*, avs::uid> processedTextures; //Textures we have already stored in the GeometrySource; the pointer points to the uid of the stored texture information.
-	std::unordered_map<UMaterialInterface*, avs::uid> processedMaterials; //Materials we have already stored in the GeometrySource; the pointer points to the uid of the stored material information.
 	std::map<FName, avs::uid> processedNodes; //Nodes we have already stored in the GeometrySource; <Level Unique Node Name, Node Identifier>.
+	std::unordered_map<UStaticMesh*, Mesh> processedMeshes; //Meshes we have already stored in the GeometrySource; the pointer points to the uid of the stored mesh information.
+	std::unordered_map<UMaterialInterface*, MaterialChangedInfo> processedMaterials; //Materials we have already stored in the GeometrySource; the pointer points to the uid of the stored material information.
+	std::unordered_map<UTexture*, avs::uid> processedTextures; //Textures we have already stored in the GeometrySource; the pointer points to the uid of the stored texture information.
 	std::unordered_map<const FStaticShadowDepthMapData*, avs::uid> processedShadowMaps;
-
-	std::map<avs::uid, avs::DataNode> nodes;
-	std::map<avs::uid, Mesh> meshes;
-	std::map<avs::uid, avs::Texture> textures;
-	std::map<avs::uid, avs::Material> materials;
-	std::map<avs::uid, avs::Texture> shadowMaps;
-
-	std::map<avs::uid, PrecompressedTexture> texturesToCompress; //Map of textures that need compressing. <ID of the texture; file path to store the basis file>
-
-	std::vector<avs::LightNodeResources> lightNodes; //List of all light nodes; prevents having to search for them every geometry tick.
-
-	std::vector<avs::uid> handIDs; //IDs of the nodes that represent the hands that are in use.
 
 	//Returns ID of the node that represents the component; to prevent double search in GetNode when a node doesn't exist.
 	//	component : Scene component the node represents.
@@ -147,7 +102,7 @@ protected:
 	//	textureSample : The expression we want to extract/decompose the data from.
 	//	outTexture : Texture related to the chain to output into.
 	//Returns the amount of expressions that were handled in the chain.
-	size_t DecomposeTextureSampleExpression(UMaterialInterface* materialInterface, UMaterialExpressionTextureSample* textureSample, avs::TextureAccessor& outTexture);
+	size_t DecomposeTextureSampleExpression(UMaterialInterface* materialInterface, class UMaterialExpressionTextureSample* textureSample, avs::TextureAccessor& outTexture);
 };
 
 struct ShadowMapData

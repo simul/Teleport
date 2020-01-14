@@ -4,22 +4,26 @@
 
 #include "CoreMinimal.h"
 #include "Components/SceneCaptureComponentCube.h"
-#include "RemotePlayParameters.h"
-#include "Pipelines/EncodePipelineInterface.h"
-#include "Pipelines/NetworkPipeline.h"
-#include "RemotePlayContext.h"
-#include "CaptureComponent.generated.h"
+
+#include "SimulCasterServer/CaptureComponent.h"
+
+#include "UnrealCasterSettings.h"
+
+#include "RemotePlayCaptureComponent.generated.h"
+
+//Unreal Header Tool doesn't seem to like multiple inheritance with namespaces, so here is a typedef of the namespaced class.
+typedef SCServer::CaptureComponent SCServer_CaptureComponent;
 
 //! This component is added to the player pawn. Derived from the SceneCaptureCube component, it
 //! continuously captures the surrounding image around the Pawn. However, it has
 //! other responsibilities as well.
 UCLASS(hidecategories = (Collision, Object, Physics, SceneComponent), meta = (BlueprintSpawnableComponent))
-class REMOTEPLAY_API URemotePlayCaptureComponent : public USceneCaptureComponentCube
+class REMOTEPLAY_API URemotePlayCaptureComponent : public USceneCaptureComponentCube, public SCServer_CaptureComponent
 {
 	GENERATED_BODY()
 public:
 	URemotePlayCaptureComponent();
-	~URemotePlayCaptureComponent();
+	virtual ~URemotePlayCaptureComponent() = default;
 
 	/* Begin UActorComponent interface */
 	virtual void BeginPlay() override;
@@ -27,24 +31,26 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	/* End UActorComponent interface */
 
+	/// SCServer::CaptureComponent Start
+	virtual void startStreaming(SCServer::CasterContext* context) override;
+	virtual void stopStreaming() override;
+
+	virtual void requestKeyframe() override;
+
+	virtual SCServer::CameraInfo& getClientCameraInfo() override;
+	/// SCServer::CaptureComponent End
+
 	bool ShouldRenderFace(int32 FaceId) const override;
 
 	void UpdateSceneCaptureContents(FSceneInterface* Scene) override;
 
-	void StartStreaming(FRemotePlayContext *Context);
-
-	void StopStreaming();
-
-	void RequestKeyframe();
-
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = RemotePlay)
-	FRemotePlayEncodeParameters EncodeParams;
+	FUnrealCasterEncoderSettings EncodeParams;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = RemotePlay)
 	uint32 bRenderOwner : 1;
-	const FRemotePlayEncodeParameters &GetEncodeParams();
-	FCameraInfo& GetClientCameraInfo();
 
+	const FUnrealCasterEncoderSettings& GetEncoderSettings();
 private: 
 	struct FQuad
 	{
@@ -60,15 +66,14 @@ private:
 	static void CreateCubeQuads(TArray<FQuad>& Quads, uint32 BlocksPerFaceAcross, float CubeWidth);
 	static bool VectorIntersectsFrustum(const FVector& Vector, const FMatrix& ViewProjection);
 
-	FCameraInfo ClientCamInfo;
+	SCServer::CameraInfo ClientCamInfo;
 
 	TArray<FQuad> CubeQuads;
 	TArray<bool> QuadsToRender;
 	TArray<bool> FacesToRender;
 
-	struct FRemotePlayContext* RemotePlayContext;
+	struct FUnrealCasterContext* UnrealCasterContext;
 	class URemotePlayReflectionCaptureComponent *RemotePlayReflectionCaptureComponent;
 	bool bIsStreaming;
 	bool bSendKeyframe;
-
 };
