@@ -140,23 +140,19 @@ void GeometrySource::Initialise(ARemotePlayMonitor* monitor, UWorld* world)
 
 		avs::uid firstHandID = AddNode(handMeshComponent);
 
-		//Retrieve the just added/updated hand node.
-		avs::DataNode firstHand;
-		storage.getNode(firstHandID, firstHand);
-
-		//Set back to hand data type.
-		firstHand.data_type = avs::NodeDataType::Hand;
+		//Retrieve the newly added/updated hand node, and set to the correct data type.
+		avs::DataNode* firstHand = storage.getNode(firstHandID);
+		firstHand->data_type = avs::NodeDataType::Hand;
 
 		//Whether we created a new node for the hand model, or it already existed; i.e whether the hand actor has changed.
 		bool isSameHandNode = oldHands.size() != 0 && firstHandID == oldHands[0].second;
 
-		//Set the ID of the second hand, and set it to be the same as the first hand.
+		//Set the ID of the second hand, and create second hand's node by copying the first hand.
 		avs::uid secondHandID = isSameHandNode ? oldHands[1].second : avs::GenerateUid();
-		//Copy first hand to make second.
-		storage.storeNode(secondHandID, avs::DataNode{firstHand});
+		storage.storeNode(secondHandID, avs::DataNode{*firstHand});
 
-		///GGMP: It might be dangerous to use nullptr, but I don't know what to assign the secondHand; as it needs to have a different pointer to the first hand.
-		storage.setHands({handMeshComponent, firstHandID}, {nullptr, secondHandID});
+		///Use data nodes rather than actors for pointers; there's little else they can point to.
+		storage.setHands({firstHand, firstHandID}, {storage.getNode(secondHandID), secondHandID});
 	}
 }
 
