@@ -9,58 +9,58 @@
 #include "RemotePlaySettings.h"
 #include "RemotePlayMonitor.h"
 #include "Engine/World.h"
-	
-FRemotePlayDiscoveryService::FRemotePlayDiscoveryService()
+
+#include "SimulCasterServer/CasterSettings.h"
+
+FRemotePlayDiscoveryService::FRemotePlayDiscoveryService(const SCServer::CasterSettings& settings)
+	:settings(settings)
 {
 	SocketSubsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
 	check(SocketSubsystem);
 }
-	
-bool FRemotePlayDiscoveryService::Initialize(ARemotePlayMonitor *m,uint16 InDiscoveryPort, uint16 InServicePort)
+
+bool FRemotePlayDiscoveryService::initialise(uint16_t inDiscoveryPort, uint16_t inServicePort)
 {
-	Monitor = m;
-	if (!InDiscoveryPort)
-		InDiscoveryPort = LastDiscoveryPort;
-	if (!InDiscoveryPort)
+	if(!inDiscoveryPort) inDiscoveryPort = LastDiscoveryPort;
+	if(!inDiscoveryPort)
 	{
 		UE_LOG(LogRemotePlay, Error, TEXT("Discovery: No useable Discovery Port"));
 		return false;
 	}
-	LastDiscoveryPort = InDiscoveryPort;
-	if (!InServicePort)
-		InServicePort = ServicePort;
-	if (!InServicePort)
+	LastDiscoveryPort = inDiscoveryPort;
+
+	if(!inServicePort) inServicePort = ServicePort;
+	if(!inServicePort)
 	{
 		UE_LOG(LogRemotePlay, Error, TEXT("Discovery: No useable Service Port"));
 		return false;
 	}
-	//ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
+
 	FIPv4Address boundAddr = FIPv4Address::Any;		// i.e. 127.0.0.1, 192.168.3.X (the server's local addr), or the server's global IP address.
-	//FIPv4Address::Parse(FString("192.168.3.6"), boundAddr);
 	Socket = TUniquePtr<FSocket>(FUdpSocketBuilder(TEXT("RemotePlayDiscoveryService"))
-		.AsReusable()
-		.AsNonBlocking()
-		.BoundToAddress(boundAddr)
-		.BoundToPort(InDiscoveryPort)
-		.Build());
+								 .AsReusable()
+								 .AsNonBlocking()
+								 .BoundToAddress(boundAddr)
+								 .BoundToPort(inDiscoveryPort)
+								 .Build());
 
 	if(!Socket.IsValid())
 	{
-		UE_LOG(LogRemotePlay, Error, TEXT("Discovery: Failed to bind to UDP port %d"), InDiscoveryPort);
+		UE_LOG(LogRemotePlay, Error, TEXT("Discovery: Failed to bind to UDP port %d"), inDiscoveryPort);
 		return false;
 	}
 
-	ServicePort = InServicePort;
+	ServicePort = inServicePort;
 	return true;
 }
-	
-void FRemotePlayDiscoveryService::Shutdown()
+
+void FRemotePlayDiscoveryService::shutdown()
 {
 	Socket.Reset();
 	Clients.Empty();
 }
-	
-void FRemotePlayDiscoveryService::Tick()
+
+void FRemotePlayDiscoveryService::tick()
 {
 	if(!Socket.IsValid())
 	{
@@ -73,30 +73,30 @@ void FRemotePlayDiscoveryService::Tick()
 	//UE_LOG(LogRemotePlay, Warning, TEXT("Socket bound to %s"), *RecvAddr->ToString(false));
 
 	bool bIsValid = true;
-	uint32 ip_forced = 0; 
-	if (Monitor->ClientIP.Len())
-	{ 
-		ForcedAddr->SetIp(*Monitor->ClientIP, bIsValid);
-		if (!bIsValid)
-		{ 
+	uint32 ip_forced = 0;
+	if(wcslen(settings.clientIP) != 0)
+	{
+		ForcedAddr->SetIp(settings.clientIP, bIsValid);
+		if(!bIsValid)
+		{
 			ForcedAddr->SetAnyAddress();
 		}
 		else
 			ForcedAddr->GetIp(ip_forced);
 	}
-	uint32_t ClientID; 
+	uint32_t ClientID;
 	int32_t BytesRead;
 	while(Socket->RecvFrom(reinterpret_cast<uint8*>(&ClientID), sizeof(ClientID), BytesRead, *RecvAddr) && BytesRead == sizeof(ClientID))
 	{
 		uint32 ip_recv;
 		RecvAddr->GetIp(ip_recv);
-		if (ip_forced !=0 && ip_recv!=ip_forced)
+		if(ip_forced != 0 && ip_recv != ip_forced)
 		{
 			//UE_LOG(LogRemotePlay, Warning, TEXT("Mismatched Client found at %s"), *RecvAddr->ToString(false) );
 			continue;
 		}
 		//UE_LOG(LogRemotePlay, Warning, TEXT("Matched Client found at %s"), *RecvAddr->ToString(false));
-		Clients.AddUnique({ RecvAddr, ClientID });
+		Clients.AddUnique({RecvAddr, ClientID});
 	}
 
 	for(FClient& Client : Clients)

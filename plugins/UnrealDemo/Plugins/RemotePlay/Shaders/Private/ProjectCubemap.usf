@@ -44,7 +44,7 @@ void EncodeCameraPositionCS(uint2 ThreadID : SV_DispatchThreadID)
 }
 
 // Checks if this part of the cubemap is visible to the client
-bool FragmentIsVisible(int3 pos, uint CubeWidth)
+bool FragmentIsVisible(int3 pos, int CubeWidth)
 {
 	pos.y = CubeWidth - pos.y;
 	int BlockSize = CubeWidth / BlocksPerFaceAcross;

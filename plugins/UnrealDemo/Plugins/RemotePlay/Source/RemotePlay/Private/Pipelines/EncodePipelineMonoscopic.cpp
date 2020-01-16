@@ -9,7 +9,6 @@
 #include "RHIStaticStates.h"
 #include "SceneInterface.h"
 #include "SceneUtils.h"
-#include "RemotePlayContext.h"
 #include "RemotePlayMonitor.h"
 
 #include "Engine/TextureRenderTargetCube.h"
@@ -28,6 +27,9 @@
 #include "HideWindowsPlatformTypes.h"
 #endif
 #include <algorithm>
+
+#include "SimulCasterServer/CaptureComponent.h"
+#include "SimulCasterServer/CasterContext.h"
 
 DECLARE_FLOAT_COUNTER_STAT(TEXT("RemotePlayEncodePipelineMonoscopic"), Stat_GPU_RemotePlayEncodePipelineMonoscopic, STATGROUP_GPU);
 
@@ -173,11 +175,11 @@ static inline FVector2D CreateWorldZToDeviceZTransform(float FOV)
 	return FVector2D{1.0f / DepthAdd, SubtractValue};
 }
 
-void FEncodePipelineMonoscopic::Initialize(const FRemotePlayEncodeParameters& InParams, struct FRemotePlayContext *context, ARemotePlayMonitor* InMonitor, avs::Queue* InColorQueue, avs::Queue* InDepthQueue)
+void FEncodePipelineMonoscopic::Initialize(const FUnrealCasterEncoderSettings& InSettings, SCServer::CasterContext* context, ARemotePlayMonitor* InMonitor, avs::Queue* InColorQueue, avs::Queue* InDepthQueue)
 {
 	check(InColorQueue);
-	RemotePlayContext = context;
-	Params = InParams;
+	CasterContext = context;
+	Settings = InSettings;
 	ColorQueue = InColorQueue;
 	DepthQueue = InDepthQueue;
 	Monitor = InMonitor;
@@ -204,7 +206,7 @@ void FEncodePipelineMonoscopic::Release()
 	DepthQueue = nullptr;
 }
 
-void FEncodePipelineMonoscopic::CullHiddenCubeSegments(FSceneInterface* InScene, FCameraInfo& CameraInfo, int32 FaceSize, uint32 Divisor)
+void FEncodePipelineMonoscopic::CullHiddenCubeSegments(FSceneInterface* InScene, SCServer::CameraInfo& CameraInfo, int32 FaceSize, uint32 Divisor)
 {
 	const ERHIFeatureLevel::Type FeatureLevel = InScene->GetFeatureLevel();
 
@@ -308,15 +310,15 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	// Roderick: we create a DOUBLE-HEIGHT texture, and encode colour in the top half, depth in the bottom.
 	int32 streamWidth;
 	int32  streamHeight;
-	if (Params.bDecomposeCube)
+	if (Settings.bDecomposeCube)
 	{
-		streamWidth = Params.FrameWidth;
-		streamHeight = Params.FrameHeight;
+		streamWidth = Settings.FrameWidth;
+		streamHeight = Settings.FrameHeight;
 	}
 	else
 	{
-		streamWidth = std::max<int32>(Params.FrameWidth, Params.DepthWidth);
-		streamHeight = Params.FrameHeight + Params.DepthHeight;
+		streamWidth = std::max<int32>(Settings.FrameWidth, Settings.DepthWidth);
+		streamHeight = Settings.FrameHeight + Settings.DepthHeight;
 	}
 	ColorSurfaceTexture.Texture = RHI.CreateSurfaceTexture(streamWidth, streamHeight, PixelFormat);
 	D3D12_RESOURCE_DESC desc = ((ID3D12Resource*)ColorSurfaceTexture.Texture->GetNativeResource())->GetDesc();
@@ -346,7 +348,7 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	const avs::SurfaceFormat surfaceFormat = avsSurfaceBackends[0]->getFormat();
 	if(DepthQueue)
 	{
-		DepthSurfaceTexture.Texture = RHI.CreateSurfaceTexture(Params.FrameWidth, Params.FrameHeight, EPixelFormat::PF_R16F);
+		DepthSurfaceTexture.Texture = RHI.CreateSurfaceTexture(Settings.FrameWidth, Settings.FrameHeight, EPixelFormat::PF_R16F);
 		if(DepthSurfaceTexture.Texture.IsValid())
 		{
 			DepthSurfaceTexture.UAV = RHI.CreateSurfaceUAV(DepthSurfaceTexture.Texture);
@@ -400,7 +402,7 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 			return;
 		}
 		EncoderParams.inputFormat = avsInputFormats[i];
-		if(!Encoders[i].configure(avs::DeviceHandle{avsDeviceType, DeviceHandle}, Params.FrameWidth, Params.FrameHeight, EncoderParams))
+		if(!Encoders[i].configure(avs::DeviceHandle{avsDeviceType, DeviceHandle}, Settings.FrameWidth, Settings.FrameHeight, EncoderParams))
 		{
 			UE_LOG(LogRemotePlay, Error, TEXT("Failed to configure encoder #%d"), i);
 			return;
@@ -432,7 +434,7 @@ void FEncodePipelineMonoscopic::Release_RenderThread(FRHICommandListImmediate& R
 	DepthSurfaceTexture.UAV.SafeRelease();
 } 
 
-void FEncodePipelineMonoscopic::CullHiddenCubeSegments_RenderThread(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, FCameraInfo CameraInfo, int32 FaceSize, uint32 Divisor)
+void FEncodePipelineMonoscopic::CullHiddenCubeSegments_RenderThread(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, SCServer::CameraInfo CameraInfo, int32 FaceSize, uint32 Divisor)
 {
 	// Aidan: Currently not going to do this on GPU so this function is unused
 	// We will do this on cpu on game thread instead because we can share the output with the capture component to cull faces from rendering.
@@ -451,7 +453,7 @@ void FEncodePipelineMonoscopic::PrepareFrame_RenderThread(
 		SourceCubemapRHI = TargetResource->TextureRHI;
 	}
 	{
-		if (Params.bDecomposeCube)
+		if (Settings.bDecomposeCube)
 		{
 			DispatchDecomposeCubemapShader(RHICmdList, TargetResource->TextureRHI, UnorderedAccessViewRHIRef, FeatureLevel, CameraPosition, BlockIntersectionFlags);
 		}
@@ -466,14 +468,15 @@ void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediat
 	FQuat r = CameraTransform.GetRotation();
 	const FVector s = CameraTransform.GetScale3D();
 	avs::Transform CamTransform = { t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z };
-	avs::ConvertTransform(avs::AxesStandard::UnrealStyle, RemotePlayContext->axesStandard, CamTransform);
+	avs::ConvertTransform(avs::AxesStandard::UnrealStyle, CasterContext->axesStandard, CamTransform);
 	for (auto& Encoder : Encoders)
 	{
 		Encoder.setCameraTransform(CamTransform);
 		Encoder.setForceIDR(forceIDR);
 	}
 
-	if (!Pipeline->process())
+	avs::Result result = Pipeline->process();
+	if (!result)
 	{
 		UE_LOG(LogRemotePlay, Warning, TEXT("Encode pipeline processing encountered an error"));
 	}
@@ -482,9 +485,9 @@ void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediat
 template<typename ShaderType>
 void FEncodePipelineMonoscopic::DispatchProjectCubemapShader(FRHICommandListImmediate& RHICmdList, FTextureRHIRef TextureRHI, FUnorderedAccessViewRHIRef TextureUAVRHI, ERHIFeatureLevel::Type FeatureLevel)
 {
-	const uint32 NumThreadGroupsX = Params.FrameWidth / ShaderType::kThreadGroupSize;
-	const uint32 NumThreadGroupsY = Params.FrameHeight / ShaderType::kThreadGroupSize;
-	const uint32 NumThreadGroupsZ = Params.bDecomposeCube ? 6 : 1;
+	const uint32 NumThreadGroupsX = Settings.FrameWidth / ShaderType::kThreadGroupSize;
+	const uint32 NumThreadGroupsY = Settings.FrameHeight / ShaderType::kThreadGroupSize;
+	const uint32 NumThreadGroupsZ = Settings.bDecomposeCube ? 6 : 1;
 
 	TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 
@@ -504,7 +507,7 @@ void FEncodePipelineMonoscopic::DispatchDecomposeCubemapShader(FRHICommandListIm
 {
 	FVector  t = CameraPosition *0.01f;
 	avs::vec3 pos_m ={t.X,t.Y,t.Z};
-	avs::ConvertPosition(avs::AxesStandard::UnrealStyle, RemotePlayContext->axesStandard, pos_m);
+	avs::ConvertPosition(avs::AxesStandard::UnrealStyle, CasterContext->axesStandard, pos_m);
 	const FVector &CameraPositionMetres =*((const FVector*)&pos_m);
 	TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 	typedef FProjectCubemapCS<EProjectCubemapVariant::DecomposeCubemaps> ShaderType;

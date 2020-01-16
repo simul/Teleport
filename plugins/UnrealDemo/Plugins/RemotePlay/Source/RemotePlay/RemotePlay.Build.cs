@@ -51,6 +51,7 @@ public class RemotePlay : ModuleRules
         Link_libavstream(Target);
         Link_libenet(Target);
         Link_basisu(Target);
+		Link_SimulCasterServer(Target);
 	}
 
 	private string GetConfigName(ReadOnlyTargetRules Target)
@@ -81,14 +82,17 @@ public class RemotePlay : ModuleRules
 		string SrtLibraryPath = Path.Combine(LibrariesDirectory, "Release");
 		PublicLibraryPaths.Add(SrtLibraryPath);
 		PublicAdditionalLibraries.Add("srt_static.lib");
-		string PthreadsLibraryPath = Path.Combine(RemotePlayRootDirectory, "/thirdparty/srt/submodules/pthread-win32/bin/x64_MSVC2015.Release");
+		string PthreadsLibraryPath = Path.Combine(RemotePlayRootDirectory, "thirdparty/srt/submodules/pthread-win32/bin/x64_MSVC2015.Release");
 		PublicLibraryPaths.Add(PthreadsLibraryPath);
-		PublicLibraryPaths.Add(RemotePlayRootDirectory+"/thirdparty/srt/submodules/pthread-win32/bin/x64_MSVC2015.Release");
 		PublicAdditionalLibraries.Add("pthread_lib.lib");
 		PublicAdditionalLibraries.Add("ws2_32.lib");
-//set(PTHREAD_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/thirdparty/srt/submodules/pthread-win32)
 
-		PublicDelayLoadDLLs.Add("libavstream.dll");
+        //set(PTHREAD_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/thirdparty/srt/submodules/pthread-win32)
+
+        // EFP
+        PublicAdditionalLibraries.Add("efp.lib");
+
+        PublicDelayLoadDLLs.Add("libavstream.dll");
         RuntimeDependencies.Add(Path.Combine(LibraryPath, "libavstream.dll"));
 
         // Temporary path
@@ -133,6 +137,14 @@ public class RemotePlay : ModuleRules
         //PublicDelayLoadDLLs.Add("basisu_MD.dll");
         //RuntimeDependencies.Add(Path.Combine(LibraryPath, "basisu_MD.dll"));
     }
+
+	public void Link_SimulCasterServer(ReadOnlyTargetRules Target)
+    {
+		PrivateIncludePaths.Add(Path.Combine(RemotePlayRootDirectory, "SimulCasterServer/src"));
+
+		PublicLibraryPaths.Add(Path.Combine(LibrariesDirectory, "SimulCasterServer/Release"));
+		PublicAdditionalLibraries.Add("SimulCasterServer.lib");
+	}
 
     private string GetPlatformName(ReadOnlyTargetRules Target)
     {

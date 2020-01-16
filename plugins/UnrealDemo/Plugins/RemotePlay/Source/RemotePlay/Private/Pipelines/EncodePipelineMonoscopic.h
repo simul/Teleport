@@ -15,9 +15,9 @@ public:
 
 
 	/* Begin IEncodePipeline interface */
-	void Initialize(const FRemotePlayEncodeParameters& InParams, struct FRemotePlayContext *context, ARemotePlayMonitor* InMonitor, avs::Queue* InColorQueue, avs::Queue* InDepthQueue) override;
+	void Initialize(const FUnrealCasterEncoderSettings& InSettings, struct SCServer::CasterContext* context, ARemotePlayMonitor* InMonitor, avs::Queue* InColorQueue, avs::Queue* InDepthQueue) override;
 	void Release() override;
-	void CullHiddenCubeSegments(FSceneInterface* InScene, FCameraInfo& CameraInfo, int32 FaceSize, uint32 Divisor) override;
+	void CullHiddenCubeSegments(FSceneInterface* InScene, SCServer::CameraInfo& CameraInfo, int32 FaceSize, uint32 Divisor) override;
 	void PrepareFrame(FSceneInterface* InScene, UTexture* InSourceTexture, FTransform& CameraTransform, const TArray<bool>& BlockIntersectionFlags) override;
 	void EncodeFrame(FSceneInterface* InScene, UTexture* InSourceTexture, FTransform& CameraTransform, bool forceIDR) override;
 	FSurfaceTexture *GetSurfaceTexture() override
@@ -29,7 +29,7 @@ public:
 private:
 	void Initialize_RenderThread(FRHICommandListImmediate& RHICmdList);
 	void Release_RenderThread(FRHICommandListImmediate& RHICmdList);
-	void CullHiddenCubeSegments_RenderThread(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, FCameraInfo CameraInfo, int32 FaceSize, uint32 Divisor);
+	void CullHiddenCubeSegments_RenderThread(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, SCServer::CameraInfo CameraInfo, int32 FaceSize, uint32 Divisor);
 	void PrepareFrame_RenderThread(FRHICommandListImmediate& RHICmdList, FTextureRenderTargetResource* TargetResource, ERHIFeatureLevel::Type FeatureLevel, FVector CameraPosition, TArray<bool> BlockIntersectionFlags);
 	void EncodeFrame_RenderThread(FRHICommandListImmediate& RHICmdList, FTransform CameraTransform, bool forceIDR);
 
@@ -44,9 +44,9 @@ private:
 		uint32 pad0, pad1, pad2 = 0;
 	};
 
-	struct FRemotePlayContext* RemotePlayContext;
+	struct SCServer::CasterContext* CasterContext;
 
-	FRemotePlayEncodeParameters Params;
+	FUnrealCasterEncoderSettings Settings;
 	FSurfaceTexture ColorSurfaceTexture;
 	FSurfaceTexture DepthSurfaceTexture;
 
