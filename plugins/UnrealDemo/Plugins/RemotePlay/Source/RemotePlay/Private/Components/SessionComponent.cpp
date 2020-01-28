@@ -98,8 +98,9 @@ URemotePlaySessionComponent::URemotePlaySessionComponent()
 	, AutoDiscoveryPort(10607)
 	, DisconnectTimeout(1000)
 	, InputTouchSensitivity(1.0f)
+	, GeometryStreamingService(std::make_shared<FGeometryStreamingService>())
 	, DiscoveryService(std::make_shared<FRemotePlayDiscoveryService>(ARemotePlayMonitor::GetCasterSettings()))
-	, ClientMessaging(std::make_unique<SCServer::ClientMessaging>(DiscoveryService, GeometryStreamingService, ARemotePlayMonitor::GetCasterSettings(),
+	, ClientMessaging(std::make_unique<SCServer::ClientMessaging>(ARemotePlayMonitor::GetCasterSettings(), DiscoveryService, GeometryStreamingService,
 																  std::bind(&URemotePlaySessionComponent::SetHeadPose, this, std::placeholders::_1),
 																  std::bind(&URemotePlaySessionComponent::ProcessNewInput, this, std::placeholders::_1),
 																  std::bind(&URemotePlaySessionComponent::StopStreaming, this),
@@ -136,7 +137,7 @@ void URemotePlaySessionComponent::BeginPlay()
 		StartSession(AutoListenPort, AutoDiscoveryPort);
 	}
 
-	GeometryStreamingService.initialise(IRemotePlay::Get().GetGeometrySource());
+	GeometryStreamingService->initialise(IRemotePlay::Get().GetGeometrySource());
 }
 
 void URemotePlaySessionComponent::EndPlay(const EEndPlayReason::Type Reason)
@@ -152,6 +153,11 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 
 	if(PlayerPawn.IsValid() && Monitor->StreamGeometry)
 	{
+		if(!DetectionSphereInner.IsValid())
+		{
+			AddDetectionSpheres();
+		}
+
 		DetectionSphereInner->SetSphereRadius(Monitor->DetectionSphereRadius);
 		DetectionSphereOuter->SetSphereRadius(Monitor->DetectionSphereRadius + Monitor->DetectionSphereBufferDistance);
 	}
@@ -204,17 +210,21 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 
 void URemotePlaySessionComponent::StartSession(int32 ListenPort, int32 DiscoveryPort)
 {
-	if (!PlayerController.IsValid() || !PlayerController->IsLocalController()) return;
-	if(Monitor->ResetCache) GeometryStreamingService.reset();
+	if(!PlayerController.IsValid() || !PlayerController->IsLocalController()) return;
+	if(Monitor->ResetCache) GeometryStreamingService->reset();
 
 	ClientMessaging->startSession(ListenPort);
 
-	if (DiscoveryPort > 0)
+	if(DiscoveryPort > 0)
 	{
-		if (!DiscoveryService->initialise(DiscoveryPort, ListenPort))
+		if(!DiscoveryService->initialise(DiscoveryPort, ListenPort))
 		{
-			UE_LOG(LogRemotePlay, Warning, TEXT("Session: Failed to initialize discovery service"));
+			UE_LOG(LogRemotePlay, Warning, TEXT("Session: Failed to initialise discovery service!"));
 		}
+	}
+	else
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Session: Failed to initialise discovery service! Discovery Port was: %d."), DiscoveryPort);
 	}
 }
 
@@ -237,30 +247,7 @@ void URemotePlaySessionComponent::SwitchPlayerPawn(APawn* NewPawn)
 		//Attach detection spheres to player pawn, but only if we're actually streaming geometry.
 		if(Monitor->StreamGeometry)
 		{
-			FAttachmentTransformRules transformRules = FAttachmentTransformRules(EAttachmentRule::KeepRelative, true);
-
-			//Attach streamable geometry detection spheres to player pawn.
-			{
-				DetectionSphereInner = NewObject<USphereComponent>(PlayerPawn.Get(), "InnerSphere");
-				DetectionSphereInner->OnComponentBeginOverlap.AddDynamic(this, &URemotePlaySessionComponent::OnInnerSphereBeginOverlap);
-				DetectionSphereInner->SetCollisionProfileName("RemotePlaySensor");
-				DetectionSphereInner->SetGenerateOverlapEvents(true);
-				DetectionSphereInner->SetSphereRadius(Monitor->DetectionSphereRadius);
-
-				DetectionSphereInner->RegisterComponent();
-				DetectionSphereInner->AttachToComponent(PlayerPawn->GetRootComponent(), transformRules);
-			}
-
-			{
-				DetectionSphereOuter = NewObject<USphereComponent>(PlayerPawn.Get(), "OuterSphere");
-				DetectionSphereOuter->OnComponentEndOverlap.AddDynamic(this, &URemotePlaySessionComponent::OnOuterSphereEndOverlap);
-				DetectionSphereOuter->SetCollisionProfileName("RemotePlaySensor");
-				DetectionSphereOuter->SetGenerateOverlapEvents(true);
-				DetectionSphereOuter->SetSphereRadius(Monitor->DetectionSphereRadius + Monitor->DetectionSphereBufferDistance);
-
-				DetectionSphereOuter->RegisterComponent();
-				DetectionSphereOuter->AttachToComponent(PlayerPawn->GetRootComponent(), transformRules);
-			}
+			AddDetectionSpheres();
 		}
 
 		StartStreaming();
@@ -298,7 +285,6 @@ void URemotePlaySessionComponent::StartStreaming()
 	ClientMessaging->initialise(UnrealCasterContext, CaptureComponent);
 
 	const FUnrealCasterEncoderSettings& EncoderSettings = CaptureComponent->GetEncoderSettings();
-	const int32 StreamingPort = ClientMessaging->getServerPort() + 1;
 	avs::SetupCommand setupCommand;
 	setupCommand.video_width	= EncoderSettings.FrameWidth;
 	setupCommand.video_height	= EncoderSettings.FrameHeight;
@@ -306,7 +292,7 @@ void URemotePlaySessionComponent::StartStreaming()
 	setupCommand.depth_width	= EncoderSettings.DepthWidth;
 	setupCommand.colour_cubemap_size = EncoderSettings.FrameWidth / 3;
 	setupCommand.compose_cube	= EncoderSettings.bDecomposeCube;
-	setupCommand.port = StreamingPort; 
+	setupCommand.port = ClientMessaging->getServerPort() + 1;
 	setupCommand.debug_stream=Monitor->DebugStream;
 	setupCommand.debug_network_packets=Monitor->DebugNetworkPackets;
 	setupCommand.do_checksums = Monitor->Checksums?1:0;
@@ -317,7 +303,6 @@ void URemotePlaySessionComponent::StartStreaming()
 
 	UE_CLOG(!EncoderSettings.bDecomposeCube, LogRemotePlay, Warning, TEXT("'Decompose Cube' is set to false on %s's capture component; this may cause a black video output on the client."), *GetOuter()->GetName());
 
-	std::vector<avs::uid> resourcesClientNeeds;
 	//If this is a reconnect we don't want the client throwing away resources it will need, so we send a list of resources it will need; but only if we're actually streaming geometry.
 	if(Monitor->StreamGeometry)
 	{
@@ -326,55 +311,17 @@ void URemotePlaySessionComponent::StartStreaming()
 		DetectionSphereInner->GetOverlappingActors(actorsOverlappingOnStart);
 		for(AActor* actor : actorsOverlappingOnStart)
 		{
-			GeometryStreamingService.addActor(actor);
-		}
-
-		//Get resources the client will need to check it has.
-		std::vector<avs::MeshNodeResources> outMeshResources;
-		std::vector<avs::LightNodeResources> outLightResources;
-		GeometryStreamingService.getResourcesToStream(outMeshResources, outLightResources);
-
-		for(const avs::MeshNodeResources& meshResource : outMeshResources)
-		{
-			resourcesClientNeeds.push_back(meshResource.node_uid);
-			resourcesClientNeeds.push_back(meshResource.mesh_uid);
-
-			for(const avs::MaterialResources& material : meshResource.materials)
-			{
-				resourcesClientNeeds.push_back(material.material_uid);
-
-				for(avs::uid texture_uid : material.texture_uids)
-				{
-					resourcesClientNeeds.push_back(texture_uid);
-				}
-			}
-		}
-		for(const avs::LightNodeResources& lightResource : outLightResources)
-		{
-			resourcesClientNeeds.push_back(lightResource.node_uid);
-			resourcesClientNeeds.push_back(lightResource.shadowmap_uid);
-		}
-
-		//Remove duplicates, and UIDs of 0.
-		std::sort(resourcesClientNeeds.begin(), resourcesClientNeeds.end());
-		resourcesClientNeeds.erase(std::unique(resourcesClientNeeds.begin(), resourcesClientNeeds.end()), resourcesClientNeeds.end());
-		resourcesClientNeeds.erase(std::remove(resourcesClientNeeds.begin(), resourcesClientNeeds.end(), 0), resourcesClientNeeds.end());
-
-		//If the client needs a resource it will tell us; we don't want to stream the data if the client already has it.
-		for(avs::uid resourceID : resourcesClientNeeds)
-		{
-			GeometryStreamingService.confirmResource(resourceID);
-		}
+			GeometryStreamingService->addActor(actor);
+		}	
 	}
-	setupCommand.resourceCount = resourcesClientNeeds.size();
-	ClientMessaging->sendCommand<avs::uid>(setupCommand, resourcesClientNeeds);
 
+	ClientMessaging->sendSetupCommand(std::move(setupCommand));
 	IsStreaming = true;
 }
 
 void URemotePlaySessionComponent::StopStreaming()
 {
-	GeometryStreamingService.stopStreaming();
+	GeometryStreamingService->stopStreaming();
 	if (ClientMessaging->hasPeer())
 	{
 		avs::ShutdownCommand shutdownCommand;
@@ -415,13 +362,13 @@ void URemotePlaySessionComponent::OnInnerSphereBeginOverlap(UPrimitiveComponent*
 {
 	if(IsStreaming)
 	{
-		avs::uid actorID = GeometryStreamingService.addActor(OtherActor);
+		avs::uid actorID = GeometryStreamingService->addActor(OtherActor);
 		if(actorID != 0 && IsStreaming)
 		{
 			//Don't tell the client to show an actor it has yet to receive.
-			if(!GeometryStreamingService.hasResource(actorID)) return;
+			if(!GeometryStreamingService->hasResource(actorID)) return;
 
-			ClientMessaging->gainedActor(actorID);
+			ClientMessaging->actorEnteredBounds(actorID);
 
 			UE_LOG(LogRemotePlay, Verbose, TEXT("\"%s\" overlapped with actor \"%s\"."), *OverlappedComponent->GetName(), *OtherActor->GetName());
 		}
@@ -436,13 +383,41 @@ void URemotePlaySessionComponent::OnOuterSphereEndOverlap(UPrimitiveComponent * 
 {
 	if(IsStreaming)
 	{
-		avs::uid actorID = GeometryStreamingService.removeActor(OtherActor);
+		avs::uid actorID = GeometryStreamingService->removeActor(OtherActor);
 		if(actorID != 0)
 		{
-			ClientMessaging->lostActor(actorID);
+			ClientMessaging->actorLeftBounds(actorID);
 
 			UE_LOG(LogRemotePlay, Verbose, TEXT("\"%s\" ended overlap with actor \"%s\"."), *OverlappedComponent->GetName(), *OtherActor->GetName());
 		}
+	}
+}
+
+void URemotePlaySessionComponent::AddDetectionSpheres()
+{
+	FAttachmentTransformRules transformRules = FAttachmentTransformRules(EAttachmentRule::KeepRelative, true);
+
+	//Attach streamable geometry detection spheres to player pawn.
+	{
+		DetectionSphereInner = NewObject<USphereComponent>(PlayerPawn.Get(), "InnerSphere");
+		DetectionSphereInner->OnComponentBeginOverlap.AddDynamic(this, &URemotePlaySessionComponent::OnInnerSphereBeginOverlap);
+		DetectionSphereInner->SetCollisionProfileName("RemotePlaySensor");
+		DetectionSphereInner->SetGenerateOverlapEvents(true);
+		DetectionSphereInner->SetSphereRadius(Monitor->DetectionSphereRadius);
+
+		DetectionSphereInner->RegisterComponent();
+		DetectionSphereInner->AttachToComponent(PlayerPawn->GetRootComponent(), transformRules);
+	}
+
+	{
+		DetectionSphereOuter = NewObject<USphereComponent>(PlayerPawn.Get(), "OuterSphere");
+		DetectionSphereOuter->OnComponentEndOverlap.AddDynamic(this, &URemotePlaySessionComponent::OnOuterSphereEndOverlap);
+		DetectionSphereOuter->SetCollisionProfileName("RemotePlaySensor");
+		DetectionSphereOuter->SetGenerateOverlapEvents(true);
+		DetectionSphereOuter->SetSphereRadius(Monitor->DetectionSphereRadius + Monitor->DetectionSphereBufferDistance);
+
+		DetectionSphereOuter->RegisterComponent();
+		DetectionSphereOuter->AttachToComponent(PlayerPawn->GetRootComponent(), transformRules);
 	}
 }
 
@@ -465,25 +440,28 @@ void URemotePlaySessionComponent::ApplyPlayerInput(float DeltaTime)
 	}  
 }
 
-void URemotePlaySessionComponent::SetHeadPose(avs::HeadPose& newHeadPose)
+void URemotePlaySessionComponent::SetHeadPose(const avs::HeadPose* newHeadPose)
 {
 	if(!PlayerController.Get() || !PlayerPawn.Get()) return;
 	
+	avs::vec4 orientation = newHeadPose->orientation;
+	avs::vec3 position = newHeadPose->position;
+
 	// Here we set the angle of the player pawn.
 	// Convert quaternion from Simulcaster coordinate system (X right, Y forward, Z up) to UE4 coordinate system (left-handed, X left, Y forward, Z up).
-	avs::ConvertRotation(UnrealCasterContext->axesStandard, avs::AxesStandard::UnrealStyle, newHeadPose.orientation);
-	avs::ConvertPosition(UnrealCasterContext->axesStandard, avs::AxesStandard::UnrealStyle, newHeadPose.position);
-	FVector NewCameraPos(newHeadPose.position.x, newHeadPose.position.y, newHeadPose.position.z);
+	avs::ConvertRotation(UnrealCasterContext->axesStandard, avs::AxesStandard::UnrealStyle, orientation);
+	avs::ConvertPosition(UnrealCasterContext->axesStandard, avs::AxesStandard::UnrealStyle, position);
+	FVector NewCameraPos(position.x, position.y, position.z);
 	// back to centimetres...
 	NewCameraPos *= 100.0f;
 
-	if(Monitor->GetCasterSettings().enableDebugControlPackets)
+	if(Monitor->GetCasterSettings()->enableDebugControlPackets)
 	{
 		static char c = 0;
 		c--;
 		if(!c)
 		{
-			UE_LOG(LogRemotePlay, Warning, TEXT("Received Head Pos: %3.2f %3.2f %3.2f"), newHeadPose.position.x, newHeadPose.position.y, newHeadPose.position.z);
+			UE_LOG(LogRemotePlay, Warning, TEXT("Received Head Pos: %3.2f %3.2f %3.2f"), position.x, position.y, position.z);
 		}
 	}
 	URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
@@ -502,25 +480,25 @@ void URemotePlaySessionComponent::SetHeadPose(avs::HeadPose& newHeadPose)
 
 	CaptureComponent->SetWorldLocation(NewCameraPos);
 	ClientCamInfo.position = {NewCameraPos.X, NewCameraPos.Y, NewCameraPos.Z};
-	const FQuat HeadPoseUE(newHeadPose.orientation.x, newHeadPose.orientation.y, newHeadPose.orientation.z, newHeadPose.orientation.w);
+	const FQuat HeadPoseUE(orientation.x, orientation.y, orientation.z, orientation.w);
 	FVector Euler = HeadPoseUE.Euler();
 	Euler.X = Euler.Y = 0.0f;
 	// Unreal thinks the Euler angle starts from facing X, but actually it's Y.
 	//Euler.Z += 180.0f;
 	FQuat FlatPose = FQuat::MakeFromEuler(Euler);
-	ClientCamInfo.orientation = newHeadPose.orientation;
+	ClientCamInfo.orientation = orientation;
 	check(PlayerController.IsValid());
 	PlayerController->SetControlRotation(FlatPose.Rotator());
 }
 
-void URemotePlaySessionComponent::ProcessNewInput(const avs::InputState& newInput)
+void URemotePlaySessionComponent::ProcessNewInput(const avs::InputState* newInput)
 {
-	InputTouchAxis.X = FMath::Clamp(newInput.trackpadAxisX * InputTouchSensitivity, -1.0f, 1.0f);
-	InputTouchAxis.Y = FMath::Clamp(newInput.trackpadAxisY * InputTouchSensitivity, -1.0f, 1.0f);
-	InputJoystick.X = newInput.joystickAxisX;
-	InputJoystick.Y = newInput.joystickAxisY;
-	TranslateButtons(newInput.buttonsPressed, InputQueue.ButtonsPressed);
-	TranslateButtons(newInput.buttonsReleased, InputQueue.ButtonsReleased);
+	InputTouchAxis.X = FMath::Clamp(newInput->trackpadAxisX * InputTouchSensitivity, -1.0f, 1.0f);
+	InputTouchAxis.Y = FMath::Clamp(newInput->trackpadAxisY * InputTouchSensitivity, -1.0f, 1.0f);
+	InputJoystick.X = newInput->joystickAxisX;
+	InputJoystick.Y = newInput->joystickAxisY;
+	TranslateButtons(newInput->buttonsPressed, InputQueue.ButtonsPressed);
+	TranslateButtons(newInput->buttonsReleased, InputQueue.ButtonsReleased);
 }
 
 void URemotePlaySessionComponent::TranslateButtons(uint32_t ButtonMask, TArray<FKey>& OutKeys)

@@ -174,9 +174,9 @@ public:
 		return ServerID;
 	}
 
-	inline static const SCServer::CasterSettings& GetCasterSettings()
+	inline static const SCServer::CasterSettings* GetCasterSettings()
 	{
-		return Settings;
+		return &Settings;
 	}
 private:
 	static TMap<UWorld*, ARemotePlayMonitor*> Monitors;
@@ -185,4 +185,5 @@ private:
 	avs::uid ServerID = 0; //UID of the server; resets between sessions.
 
 	void UpdateCasterSettings();
+	void InitialiseGeometrySource();
 };

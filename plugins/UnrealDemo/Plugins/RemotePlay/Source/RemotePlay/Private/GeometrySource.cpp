@@ -455,14 +455,14 @@ avs::uid GeometrySource::AddMesh(UMeshComponent *MeshComponent)
 
 avs::uid GeometrySource::AddNode(USceneComponent* component)
 {
-	check(component); //Why have we passed a null pointer?
+	check(component);
 
 	return AddNode_Internal(component, FindNodeIterator(component));
 }
 
 avs::uid GeometrySource::GetNode(USceneComponent* component)
 {
-	check(component); //Why have we passed a null pointer?
+	check(component);
 
 	std::map<FName, avs::uid>::iterator nodeIterator = FindNodeIterator(component);
 	return nodeIterator != processedNodes.end() ? nodeIterator->second : AddNode_Internal(component, nodeIterator);
@@ -552,8 +552,7 @@ avs::uid GeometrySource::AddMaterial(UMaterialInterface* materialInterface)
 avs::uid GeometrySource::AddShadowMap(const FStaticShadowDepthMapData* shadowDepthMapData)
 {
 	//Check for nullptr
-	if (!shadowDepthMapData)
-		return 0;
+	if(!shadowDepthMapData) return 0;
 
 	//Return pre-stored shadow_uid
 	auto it = processedShadowMaps.find(shadowDepthMapData);

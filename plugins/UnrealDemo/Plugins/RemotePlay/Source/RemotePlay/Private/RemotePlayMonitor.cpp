@@ -126,51 +126,7 @@ void ARemotePlayMonitor::BeginPlay()
 	//Decompose the geometry in the level, if we are streaming the geometry.
 	if(StreamGeometry)
 	{
-		UWorld* world = GetWorld();
-		
-		GeometrySource* geometrySource = IRemotePlay::Get().GetGeometrySource();
-		geometrySource->Initialise(this, world);
-
-		TArray<AActor*> staticMeshActors;
-		UGameplayStatics::GetAllActorsOfClass(world, AStaticMeshActor::StaticClass(), staticMeshActors);
-
-		TArray<AActor*> lightActors;
-		UGameplayStatics::GetAllActorsOfClass(world, ALight::StaticClass(), lightActors);
-
-		ECollisionChannel remotePlayChannel;
-		FCollisionResponseParams profileResponses;
-		//Returns the collision channel used by RemotePlay; uses the object type of the profile to determine the channel.
-		UCollisionProfile::GetChannelAndResponseParams("RemotePlaySensor", remotePlayChannel, profileResponses);
-
-		//Decompose all relevant actors into streamable geometry.
-		for(auto actor : staticMeshActors)
-		{
-			UMeshComponent* rootMesh = Cast<UMeshComponent>(actor->GetComponentByClass(UMeshComponent::StaticClass()));
-
-			//Decompose the meshes that would cause an overlap event to occur with the "RemotePlaySensor" profile.
-			if(rootMesh->GetGenerateOverlapEvents() && rootMesh->GetCollisionResponseToChannel(remotePlayChannel) != ECollisionResponse::ECR_Ignore)
-			{
-				geometrySource->AddNode(rootMesh);
-			}
-		}
-
-		//Decompose all relevant light actors into streamable geometry.
-		for(auto actor : lightActors)
-		{
-			auto sgc = actor->GetComponentByClass(UStreamableGeometryComponent::StaticClass());
-			if(sgc)
-			{
-				//TArray<UTexture2D*> shadowAndLightMaps = static_cast<UStreamableGeometryComponent*>(sgc)->GetLightAndShadowMaps();
-				ULightComponent* lightComponent = static_cast<UStreamableGeometryComponent*>(sgc)->GetLightComponent();
-				if(lightComponent)
-				{
-					//ShadowMapData smd(lc);
-					geometrySource->AddNode(lightComponent);
-				}
-			}
-		}
-
-		geometrySource->CompressTextures();
+		InitialiseGeometrySource();
 	}
 }
 
@@ -179,6 +135,11 @@ void ARemotePlayMonitor::PostEditChangeProperty(FPropertyChangedEvent& PropertyC
 	//We want to update when a value is set, not when they are dragging to their desired value.
 	if(PropertyChangedEvent.ChangeType != EPropertyChangeType::Interactive)
 	{
+		if(Settings.enableGeometryStreaming == false && StreamGeometry == true)
+		{
+			InitialiseGeometrySource();
+		}
+
 		UpdateCasterSettings();
 	}
 }
@@ -233,4 +194,53 @@ void ARemotePlayMonitor::UpdateCasterSettings()
 
 		bDisableMainCamera
 	};
+}
+
+void ARemotePlayMonitor::InitialiseGeometrySource()
+{
+	UWorld* world = GetWorld();
+
+	GeometrySource* geometrySource = IRemotePlay::Get().GetGeometrySource();
+	geometrySource->Initialise(this, world);
+
+	TArray<AActor*> staticMeshActors;
+	UGameplayStatics::GetAllActorsOfClass(world, AStaticMeshActor::StaticClass(), staticMeshActors);
+
+	TArray<AActor*> lightActors;
+	UGameplayStatics::GetAllActorsOfClass(world, ALight::StaticClass(), lightActors);
+
+	ECollisionChannel remotePlayChannel;
+	FCollisionResponseParams profileResponses;
+	//Returns the collision channel used by RemotePlay; uses the object type of the profile to determine the channel.
+	UCollisionProfile::GetChannelAndResponseParams("RemotePlaySensor", remotePlayChannel, profileResponses);
+
+	//Decompose all relevant actors into streamable geometry.
+	for(auto actor : staticMeshActors)
+	{
+		UMeshComponent* rootMesh = Cast<UMeshComponent>(actor->GetComponentByClass(UMeshComponent::StaticClass()));
+
+		//Decompose the meshes that would cause an overlap event to occur with the "RemotePlaySensor" profile.
+		if(rootMesh->GetGenerateOverlapEvents() && rootMesh->GetCollisionResponseToChannel(remotePlayChannel) != ECollisionResponse::ECR_Ignore)
+		{
+			geometrySource->AddNode(rootMesh);
+		}
+	}
+
+	//Decompose all relevant light actors into streamable geometry.
+	for(auto actor : lightActors)
+	{
+		auto sgc = actor->GetComponentByClass(UStreamableGeometryComponent::StaticClass());
+		if(sgc)
+		{
+			//TArray<UTexture2D*> shadowAndLightMaps = static_cast<UStreamableGeometryComponent*>(sgc)->GetLightAndShadowMaps();
+			ULightComponent* lightComponent = static_cast<UStreamableGeometryComponent*>(sgc)->GetLightComponent();
+			if(lightComponent)
+			{
+				//ShadowMapData smd(lc);
+				geometrySource->AddNode(lightComponent);
+			}
+		}
+	}
+
+	geometrySource->CompressTextures();
 }

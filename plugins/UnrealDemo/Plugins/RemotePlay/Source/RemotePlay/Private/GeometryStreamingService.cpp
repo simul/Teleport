@@ -23,20 +23,6 @@ void FGeometryStreamingService::initialise(GeometrySource* source)
 	geometryStore = &geometrySource->GetStorage();
 }
 
-void FGeometryStreamingService::stopStreaming()
-{
-	for(auto idActorPair : getHiddenActors())
-	{
-		if(idActorPair.second)
-		{
-			AActor* actor = static_cast<AActor*>(idActorPair.second);
-			actor->SetActorHiddenInGame(false);
-		}
-	}
-
-	GeometryStreamingService::stopStreaming();
-}
-
 avs::uid FGeometryStreamingService::addActor(AActor* newActor)
 {
 	UActorComponent* meshComponent = newActor->GetComponentByClass(UMeshComponent::StaticClass());

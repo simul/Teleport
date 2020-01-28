@@ -52,8 +52,8 @@ private:
 	void SwitchPlayerPawn(APawn* NewPawn);
 	void ReleasePlayerPawn();
 	void ApplyPlayerInput(float DeltaTime);
-	void SetHeadPose(avs::HeadPose& newHeadPose);
-	void ProcessNewInput(const avs::InputState& newInput);
+	void SetHeadPose(const avs::HeadPose* newHeadPose);
+	void ProcessNewInput(const avs::InputState* newInput);
 	
 	static void TranslateButtons(uint32_t ButtonMask, TArray<FKey>& OutKeys);
 	void StartStreaming();
@@ -65,7 +65,9 @@ private:
 	UFUNCTION()
 	void OnOuterSphereEndOverlap(UPrimitiveComponent *OverlappedComponent, AActor *OtherActor, UPrimitiveComponent *OtherComp, int32 OtherBodyIndex);
 
-	FGeometryStreamingService GeometryStreamingService;
+	void AddDetectionSpheres();
+
+	std::shared_ptr<FGeometryStreamingService> GeometryStreamingService;
 	std::shared_ptr<SCServer::DiscoveryService> DiscoveryService;
 	std::unique_ptr<SCServer::ClientMessaging> ClientMessaging; //Handles client message receiving and reaction.
 	struct FUnrealCasterContext* UnrealCasterContext;

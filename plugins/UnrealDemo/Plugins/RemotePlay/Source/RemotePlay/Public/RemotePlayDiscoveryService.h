@@ -16,7 +16,7 @@ namespace SCServer
 class FRemotePlayDiscoveryService : public SCServer::DiscoveryService
 {
 public:
-	FRemotePlayDiscoveryService(const SCServer::CasterSettings& settings);
+	FRemotePlayDiscoveryService(const SCServer::CasterSettings* settings);
 	virtual ~FRemotePlayDiscoveryService() = default;
 
 	virtual bool initialise(uint16_t inDiscoveryPort = 0, uint16_t inServicePort = 0) override;
@@ -24,7 +24,7 @@ public:
 	virtual void tick() override;
 private:
 	class ISocketSubsystem* SocketSubsystem;
-	const SCServer::CasterSettings& settings;
+	const SCServer::CasterSettings* settings;
 
 	TUniquePtr<FSocket> Socket;
 	uint16 ServicePort;

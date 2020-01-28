@@ -30,8 +30,6 @@ public:
 
 	void initialise(GeometrySource* source);
 
-	void stopStreaming() override;
-
 	//Add actor to be streamed to the client.
 	//	newActor : Actor to be sent to the client.
 	//Returns uid of the actor the client is now responsible for, or 0 if the actor is not supported.
