@@ -67,7 +67,7 @@ private:
 
 	FGeometryStreamingService GeometryStreamingService;
 	std::shared_ptr<SCServer::DiscoveryService> DiscoveryService;
-	std::unique_ptr<SCServer::ClientMessaging> ClientMessaging; //Handles client message receival and reaction.
+	std::unique_ptr<SCServer::ClientMessaging> ClientMessaging; //Handles client message receiving and reaction.
 	struct FUnrealCasterContext* UnrealCasterContext;
 	
 	TWeakObjectPtr<APlayerController> PlayerController;
