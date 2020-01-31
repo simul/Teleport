@@ -28,7 +28,6 @@
 #endif
 #include <algorithm>
 
-#include "SimulCasterServer/CaptureComponent.h"
 #include "SimulCasterServer/CasterContext.h"
 
 DECLARE_FLOAT_COUNTER_STAT(TEXT("RemotePlayEncodePipelineMonoscopic"), Stat_GPU_RemotePlayEncodePipelineMonoscopic, STATGROUP_GPU);
@@ -175,13 +174,12 @@ static inline FVector2D CreateWorldZToDeviceZTransform(float FOV)
 	return FVector2D{1.0f / DepthAdd, SubtractValue};
 }
 
-void FEncodePipelineMonoscopic::Initialize(const FUnrealCasterEncoderSettings& InSettings, SCServer::CasterContext* context, ARemotePlayMonitor* InMonitor, avs::Queue* InColorQueue, avs::Queue* InDepthQueue)
+void FEncodePipelineMonoscopic::Initialise(const FUnrealCasterEncoderSettings& InSettings, SCServer::CasterContext* context, ARemotePlayMonitor* InMonitor)
 {
-	check(InColorQueue);
+	check(context->ColorQueue);
+
 	CasterContext = context;
 	Settings = InSettings;
-	ColorQueue = InColorQueue;
-	DepthQueue = InDepthQueue;
 	Monitor = InMonitor;
 	WorldZToDeviceZTransform = CreateWorldZToDeviceZTransform(FMath::DegreesToRadians(90.0f));
 
@@ -202,8 +200,6 @@ void FEncodePipelineMonoscopic::Release()
 		}
 	);
 	FlushRenderingCommands();
-	ColorQueue = nullptr;
-	DepthQueue = nullptr;
 }
 
 void FEncodePipelineMonoscopic::CullHiddenCubeSegments(FSceneInterface* InScene, SCServer::CameraInfo& CameraInfo, int32 FaceSize, uint32 Divisor)
@@ -263,8 +259,8 @@ void FEncodePipelineMonoscopic::EncodeFrame(FSceneInterface* InScene, UTexture* 
 	
 void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate& RHICmdList)
 {
-	const uint32_t NumStreams = (DepthQueue != nullptr) ? 2 : 1;
-	avs::Queue* const Outputs[] = { ColorQueue, DepthQueue };
+	const uint32_t NumStreams = (CasterContext->DepthQueue != nullptr) ? 2 : 1;
+	avs::Queue* const Outputs[] = {CasterContext->ColorQueue.get(), CasterContext->DepthQueue.get()};
 
 	FRemotePlayRHI RHI(RHICmdList);
 	FRemotePlayRHI::EDeviceType DeviceType;
@@ -346,7 +342,7 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 		return;
 	}
 	const avs::SurfaceFormat surfaceFormat = avsSurfaceBackends[0]->getFormat();
-	if(DepthQueue)
+	if(CasterContext->DepthQueue)
 	{
 		DepthSurfaceTexture.Texture = RHI.CreateSurfaceTexture(Settings.FrameWidth, Settings.FrameHeight, EPixelFormat::PF_R16F);
 		if(DepthSurfaceTexture.Texture.IsValid())
@@ -463,6 +459,7 @@ void FEncodePipelineMonoscopic::PrepareFrame_RenderThread(
 void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediate& RHICmdList, FTransform CameraTransform, bool forceIDR)
 {
 	check(Pipeline.IsValid());
+
 	// The transform of the capture component needs to be sent with the image
 	FVector t = CameraTransform.GetTranslation()*0.01f;
 	FQuat r = CameraTransform.GetRotation();

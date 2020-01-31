@@ -37,7 +37,7 @@ class URemotePlayReflectionCaptureComponent : public UReflectionCaptureComponent
 public:
 	virtual void UpdatePreviewShape() override;
 	virtual float GetInfluenceBoundingRadius() const override;
-	void Initialize();
+	void Initialise();
 	void UpdateContents(FScene *Scene, class UTextureRenderTargetCube *src, ERHIFeatureLevel::Type FeatureLevel) ;
 
 	void PrepareFrame(FScene *Scene, struct FSurfaceTexture *UAV, ERHIFeatureLevel::Type FeatureLevel, FIntPoint StartOffset);

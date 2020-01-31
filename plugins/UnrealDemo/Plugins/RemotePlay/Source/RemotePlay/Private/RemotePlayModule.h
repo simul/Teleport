@@ -23,7 +23,7 @@ public:
 	/* End IModuleInterface */
 	
 	FString GetPluginDir() const;
-	class GeometrySource *GetGeometrySource();
+	GeometrySource* GetGeometrySource();
 	static void LogCallback(const char *txt);
 private:
 	bool LoadLibrary_libavstream();

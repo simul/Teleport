@@ -15,7 +15,7 @@ public:
 
 
 	/* Begin IEncodePipeline interface */
-	void Initialize(const FUnrealCasterEncoderSettings& InSettings, struct SCServer::CasterContext* context, ARemotePlayMonitor* InMonitor, avs::Queue* InColorQueue, avs::Queue* InDepthQueue) override;
+	void Initialise(const FUnrealCasterEncoderSettings& InSettings, struct SCServer::CasterContext* context, ARemotePlayMonitor* InMonitor) override;
 	void Release() override;
 	void CullHiddenCubeSegments(FSceneInterface* InScene, SCServer::CameraInfo& CameraInfo, int32 FaceSize, uint32 Divisor) override;
 	void PrepareFrame(FSceneInterface* InScene, UTexture* InSourceTexture, FTransform& CameraTransform, const TArray<bool>& BlockIntersectionFlags) override;
@@ -53,8 +53,6 @@ private:
 	TUniquePtr<avs::Pipeline> Pipeline;
 	TArray<avs::Encoder> Encoders;
 	TArray<avs::Surface> InputSurfaces;
-	avs::Queue* ColorQueue = nullptr;
-	avs::Queue* DepthQueue = nullptr;
 
 	FVector2D WorldZToDeviceZTransform;
 

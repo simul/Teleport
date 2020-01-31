@@ -8,16 +8,16 @@
 #include "Engine/GameViewportClient.h"
 #include "GameFramework/Actor.h"
 
+#include "SimulCasterServer/CasterContext.h"
+
 #include "Pipelines/EncodePipelineMonoscopic.h"
 #include "RemotePlayModule.h"
 #include "RemotePlayMonitor.h"
 #include "RemotePlayReflectionCaptureComponent.h"
 #include "RemotePlaySettings.h"
-#include "UnrealCasterContext.h"
 
 URemotePlayCaptureComponent::URemotePlayCaptureComponent()
 	: bRenderOwner(false)
-	, UnrealCasterContext(nullptr)
 	, RemotePlayReflectionCaptureComponent(nullptr)
 	, bIsStreaming(false)
 	, bSendKeyframe(false)
@@ -142,22 +142,11 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 	// Therefore the rendering commands queued after this function call below directly follow the scene capture cube's commands in the queue.
 	Super::UpdateSceneCaptureContents(Scene);
 
-	if(TextureTarget && UnrealCasterContext)
+	if(TextureTarget)
 	{
-		if(!UnrealCasterContext->EncodePipeline)
-		{
-			UnrealCasterContext->EncodePipeline.reset(new FEncodePipelineMonoscopic);
-			UnrealCasterContext->EncodePipeline->Initialize(EncodeParams, UnrealCasterContext, Monitor, UnrealCasterContext->ColorQueue.get(), UnrealCasterContext->DepthQueue.get());
-
-			if(RemotePlayReflectionCaptureComponent)
-			{
-				RemotePlayReflectionCaptureComponent->Initialize();
-				RemotePlayReflectionCaptureComponent->bAttached = true;
-			}
-		}
 		FTransform Transform = GetComponentTransform();
 
-		UnrealCasterContext->EncodePipeline->PrepareFrame(Scene, TextureTarget, Transform, QuadsToRender);
+		EncodePipeline->PrepareFrame(Scene, TextureTarget, Transform, QuadsToRender);
 		if(RemotePlayReflectionCaptureComponent && EncodeParams.bDecomposeCube)
 		{
 			RemotePlayReflectionCaptureComponent->UpdateContents(
@@ -168,10 +157,10 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 			FIntPoint Offset0((W * 3) / 2, W * 2);
 			RemotePlayReflectionCaptureComponent->PrepareFrame(
 				Scene->GetRenderScene(),
-				UnrealCasterContext->EncodePipeline->GetSurfaceTexture(),
+				EncodePipeline->GetSurfaceTexture(),
 				Scene->GetFeatureLevel(), Offset0);
 		}
-		UnrealCasterContext->EncodePipeline->EncodeFrame(Scene, TextureTarget, Transform, bSendKeyframe);
+		EncodePipeline->EncodeFrame(Scene, TextureTarget, Transform, bSendKeyframe);
 		// The client must request it again if it needs it
 		bSendKeyframe = false;
 	}
@@ -366,8 +355,6 @@ bool URemotePlayCaptureComponent::VectorIntersectsFrustum(const FVector& Vector,
 
 void URemotePlayCaptureComponent::startStreaming(SCServer::CasterContext* context)
 {
-	UnrealCasterContext = static_cast<FUnrealCasterContext*>(context);
-
 	ARemotePlayMonitor *Monitor = ARemotePlayMonitor::Instantiate(GetWorld());
 	if (!ViewportDrawnDelegateHandle.IsValid())
 	{
@@ -376,6 +363,15 @@ void URemotePlayCaptureComponent::startStreaming(SCServer::CasterContext* contex
 			ViewportDrawnDelegateHandle = GameViewport->OnDrawn().AddUObject(this, &URemotePlayCaptureComponent::OnViewportDrawn);
 			GameViewport->bDisableWorldRendering = Monitor->bDisableMainCamera;
 		}
+	}
+
+	EncodePipeline.reset(new FEncodePipelineMonoscopic);
+	EncodePipeline->Initialise(EncodeParams, context, Monitor);
+
+	if(RemotePlayReflectionCaptureComponent)
+	{
+		RemotePlayReflectionCaptureComponent->Initialise();
+		RemotePlayReflectionCaptureComponent->bAttached = true;
 	}
 
 	bIsStreaming = true;
@@ -399,11 +395,8 @@ void URemotePlayCaptureComponent::stopStreaming()
 	QuadsToRender.Empty();
 	FacesToRender.Empty();
 
-	if (!UnrealCasterContext)
-	{
-		UE_LOG(LogRemotePlay, Warning, TEXT("Capture: null UnrealCasterContext"));
-		return;
-	}
+	EncodePipeline->Release();
+	EncodePipeline.reset();
 
 	if (ViewportDrawnDelegateHandle.IsValid())
 	{
@@ -413,8 +406,6 @@ void URemotePlayCaptureComponent::stopStreaming()
 		}
 		ViewportDrawnDelegateHandle.Reset();
 	}
-
-	UnrealCasterContext = nullptr;
 
 	UE_LOG(LogRemotePlay, Log, TEXT("Capture: Stopped streaming"));
 }

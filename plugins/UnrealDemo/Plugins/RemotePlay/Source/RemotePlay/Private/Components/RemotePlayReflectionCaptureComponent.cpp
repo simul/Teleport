@@ -590,7 +590,7 @@ void URemotePlayReflectionCaptureComponent::WriteReflections_RenderThread(FRHICo
 	Decompose_RenderThread(RHICmdList, LightingCubeTexture, TargetSurfaceTexture, Shader, StartOffset + lightOffset);
 }
 
-void URemotePlayReflectionCaptureComponent::Initialize()
+void URemotePlayReflectionCaptureComponent::Initialise()
 {
 	bAttached = false;
 	ENQUEUE_RENDER_COMMAND(URemotePlayReflectionCaptureComponentInitialize)(

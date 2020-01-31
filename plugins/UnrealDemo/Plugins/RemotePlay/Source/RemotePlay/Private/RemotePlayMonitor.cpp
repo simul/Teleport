@@ -121,6 +121,8 @@ void ARemotePlayMonitor::PostInitializeComponents()
 
 void ARemotePlayMonitor::BeginPlay()
 {
+	Super::BeginPlay();
+
 	ServerID = avs::GenerateUid();
 
 	//Decompose the geometry in the level, if we are streaming the geometry.
@@ -132,6 +134,8 @@ void ARemotePlayMonitor::BeginPlay()
 
 void ARemotePlayMonitor::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+
 	//We want to update when a value is set, not when they are dragging to their desired value.
 	if(PropertyChangedEvent.ChangeType != EPropertyChangeType::Interactive)
 	{

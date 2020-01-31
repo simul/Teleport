@@ -24,7 +24,7 @@ public:
 	virtual void tick() override;
 private:
 	class ISocketSubsystem* SocketSubsystem;
-	const SCServer::CasterSettings* settings;
+	const SCServer::CasterSettings* casterSettings;
 
 	TUniquePtr<FSocket> Socket;
 	uint16 ServicePort;

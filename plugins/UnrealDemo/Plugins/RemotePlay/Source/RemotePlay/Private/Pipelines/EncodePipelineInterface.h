@@ -26,7 +26,7 @@ class IEncodePipeline
 public:
 	virtual ~IEncodePipeline() = default;
 
-	virtual void Initialize(const FUnrealCasterEncoderSettings& InParams, SCServer::CasterContext* context, class ARemotePlayMonitor* InMonitor, avs::Queue* InColorQueue, avs::Queue* InDepthQueue) = 0;
+	virtual void Initialise(const FUnrealCasterEncoderSettings& InParams, SCServer::CasterContext* context, class ARemotePlayMonitor* InMonitor) = 0;
 	virtual void Release() = 0;
 	virtual void CullHiddenCubeSegments(FSceneInterface* InScene, SCServer::CameraInfo& CameraInfo, int32 FaceSize, uint32 Divisor) = 0;
 	virtual void PrepareFrame(FSceneInterface* InScene, UTexture* InSourceTexture, FTransform& CameraTransform, const TArray<bool>& BlockIntersectionFlags) = 0;

@@ -13,7 +13,7 @@
 #include "SimulCasterServer/CasterSettings.h"
 
 FRemotePlayDiscoveryService::FRemotePlayDiscoveryService(const SCServer::CasterSettings* settings)
-	:settings(settings)
+	:casterSettings(settings)
 {
 	SocketSubsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
 	check(SocketSubsystem);
@@ -74,9 +74,9 @@ void FRemotePlayDiscoveryService::tick()
 
 	bool bIsValid = true;
 	uint32 ip_forced = 0;
-	if(wcslen(settings->clientIP) != 0)
+	if(wcslen(casterSettings->clientIP) != 0)
 	{
-		ForcedAddr->SetIp(settings->clientIP, bIsValid);
+		ForcedAddr->SetIp(casterSettings->clientIP, bIsValid);
 		if(!bIsValid)
 		{
 			ForcedAddr->SetAnyAddress();

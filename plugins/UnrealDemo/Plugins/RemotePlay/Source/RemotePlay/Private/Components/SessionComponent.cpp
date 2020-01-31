@@ -13,12 +13,13 @@
 #include "enet/enet.h"
 #include "libavstream/common.hpp"
 
+#include "SimulCasterServer/CasterContext.h"
+
 #include "Components/RemotePlayCaptureComponent.h"
 #include "Components/StreamableGeometryComponent.h"
 #include "RemotePlayModule.h"
 #include "RemotePlayMonitor.h"
 #include "RemotePlaySettings.h"
-#include "UnrealCasterContext.h"
 
 DECLARE_STATS_GROUP(TEXT("RemotePlay_Game"), STATGROUP_RemotePlay, STATCAT_Advanced);
 
@@ -170,18 +171,17 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 			//if (FThreadStats::IsCollectingData() )
 			//	FThreadStats::AddMessage(GET_STATFNAME(Stat), EStatOperation::Set, double(Value));
 			Bandwidth *= 0.9f;
-			if(UnrealCasterContext && UnrealCasterContext->NetworkPipeline)
-				Bandwidth += 0.1f * UnrealCasterContext->NetworkPipeline->getBandWidthKPS();
+			if(CasterContext && CasterContext->NetworkPipeline)
+				Bandwidth += 0.1f * CasterContext->NetworkPipeline->getBandWidthKPS();
 			FScopeBandwidth Context(BandwidthStatID, Bandwidth);
 		}
 		if(PlayerPawn != PlayerController->GetPawn())
 		{
-			if(PlayerController->GetPawn())
-				SwitchPlayerPawn(PlayerController->GetPawn());
+			if(PlayerController->GetPawn()) SwitchPlayerPawn(PlayerController->GetPawn());
 		}
-		if(UnrealCasterContext && UnrealCasterContext->NetworkPipeline)
+		if(CasterContext && CasterContext->NetworkPipeline)
 		{
-			UnrealCasterContext->NetworkPipeline->process();
+			CasterContext->NetworkPipeline->process();
 		}
 
 		ClientMessaging->tick(DeltaTime);
@@ -196,10 +196,10 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 
 	if (GEngine)
 	{
-		if (UnrealCasterContext&&UnrealCasterContext->NetworkPipeline)
+		if(CasterContext && CasterContext->NetworkPipeline)
 		{
-			auto *pipeline=UnrealCasterContext->NetworkPipeline->getAvsPipeline();
-			if (pipeline)
+			auto* pipeline = CasterContext->NetworkPipeline->getAvsPipeline();
+			if(pipeline)
 			{
 				GEngine->AddOnScreenDebugMessage(135, 1.0f, FColor::White, FString::Printf(TEXT("Start Timestamp %d"), pipeline->GetStartTimestamp()));
 				GEngine->AddOnScreenDebugMessage(137, 1.0f, FColor::White, FString::Printf(TEXT("Currt Timestamp %d"), pipeline->GetTimestamp()));
@@ -259,10 +259,10 @@ void URemotePlaySessionComponent::StartStreaming()
 	if (!CaptureComponent)
 		return;
 	
-	delete UnrealCasterContext;
-	UnrealCasterContext = new FUnrealCasterContext;
-	UnrealCasterContext->ColorQueue.reset(new avs::Queue);
-	UnrealCasterContext->ColorQueue->configure(16);
+	delete CasterContext;
+	CasterContext = new SCServer::CasterContext;
+	CasterContext->ColorQueue.reset(new avs::Queue);
+	CasterContext->ColorQueue->configure(16);
 
 #if 0
 
@@ -270,19 +270,24 @@ void URemotePlaySessionComponent::StartStreaming()
 	// So we're encoding depth as alpha: no need for a separate source.
 	if (CaptureComponent->CaptureSource == ESceneCaptureSource::SCS_SceneColorSceneDepth)
 	{
-		UnrealCasterContext->bCaptureDepth = true;
-		UnrealCasterContext->DepthQueue.Reset(new avs::Queue); 
-		UnrealCasterContext->DepthQueue->configure(16); 
+		CasterContext->bCaptureDepth = true;
+		CasterContext->DepthQueue.Reset(new avs::Queue); 
+		CasterContext->DepthQueue->configure(16); 
 	}
 	else
 #endif
 	{
-		UnrealCasterContext->isCapturingDepth = false;
+		CasterContext->isCapturingDepth = false;
 	}
-	UnrealCasterContext->GeometryQueue.reset(new avs::Queue);
-	UnrealCasterContext->GeometryQueue->configure(16);
+	CasterContext->GeometryQueue.reset(new avs::Queue);
+	CasterContext->GeometryQueue->configure(16);
 
-	ClientMessaging->initialise(UnrealCasterContext, CaptureComponent);
+	
+	ClientMessaging->initialise
+	(
+		CasterContext,
+		{std::bind(&URemotePlayCaptureComponent::startStreaming, CaptureComponent, std::placeholders::_1), std::bind(&URemotePlayCaptureComponent::requestKeyframe, CaptureComponent), std::bind(&URemotePlayCaptureComponent::getClientCameraInfo, CaptureComponent)}
+	);
 
 	const FUnrealCasterEncoderSettings& EncoderSettings = CaptureComponent->GetEncoderSettings();
 	avs::SetupCommand setupCommand;
@@ -321,40 +326,44 @@ void URemotePlaySessionComponent::StartStreaming()
 
 void URemotePlaySessionComponent::StopStreaming()
 {
+	//Stop geometry stream.
 	GeometryStreamingService->stopStreaming();
-	if (ClientMessaging->hasPeer())
-	{
-		avs::ShutdownCommand shutdownCommand;
-		ClientMessaging->sendCommand(shutdownCommand);
-	}
-	if (UnrealCasterContext)
-	{
-		if (UnrealCasterContext->EncodePipeline)
-		{
-			UnrealCasterContext->EncodePipeline->Release();
-			UnrealCasterContext->EncodePipeline.reset();
-		}
-		if (UnrealCasterContext->NetworkPipeline)
-		{
-			UnrealCasterContext->NetworkPipeline->release();
-			UnrealCasterContext->NetworkPipeline.reset();
-		}
-		UnrealCasterContext->ColorQueue.reset();
-		UnrealCasterContext->DepthQueue.reset();
-		UnrealCasterContext->GeometryQueue.reset();
-	}
-	if (PlayerPawn.IsValid())
+
+	//Stop video stream.
+	if(PlayerPawn.IsValid())
 	{
 		URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
-		if (CaptureComponent)
+		if(CaptureComponent)
 		{
 			CaptureComponent->stopStreaming();
 		}
 
 		PlayerPawn.Reset();
 	}
-	delete UnrealCasterContext;
-	UnrealCasterContext = nullptr;
+
+	//End connection.
+	if (ClientMessaging->hasPeer())
+	{
+		avs::ShutdownCommand shutdownCommand;
+		ClientMessaging->sendCommand(shutdownCommand);
+	}
+
+	//Clean-up caster context.
+	//This should happen last as an attempt to use the queues may occur part-way through shutdown; for example, the video stream will try to queue data onto the colour queue.
+	if (CasterContext)
+	{
+		if (CasterContext->NetworkPipeline)
+		{
+			CasterContext->NetworkPipeline->release();
+			CasterContext->NetworkPipeline.reset();
+		}
+		CasterContext->ColorQueue.reset();
+		CasterContext->DepthQueue.reset();
+		CasterContext->GeometryQueue.reset();
+	}
+	
+	delete CasterContext;
+	CasterContext = nullptr;
 	IsStreaming = false;
 }
 
@@ -449,8 +458,8 @@ void URemotePlaySessionComponent::SetHeadPose(const avs::HeadPose* newHeadPose)
 
 	// Here we set the angle of the player pawn.
 	// Convert quaternion from Simulcaster coordinate system (X right, Y forward, Z up) to UE4 coordinate system (left-handed, X left, Y forward, Z up).
-	avs::ConvertRotation(UnrealCasterContext->axesStandard, avs::AxesStandard::UnrealStyle, orientation);
-	avs::ConvertPosition(UnrealCasterContext->axesStandard, avs::AxesStandard::UnrealStyle, position);
+	avs::ConvertRotation(CasterContext->axesStandard, avs::AxesStandard::UnrealStyle, orientation);
+	avs::ConvertPosition(CasterContext->axesStandard, avs::AxesStandard::UnrealStyle, position);
 	FVector NewCameraPos(position.x, position.y, position.z);
 	// back to centimetres...
 	NewCameraPos *= 100.0f;
