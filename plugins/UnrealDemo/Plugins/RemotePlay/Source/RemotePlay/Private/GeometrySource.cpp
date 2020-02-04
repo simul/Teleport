@@ -138,7 +138,7 @@ void GeometrySource::Initialise(ARemotePlayMonitor* monitor, UWorld* world)
 	{
 		std::vector<std::pair<void*, avs::uid>> oldHands = storage.getHands();
 
-		avs::uid firstHandID = AddNode(handMeshComponent);
+		avs::uid firstHandID = AddNode(handMeshComponent, true);
 
 		//Retrieve the newly added/updated hand node, and set to the correct data type.
 		avs::DataNode* firstHand = storage.getNode(firstHandID);
@@ -373,6 +373,62 @@ bool GeometrySource::InitMesh(Mesh* mesh, uint8 lodIndex)
 	return true;
 }
 
+avs::uid GeometrySource::AddMeshNode(UMeshComponent* meshComponent, avs::uid oldID)
+{
+	avs::uid dataID = AddMesh(meshComponent);
+	if(dataID == 0)
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Failed to add mesh for actor with name: %s"), *meshComponent->GetOuter()->GetName());
+		return 0;
+	}	
+
+	//Materials that this mesh has applied to its material slots.
+	TArray<UMaterialInterface*> mats = meshComponent->GetMaterials();
+
+	std::vector<avs::uid> materialIDs;
+	//Add material, and textures, for streaming to clients.
+	for(int32 i = 0; i < mats.Num(); i++)
+	{
+		avs::uid materialID = AddMaterial(mats[i]);
+		if(materialID != 0) materialIDs.push_back(materialID);
+		else UE_LOG(LogRemotePlay, Warning, TEXT("Actor \"%s\" has no material applied to material slot %d."), *meshComponent->GetOuter()->GetName(), i);
+	}
+
+	TArray<USceneComponent*> children;
+	meshComponent->GetChildrenComponents(false, children);
+
+	std::vector<avs::uid> childIDs;
+	for(auto child : children)
+	{
+		//If the oldID does not equal zero, then we are forcing an update on the hierarchy.
+		avs::uid childID = AddNode(Cast<UMeshComponent>(child), oldID != 0);
+		if(childID != 0) childIDs.push_back(childID);
+		else UE_LOG(LogRemotePlay, Log, TEXT("Failed to add child component \"%s\" as a node of actor \"%s\""), *child->GetName(), *meshComponent->GetOuter()->GetName());
+	}
+
+	avs::uid nodeID = oldID == 0 ? avs::GenerateUid() : oldID;
+	processedNodes[GetUniqueComponentName(meshComponent)] = nodeID;
+	storage.storeNode(nodeID, avs::DataNode{GetComponentTransform(meshComponent), dataID, avs::NodeDataType::Mesh, materialIDs, childIDs});
+
+	return nodeID;
+}
+
+avs::uid GeometrySource::AddShadowMapNode(ULightComponent* lightComponent, avs::uid oldID)
+{
+	avs::uid dataID = AddShadowMap(lightComponent->StaticShadowDepthMap.Data);
+	if(dataID == 0)
+	{
+		UE_LOG(LogRemotePlay, Warning, TEXT("Failed to add shadow map for actor with name: %s"), *lightComponent->GetOuter()->GetName());
+		return 0;
+	}
+
+	avs::uid nodeID = oldID == 0 ? avs::GenerateUid() : oldID;
+	processedNodes[GetUniqueComponentName(lightComponent)] = nodeID;
+	storage.storeNode(nodeID, avs::DataNode{GetComponentTransform(lightComponent), dataID, avs::NodeDataType::ShadowMap, {}, {}});
+
+	return nodeID;
+}
+
 avs::Transform GeometrySource::GetComponentTransform(USceneComponent* component)
 {
 	check(component)
@@ -453,19 +509,28 @@ avs::uid GeometrySource::AddMesh(UMeshComponent *MeshComponent)
 	return mesh->id;
 }
 
-avs::uid GeometrySource::AddNode(USceneComponent* component)
+avs::uid GeometrySource::AddNode(USceneComponent* component, bool forceUpdate)
 {
 	check(component);
 
-	return AddNode_Internal(component, FindNodeIterator(component));
-}
+	std::map<FName, avs::uid>::iterator nodeIterator = processedNodes.find(GetUniqueComponentName(component));
 
-avs::uid GeometrySource::GetNode(USceneComponent* component)
-{
-	check(component);
+	avs::uid nodeID = nodeIterator != processedNodes.end() ? nodeIterator->second : 0;
 
-	std::map<FName, avs::uid>::iterator nodeIterator = FindNodeIterator(component);
-	return nodeIterator != processedNodes.end() ? nodeIterator->second : AddNode_Internal(component, nodeIterator);
+	if(forceUpdate || nodeID == 0)
+	{
+		UMeshComponent* meshComponent = Cast<UMeshComponent>(component);
+		ULightComponent* lightComponent = Cast<ULightComponent>(component);
+
+		if(meshComponent) nodeID = AddMeshNode(meshComponent, nodeID);
+		else if(lightComponent) nodeID = AddShadowMapNode(lightComponent, nodeID);
+		else
+		{
+			UE_LOG(LogRemotePlay, Warning, TEXT("Actor \"%s\" was marked as streamable, but has no streamable component."), *component->GetOuter()->GetName());
+		}
+	}
+
+	return nodeID;
 }
 
 avs::uid GeometrySource::AddMaterial(UMaterialInterface* materialInterface)
@@ -608,71 +673,6 @@ void GeometrySource::CompressTextures()
 		storage.compressNextTexture();
 	}
 #undef LOCTEXT_NAMESPACE
-}
-
-avs::uid GeometrySource::AddNode_Internal(USceneComponent* component, std::map<FName, avs::uid>::iterator nodeIterator)
-{
-	UMeshComponent* meshComponent = Cast<UMeshComponent>(component);
-	ULightComponent* lightComponent = Cast<ULightComponent>(component);
-
-	avs::uid dataID;
-	avs::NodeDataType dataType;
-	std::vector<avs::uid> materialIDs;
-	std::vector<avs::uid> childIDs;
-	if(meshComponent)
-	{
-		dataType = avs::NodeDataType::Mesh;
-		dataID = AddMesh(meshComponent);
-		if(dataID == 0) return 0;
-
-		//Materials that this component has applied to its material slots.
-		TArray<UMaterialInterface*> mats = meshComponent->GetMaterials();
-
-		//Add material, and textures, for streaming to clients.
-		for(int32 i = 0; i < mats.Num(); i++)
-		{
-			avs::uid materialID = AddMaterial(mats[i]);
-			if(materialID != 0) materialIDs.push_back(materialID);
-			else UE_LOG(LogRemotePlay, Warning, TEXT("Actor \"%s\" has no material applied to material slot %d."), *component->GetOuter()->GetName(), i);
-		}
-
-		TArray<USceneComponent*> children;
-		component->GetChildrenComponents(false, children);
-
-		for(auto child : children)
-		{
-			avs::uid childID = AddNode(Cast<UMeshComponent>(child));
-			if(childID != 0) childIDs.push_back(childID);
-			else UE_LOG(LogRemotePlay, Log, TEXT("Failed to add child component \"%s\" as a node of actor \"%s\""), *child->GetName(), *component->GetOuter()->GetName());
-		}
-	}
-	else if(lightComponent)
-	{
-		dataType = avs::NodeDataType::ShadowMap;
-		dataID = AddShadowMap(lightComponent->StaticShadowDepthMap.Data);
-		if(dataID == 0)
-		{
-			UE_LOG(LogRemotePlay, Warning, TEXT("Failed to add shadow map for actor with name: %s"), *component->GetOuter()->GetName());
-			return 0;
-		}
-	}
-	else
-	{
-		UE_LOG(LogRemotePlay, Warning, TEXT("Currently only UMeshComponents and ULightComponents are supported, but a component of type <%s> was passed to the GeometrySource."), *component->GetName());
-
-		return 0;
-	}
-
-	avs::uid nodeID = nodeIterator == processedNodes.end() ? avs::GenerateUid() : nodeIterator->second;
-	processedNodes[GetUniqueComponentName(component)] = nodeID;
-	storage.storeNode(nodeID, avs::DataNode{GetComponentTransform(component), dataID, dataType, materialIDs, childIDs});
-
-	return nodeID;
-}
-
-std::map<FName, avs::uid>::iterator GeometrySource::FindNodeIterator(USceneComponent* component)
-{
-	return processedNodes.find(GetUniqueComponentName(component));
 }
 
 void GeometrySource::PrepareMesh(Mesh* mesh)

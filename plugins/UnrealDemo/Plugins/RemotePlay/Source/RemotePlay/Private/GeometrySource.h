@@ -25,11 +25,9 @@ public:
 	
 	//Adds the node to the geometry source; decomposing the node to its base components. Will update the node if it has already been processed before.
 	//	component : Scene component the node represents.
+	//	forceUpdate : Causes node data to be extracted, even if it has been before.
 	//Return UID of node.
-	avs::uid AddNode(USceneComponent* component);
-	//Returns UID of node that represents the passed component; will add the node if it has not been processed before.
-	//	component : Scene component the node represents.
-	avs::uid GetNode(USceneComponent* component);
+	avs::uid AddNode(USceneComponent* component, bool forceUpdate = false);
 	
 	//Adds the material to the geometry source, where it is processed into a streamable material.
 	//Returns the UID of the processed material information, or 0 if a nullptr is passed.
@@ -62,16 +60,19 @@ protected:
 	std::unordered_map<UTexture*, avs::uid> processedTextures; //Textures we have already stored in the GeometrySource; the pointer points to the uid of the stored texture information.
 	std::unordered_map<const FStaticShadowDepthMapData*, avs::uid> processedShadowMaps;
 
-	//Returns ID of the node that represents the component; to prevent double search in GetNode when a node doesn't exist.
-	//	component : Scene component the node represents.
-	//	nodeIterator : Iterator returned when searching for the node in processedNodes.
-	avs::uid AddNode_Internal(USceneComponent* component, std::map<FName, avs::uid>::iterator nodeIterator);
-	//Returns the iterator returned when searching for the passed component.
-	//	component : Scene component the node represents.
-	std::map<FName, avs::uid>::iterator FindNodeIterator(USceneComponent* component);
-
 	void PrepareMesh(Mesh* mesh);
 	bool InitMesh(Mesh* mesh, uint8 lodIndex);
+
+	//Add a node that represents a mesh.
+	//	meshComponent : Mesh the node will represent.
+	//	oldID : ID being used by this node, if zero it will create a new ID.
+	//Returns the ID of the node added.
+	avs::uid AddMeshNode(UMeshComponent* meshComponent, avs::uid oldID);
+	//Add a node that represents a light.
+	//	lightComponent : Light the node will represent.
+	//	oldID : ID being used by this node, if zero it will create a new ID.
+	//Returns the ID of the node added.
+	avs::uid AddShadowMapNode(ULightComponent* lightComponent, avs::uid oldID);
 
 	//Returns component transform.
 	//	component : Component we want the transform of.

@@ -226,7 +226,7 @@ void ARemotePlayMonitor::InitialiseGeometrySource()
 		//Decompose the meshes that would cause an overlap event to occur with the "RemotePlaySensor" profile.
 		if(rootMesh->GetGenerateOverlapEvents() && rootMesh->GetCollisionResponseToChannel(remotePlayChannel) != ECollisionResponse::ECR_Ignore)
 		{
-			geometrySource->AddNode(rootMesh);
+			geometrySource->AddNode(rootMesh, true);
 		}
 	}
 
@@ -241,7 +241,7 @@ void ARemotePlayMonitor::InitialiseGeometrySource()
 			if(lightComponent)
 			{
 				//ShadowMapData smd(lc);
-				geometrySource->AddNode(lightComponent);
+				geometrySource->AddNode(lightComponent, true);
 			}
 		}
 	}

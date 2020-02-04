@@ -32,7 +32,7 @@ avs::uid FGeometryStreamingService::addActor(AActor* newActor)
 		return 0;
 	}
 
-	avs::uid actorID = geometrySource->GetNode(Cast<UMeshComponent>(meshComponent));
+	avs::uid actorID = geometrySource->AddNode(Cast<UMeshComponent>(meshComponent));
 	
 	GeometryStreamingService::addActor(newActor, actorID);
 	return actorID;
