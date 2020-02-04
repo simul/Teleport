@@ -372,7 +372,7 @@ void URemotePlaySessionComponent::OnInnerSphereBeginOverlap(UPrimitiveComponent*
 	if(IsStreaming)
 	{
 		avs::uid actorID = GeometryStreamingService->addActor(OtherActor);
-		if(actorID != 0 && IsStreaming)
+		if(actorID != 0)
 		{
 			//Don't tell the client to show an actor it has yet to receive.
 			if(!GeometryStreamingService->hasResource(actorID)) return;
