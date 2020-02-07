@@ -111,5 +111,9 @@ void FRemotePlayDiscoveryService::tick()
 		{
 			UE_LOG(LogRemotePlay, Warning, TEXT("Discovery: Failed to send reply to client ID: %x"), Client.ID);
 		}
+		else
+		{
+			LastFoundClientID=Client.ID;
+		}
 	}
 }

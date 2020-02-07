@@ -102,9 +102,9 @@ URemotePlaySessionComponent::URemotePlaySessionComponent()
 	, GeometryStreamingService(std::make_shared<FGeometryStreamingService>())
 	, DiscoveryService(std::make_shared<FRemotePlayDiscoveryService>(ARemotePlayMonitor::GetCasterSettings()))
 	, ClientMessaging(std::make_unique<SCServer::ClientMessaging>(ARemotePlayMonitor::GetCasterSettings(), DiscoveryService, GeometryStreamingService,
-																  std::bind(&URemotePlaySessionComponent::SetHeadPose, this, std::placeholders::_1),
-																  std::bind(&URemotePlaySessionComponent::ProcessNewInput, this, std::placeholders::_1),
-																  std::bind(&URemotePlaySessionComponent::StopStreaming, this),
+		std::bind(&URemotePlaySessionComponent::SetHeadPose, this,  std::placeholders::_2),
+		std::bind(&URemotePlaySessionComponent::ProcessNewInput, this,  std::placeholders::_2),
+		std::bind(&URemotePlaySessionComponent::StopStreaming, this),
 																  DisconnectTimeout))
 	, InputTouchAxis(0.f, 0.f)
 	, InputJoystick(0.f,0.f)
@@ -213,7 +213,7 @@ void URemotePlaySessionComponent::StartSession(int32 ListenPort, int32 Discovery
 	if(!PlayerController.IsValid() || !PlayerController->IsLocalController()) return;
 	if(Monitor->ResetCache) GeometryStreamingService->reset();
 
-	ClientMessaging->startSession(ListenPort);
+	ClientMessaging->startSession(0,ListenPort);
 
 	if(DiscoveryPort > 0)
 	{
@@ -448,7 +448,7 @@ void URemotePlaySessionComponent::ApplyPlayerInput(float DeltaTime)
 		PlayerController->InputKey(InputQueue.ButtonsReleased.Pop(), EInputEvent::IE_Released, 1.0f, true);
 	}  
 }
-
+ 
 void URemotePlaySessionComponent::SetHeadPose(const avs::HeadPose* newHeadPose)
 {
 	if(!PlayerController.Get() || !PlayerPawn.Get()) return;
@@ -458,8 +458,6 @@ void URemotePlaySessionComponent::SetHeadPose(const avs::HeadPose* newHeadPose)
 
 	// Here we set the angle of the player pawn.
 	// Convert quaternion from Simulcaster coordinate system (X right, Y forward, Z up) to UE4 coordinate system (left-handed, X left, Y forward, Z up).
-	avs::ConvertRotation(CasterContext->axesStandard, avs::AxesStandard::UnrealStyle, orientation);
-	avs::ConvertPosition(CasterContext->axesStandard, avs::AxesStandard::UnrealStyle, position);
 	FVector NewCameraPos(position.x, position.y, position.z);
 	// back to centimetres...
 	NewCameraPos *= 100.0f;

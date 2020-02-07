@@ -22,7 +22,14 @@ public:
 	virtual bool initialise(uint16_t inDiscoveryPort = 0, uint16_t inServicePort = 0) override;
 	virtual void shutdown() override;
 	virtual void tick() override;
+	virtual uint64_t getNewClientID()
+	{
+		return LastFoundClientID;
+		LastFoundClientID=0;
+	}
+
 private:
+	avs::uid LastFoundClientID;
 	class ISocketSubsystem* SocketSubsystem;
 	const SCServer::CasterSettings* casterSettings;
 
