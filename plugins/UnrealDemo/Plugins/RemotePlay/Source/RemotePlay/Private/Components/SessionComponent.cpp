@@ -93,6 +93,8 @@ public:
 	}
 };
 
+const avs::uid DUD_CLIENT_ID = 0;
+
 URemotePlaySessionComponent::URemotePlaySessionComponent()
 	: bAutoStartSession(true)
 	, AutoListenPort(10500)
@@ -102,9 +104,10 @@ URemotePlaySessionComponent::URemotePlaySessionComponent()
 	, GeometryStreamingService(std::make_shared<FGeometryStreamingService>())
 	, DiscoveryService(std::make_shared<FRemotePlayDiscoveryService>(ARemotePlayMonitor::GetCasterSettings()))
 	, ClientMessaging(std::make_unique<SCServer::ClientMessaging>(ARemotePlayMonitor::GetCasterSettings(), DiscoveryService, GeometryStreamingService,
-		std::bind(&URemotePlaySessionComponent::SetHeadPose, this,  std::placeholders::_2),
-		std::bind(&URemotePlaySessionComponent::ProcessNewInput, this,  std::placeholders::_2),
-		std::bind(&URemotePlaySessionComponent::StopStreaming, this),
+																  std::bind(&URemotePlaySessionComponent::SetHeadPose, this, std::placeholders::_2),
+																  [](avs::uid, int index, const avs::HeadPose*){},
+																  std::bind(&URemotePlaySessionComponent::ProcessNewInput, this, std::placeholders::_2),
+																  std::bind(&URemotePlaySessionComponent::StopStreaming, this),
 																  DisconnectTimeout))
 	, InputTouchAxis(0.f, 0.f)
 	, InputJoystick(0.f,0.f)
@@ -213,7 +216,7 @@ void URemotePlaySessionComponent::StartSession(int32 ListenPort, int32 Discovery
 	if(!PlayerController.IsValid() || !PlayerController->IsLocalController()) return;
 	if(Monitor->ResetCache) GeometryStreamingService->reset();
 
-	ClientMessaging->startSession(0,ListenPort);
+	ClientMessaging->startSession(DUD_CLIENT_ID, ListenPort);
 
 	if(DiscoveryPort > 0)
 	{

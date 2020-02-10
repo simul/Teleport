@@ -395,8 +395,11 @@ void URemotePlayCaptureComponent::stopStreaming()
 	QuadsToRender.Empty();
 	FacesToRender.Empty();
 
-	EncodePipeline->Release();
-	EncodePipeline.reset();
+	if(EncodePipeline)
+	{
+		EncodePipeline->Release();
+		EncodePipeline.reset();
+	}
 
 	if (ViewportDrawnDelegateHandle.IsValid())
 	{
