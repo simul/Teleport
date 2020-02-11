@@ -143,7 +143,7 @@ public class RemotePlay : ModuleRules
 		PrivateIncludePaths.Add(Path.Combine(RemotePlayRootDirectory, "SimulCasterServer/src"));
 
 		PublicLibraryPaths.Add(Path.Combine(LibrariesDirectory, "SimulCasterServer/Release"));
-		PublicAdditionalLibraries.Add("SimulCasterServer.lib");
+        PublicAdditionalLibraries.Add("SimulCasterServer.lib");
 	}
 
     private string GetPlatformName(ReadOnlyTargetRules Target)

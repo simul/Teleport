@@ -102,8 +102,8 @@ URemotePlaySessionComponent::URemotePlaySessionComponent()
 	, GeometryStreamingService(std::make_shared<FGeometryStreamingService>())
 	, DiscoveryService(std::make_shared<FRemotePlayDiscoveryService>(ARemotePlayMonitor::GetCasterSettings()))
 	, ClientMessaging(std::make_unique<SCServer::ClientMessaging>(ARemotePlayMonitor::GetCasterSettings(), DiscoveryService, GeometryStreamingService,
-																  std::bind(&URemotePlaySessionComponent::SetHeadPose, this, std::placeholders::_1),
-																  std::bind(&URemotePlaySessionComponent::ProcessNewInput, this, std::placeholders::_1),
+																  std::bind(&URemotePlaySessionComponent::SetHeadPose, this, std::placeholders::_1, std::placeholders::_2),
+																  std::bind(&URemotePlaySessionComponent::ProcessNewInput, this, std::placeholders::_1, std::placeholders::_2),
 																  std::bind(&URemotePlaySessionComponent::StopStreaming, this),
 																  DisconnectTimeout))
 	, InputTouchAxis(0.f, 0.f)
@@ -213,7 +213,7 @@ void URemotePlaySessionComponent::StartSession(int32 ListenPort, int32 Discovery
 	if(!PlayerController.IsValid() || !PlayerController->IsLocalController()) return;
 	if(Monitor->ResetCache) GeometryStreamingService->reset();
 
-	ClientMessaging->startSession(ListenPort);
+	ClientMessaging->startSession(0, ListenPort);
 
 	if(DiscoveryPort > 0)
 	{
@@ -449,7 +449,7 @@ void URemotePlaySessionComponent::ApplyPlayerInput(float DeltaTime)
 	}  
 }
 
-void URemotePlaySessionComponent::SetHeadPose(const avs::HeadPose* newHeadPose)
+void URemotePlaySessionComponent::SetHeadPose(avs::uid, const avs::HeadPose* newHeadPose)
 {
 	if(!PlayerController.Get() || !PlayerPawn.Get()) return;
 	
@@ -500,7 +500,7 @@ void URemotePlaySessionComponent::SetHeadPose(const avs::HeadPose* newHeadPose)
 	PlayerController->SetControlRotation(FlatPose.Rotator());
 }
 
-void URemotePlaySessionComponent::ProcessNewInput(const avs::InputState* newInput)
+void URemotePlaySessionComponent::ProcessNewInput(avs::uid, const avs::InputState* newInput)
 {
 	InputTouchAxis.X = FMath::Clamp(newInput->trackpadAxisX * InputTouchSensitivity, -1.0f, 1.0f);
 	InputTouchAxis.Y = FMath::Clamp(newInput->trackpadAxisY * InputTouchSensitivity, -1.0f, 1.0f);

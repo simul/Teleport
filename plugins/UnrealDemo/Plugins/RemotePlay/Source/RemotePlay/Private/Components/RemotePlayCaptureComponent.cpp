@@ -142,7 +142,7 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 	// Therefore the rendering commands queued after this function call below directly follow the scene capture cube's commands in the queue.
 	Super::UpdateSceneCaptureContents(Scene);
 
-	if(TextureTarget)
+	if(Monitor->StreamVideo && TextureTarget)
 	{
 		FTransform Transform = GetComponentTransform();
 
@@ -395,8 +395,11 @@ void URemotePlayCaptureComponent::stopStreaming()
 	QuadsToRender.Empty();
 	FacesToRender.Empty();
 
-	EncodePipeline->Release();
-	EncodePipeline.reset();
+	if (EncodePipeline)
+	{
+		EncodePipeline->Release();
+		EncodePipeline.reset();
+	}
 
 	if (ViewportDrawnDelegateHandle.IsValid())
 	{
