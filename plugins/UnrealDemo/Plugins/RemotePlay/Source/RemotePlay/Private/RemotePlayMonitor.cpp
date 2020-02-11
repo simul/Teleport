@@ -197,7 +197,9 @@ void ARemotePlayMonitor::UpdateCasterSettings()
 		QualityLevel,
 		CompressionLevel,
 
-		bDisableMainCamera
+		bDisableMainCamera,
+
+		avs::AxesStandard::UnrealStyle
 	};
 }
 

@@ -395,7 +395,7 @@ void URemotePlayCaptureComponent::stopStreaming()
 	QuadsToRender.Empty();
 	FacesToRender.Empty();
 
-	if (EncodePipeline)
+	if(EncodePipeline)
 	{
 		EncodePipeline->Release();
 		EncodePipeline.reset();

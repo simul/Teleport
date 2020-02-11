@@ -223,15 +223,15 @@ bool GeometrySource::InitMesh(Mesh* mesh, uint8 lodIndex)
 	avs::uid normals_uid = avs::GenerateUid();
 	avs::uid tangents_uid = avs::GenerateUid();
 	avs::uid texcoords_uid = avs::GenerateUid();
-	std::vector<FVector2D>& uvData = processedUVs[texcoords_uid];
 	avs::uid indices_uid = avs::GenerateUid();
 	avs::uid positions_view_uid = avs::GenerateUid();
 	avs::uid normals_view_uid = avs::GenerateUid();
 	avs::uid tangents_view_uid = avs::GenerateUid();
 	avs::uid texcoords_view_uid[8];
-	size_t attributeCount = 2 + (vb.GetTangentData() ? 1 : 0) + (vb.GetTexCoordData() ? vb.GetNumTexCoords() : 0);
 
-	uvData.reserve(vb.GetNumVertices()*vb.GetNumTexCoords());
+	avs::uid indices_view_uid = avs::GenerateUid();
+	avs::Accessor::ComponentType componentType;
+	size_t istride;
 
 	// First create the Buffers:
 	// Position:
@@ -251,6 +251,7 @@ bool GeometrySource::InitMesh(Mesh* mesh, uint8 lodIndex)
 		// Offset is zero, because the sections are just lists of indices. 
 		AddBufferView(mesh, positions_uid, positions_view_uid, 0, pb.GetNumVertices(), position_stride);
 	}
+
 	size_t tangent_stride = vb.GetTangentSize() / vb.GetNumVertices();
 	// Normal:
 	{
@@ -266,29 +267,42 @@ bool GeometrySource::InitMesh(Mesh* mesh, uint8 lodIndex)
 		AddBuffer(mesh, tangents_uid, vb.GetNumVertices(), stride, vb.GetTangentData());
 		AddBufferView(mesh, tangents_uid, tangents_view_uid, 0, pb.GetNumVertices(), tangent_stride);
 	}
-	// TexCoords:
-	size_t texcoords_stride = sizeof(FVector2D);
-	for (size_t j = 0; j < vb.GetNumTexCoords(); j++)
-	{
-		//bool IsFP32 = vb.GetUseFullPrecisionUVs(); //Not need vb.GetVertexUV() returns FP32 regardless. 
 
-		for (uint32_t k = 0; k < vb.GetNumVertices(); k++)
-			uvData.push_back(vb.GetVertexUV(k, j));
-	}
-	AddBuffer(mesh, texcoords_uid, vb.GetNumVertices()*vb.GetNumTexCoords(), texcoords_stride, uvData.data());
-	for (size_t j = 0; j < vb.GetNumTexCoords(); j++)
+	// TexCoords:
 	{
-		//bool IsFP32 = vb.GetUseFullPrecisionUVs(); //Not need vb.GetVertexUV() returns FP32 regardless. 
-		texcoords_view_uid[j] = avs::GenerateUid();
-		AddBufferView(mesh, texcoords_uid, texcoords_view_uid[j], j*pb.GetNumVertices(), pb.GetNumVertices(), texcoords_stride);
+		std::vector<FVector2D>& uvData = processedUVs[texcoords_uid];
+		uvData.reserve(vb.GetNumVertices() * vb.GetNumTexCoords());
+
+		size_t texcoords_stride = sizeof(FVector2D);
+		for(size_t j = 0; j < vb.GetNumTexCoords(); j++)
+		{
+			//bool IsFP32 = vb.GetUseFullPrecisionUVs(); //Not need vb.GetVertexUV() returns FP32 regardless. 
+
+			for(uint32_t k = 0; k < vb.GetNumVertices(); k++)
+			{
+				uvData.push_back(vb.GetVertexUV(k, j));
+			}
+		}
+		AddBuffer(mesh, texcoords_uid, vb.GetNumVertices() * vb.GetNumTexCoords(), texcoords_stride, uvData.data());
+		for(size_t j = 0; j < vb.GetNumTexCoords(); j++)
+		{
+			//bool IsFP32 = vb.GetUseFullPrecisionUVs(); //Not need vb.GetVertexUV() returns FP32 regardless. 
+			texcoords_view_uid[j] = avs::GenerateUid();
+			AddBufferView(mesh, texcoords_uid, texcoords_view_uid[j], j * pb.GetNumVertices(), pb.GetNumVertices(), texcoords_stride);
+		}
 	}
-	FRawStaticIndexBuffer &ib = lod.IndexBuffer;
-	FIndexArrayView arr = ib.GetArrayView();
-	avs::Accessor::ComponentType componentType = ib.Is32Bit() ? avs::Accessor::ComponentType::UINT : avs::Accessor::ComponentType::USHORT;
-	size_t istride = avs::GetComponentSize(componentType);
-	AddBuffer(mesh, indices_uid, ib.GetNumIndices(), istride, (const void*)((uint64*)&arr)[0]);
-	avs::uid indices_view_uid = avs::GenerateUid();
-	AddBufferView(mesh, indices_uid, indices_view_uid, 0, ib.GetNumIndices(), istride);
+
+	//Indices:
+	{
+		FRawStaticIndexBuffer& ib = lod.IndexBuffer;
+		FIndexArrayView arr = ib.GetArrayView();
+
+		componentType = ib.Is32Bit() ? avs::Accessor::ComponentType::UINT : avs::Accessor::ComponentType::USHORT;
+		istride = avs::GetComponentSize(componentType);
+
+		AddBuffer(mesh, indices_uid, ib.GetNumIndices(), istride, (const void*)((uint64*)&arr)[0]);
+		AddBufferView(mesh, indices_uid, indices_view_uid, 0, ib.GetNumIndices(), istride);
+	}
 	
 	// Now create the views:
 	size_t  num_elements = lod.Sections.Num();
@@ -338,7 +352,7 @@ bool GeometrySource::InitMesh(Mesh* mesh, uint8 lodIndex)
 			a.byteOffset = 0;
 			a.type = avs::Accessor::DataType::VEC4;
 			a.componentType = avs::Accessor::ComponentType::FLOAT;
-			a.count = vb.GetTangentSize();// same as pb???
+			a.count = vb.GetTangentSize() / 8;// same as pb???
 			a.bufferView = tangents_view_uid;
 		}
 		// TexCoords:
@@ -355,14 +369,18 @@ bool GeometrySource::InitMesh(Mesh* mesh, uint8 lodIndex)
 			a.count = vb.GetNumVertices();// same as pb???
 			a.bufferView = texcoords_view_uid[j];
 		}
-		pa.indices_accessor = avs::GenerateUid();
 
-		avs::Accessor &i_a = accessors[pa.indices_accessor];
-		i_a.byteOffset = section.FirstIndex*istride;
-		i_a.type = avs::Accessor::DataType::SCALAR;
-		i_a.componentType = componentType;
-		i_a.count = section.NumTriangles*3;// same as pb???
-		i_a.bufferView = indices_view_uid ;
+		//Indices:
+		{
+			pa.indices_accessor = avs::GenerateUid();
+
+			avs::Accessor& i_a = accessors[pa.indices_accessor];
+			i_a.byteOffset = section.FirstIndex * istride;
+			i_a.type = avs::Accessor::DataType::SCALAR;
+			i_a.componentType = componentType;
+			i_a.count = section.NumTriangles * 3;// same as pb???
+			i_a.bufferView = indices_view_uid;
+		}
 
 		// probably no default material in UE4?
 		pa.material = 0;
