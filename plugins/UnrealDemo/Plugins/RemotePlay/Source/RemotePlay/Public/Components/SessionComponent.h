@@ -52,8 +52,8 @@ private:
 	void SwitchPlayerPawn(APawn* NewPawn);
 	void ReleasePlayerPawn();
 	void ApplyPlayerInput(float DeltaTime);
-	void SetHeadPose(avs::uid, const avs::HeadPose* newHeadPose);
-	void ProcessNewInput(avs::uid, const avs::InputState* newInput);
+	void SetHeadPose(const avs::HeadPose* newHeadPose);
+	void ProcessNewInput(const avs::InputState* newInput);
 	
 	static void TranslateButtons(uint32_t ButtonMask, TArray<FKey>& OutKeys);
 	void StartStreaming();

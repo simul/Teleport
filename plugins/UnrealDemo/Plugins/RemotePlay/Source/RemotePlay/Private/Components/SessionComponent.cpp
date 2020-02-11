@@ -501,7 +501,7 @@ void URemotePlaySessionComponent::SetHeadPose(const avs::HeadPose* newHeadPose)
 	PlayerController->SetControlRotation(FlatPose.Rotator());
 }
 
-void URemotePlaySessionComponent::ProcessNewInput(avs::uid, const avs::InputState* newInput)
+void URemotePlaySessionComponent::ProcessNewInput(const avs::InputState* newInput)
 {
 	InputTouchAxis.X = FMath::Clamp(newInput->trackpadAxisX * InputTouchSensitivity, -1.0f, 1.0f);
 	InputTouchAxis.Y = FMath::Clamp(newInput->trackpadAxisY * InputTouchSensitivity, -1.0f, 1.0f);
