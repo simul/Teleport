@@ -33,6 +33,7 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 		VideoEncodeFrequency = 2;
 		StreamGeometry = true;
 	}
+	StreamVideo = true;
 	bOverrideTextureTarget = false;
 	SceneCaptureTextureTarget = nullptr;
 	bDeferOutput = false;

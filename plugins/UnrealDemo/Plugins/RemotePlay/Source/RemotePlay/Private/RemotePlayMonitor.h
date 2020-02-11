@@ -76,6 +76,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Geometry, meta = (ClampMin = "0.5", ClampMax = "300.0"))
 	float ConfirmationWaitTime;
 
+	// Determines if video will be encoded and streamed
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	bool StreamVideo;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	bool bOverrideTextureTarget;
 

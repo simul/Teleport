@@ -13,7 +13,6 @@ class FEncodePipelineMonoscopic : public IEncodePipeline
 {
 public:
 
-
 	/* Begin IEncodePipeline interface */
 	void Initialise(const FUnrealCasterEncoderSettings& InSettings, struct SCServer::CasterContext* context, ARemotePlayMonitor* InMonitor) override;
 	void Release() override;

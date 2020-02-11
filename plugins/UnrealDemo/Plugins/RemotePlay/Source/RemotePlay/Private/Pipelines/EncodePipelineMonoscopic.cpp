@@ -464,7 +464,11 @@ void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediat
 	FVector t = CameraTransform.GetTranslation()*0.01f;
 	FQuat r = CameraTransform.GetRotation();
 	const FVector s = CameraTransform.GetScale3D();
-	avs::Transform CamTransform = { t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z };
+	avs::Transform CamTransform; 
+	CamTransform.position = { t.X, t.Y, t.Z };
+	CamTransform.rotation = { r.X, r.Y, r.Z, r.W };
+	CamTransform.scale = { s.X, s.Y, s.Z };
+
 	avs::ConvertTransform(avs::AxesStandard::UnrealStyle, CasterContext->axesStandard, CamTransform);
 	for (auto& Encoder : Encoders)
 	{
