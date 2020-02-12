@@ -9,6 +9,11 @@
 class UTextureRenderTargetCube;
 class FTextureRenderTargetResource;
 
+namespace SCServer
+{
+	class VideoEncodePipeline;
+}
+
 class FEncodePipelineMonoscopic : public IEncodePipeline
 {
 public:
@@ -43,15 +48,13 @@ private:
 		uint32 pad0, pad1, pad2 = 0;
 	};
 
-	struct SCServer::CasterContext* CasterContext;
+	SCServer::CasterContext* CasterContext;
 
 	FUnrealCasterEncoderSettings Settings;
 	FSurfaceTexture ColorSurfaceTexture;
 	FSurfaceTexture DepthSurfaceTexture;
 
-	TUniquePtr<avs::Pipeline> Pipeline;
-	TArray<avs::Encoder> Encoders;
-	TArray<avs::Surface> InputSurfaces;
+	TUniquePtr<class SCServer::VideoEncodePipeline> Pipeline;
 
 	FVector2D WorldZToDeviceZTransform;
 
