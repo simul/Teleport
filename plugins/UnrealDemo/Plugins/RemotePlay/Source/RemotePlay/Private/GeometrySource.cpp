@@ -472,6 +472,9 @@ void GeometrySource::ClearData()
 	processedMaterials.clear();
 	processedTextures.clear();
 	processedShadowMaps.clear();
+
+	//We just use the pointer. I.e. we don't copy the mesh buffer data.
+	storage.clear(false);
 }
 
 avs::uid GeometrySource::AddMesh(UMeshComponent *MeshComponent)
