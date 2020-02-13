@@ -155,7 +155,7 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 {
 	if(!ClientMessaging->hasHost() || !PlayerController.IsValid()) return;
 
-	if(PlayerPawn.IsValid() && Monitor->bStreamGeometry)
+	if(PlayerPawn.IsValid() && Monitor->StreamGeometry)
 	{
 		if(!DetectionSphereInner.IsValid())
 		{
@@ -248,7 +248,7 @@ void URemotePlaySessionComponent::SwitchPlayerPawn(APawn* NewPawn)
 	if (PlayerPawn.IsValid())
 	{
 		//Attach detection spheres to player pawn, but only if we're actually streaming geometry.
-		if(Monitor->bStreamGeometry)
+		if(Monitor->StreamGeometry)
 		{
 			AddDetectionSpheres();
 		}
@@ -312,7 +312,7 @@ void URemotePlaySessionComponent::StartStreaming()
 	UE_CLOG(!EncoderSettings.bDecomposeCube, LogRemotePlay, Warning, TEXT("'Decompose Cube' is set to false on %s's capture component; this may cause a black video output on the client."), *GetOuter()->GetName());
 
 	//If this is a reconnect we don't want the client throwing away resources it will need, so we send a list of resources it will need; but only if we're actually streaming geometry.
-	if(Monitor->bStreamGeometry)
+	if(Monitor->StreamGeometry)
 	{
 		//Fill the list of streamed actors, so a reconnecting client will not have to download geometry it already has.
 		TSet<AActor*> actorsOverlappingOnStart;

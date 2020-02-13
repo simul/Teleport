@@ -26,14 +26,14 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 	{
 		ClientIP = RemotePlaySettings->ClientIP;
 		VideoEncodeFrequency = RemotePlaySettings->VideoEncodeFrequency;
-		bStreamGeometry = RemotePlaySettings->StreamGeometry;
+		StreamGeometry = RemotePlaySettings->StreamGeometry;
 	}
 	else
 	{
 		VideoEncodeFrequency = 2;
-		bStreamGeometry = true;
+		StreamGeometry = true;
 	}
-	bStreamVideo = true;
+	StreamVideo = true;
 	bOverrideTextureTarget = false;
 	SceneCaptureTextureTarget = nullptr;
 	bDeferOutput = false;
@@ -127,7 +127,7 @@ void ARemotePlayMonitor::BeginPlay()
 	ServerID = avs::GenerateUid();
 
 	//Decompose the geometry in the level, if we are streaming the geometry.
-	if(bStreamGeometry)
+	if(StreamGeometry)
 	{
 		InitialiseGeometrySource();
 	}
@@ -140,7 +140,7 @@ void ARemotePlayMonitor::PostEditChangeProperty(FPropertyChangedEvent& PropertyC
 	//We want to update when a value is set, not when they are dragging to their desired value.
 	if(PropertyChangedEvent.ChangeType != EPropertyChangeType::Interactive)
 	{
-		if(Settings.enableGeometryStreaming == false && bStreamGeometry == true)
+		if(Settings.enableGeometryStreaming == false && StreamGeometry == true)
 		{
 			InitialiseGeometrySource();
 		}
@@ -163,12 +163,11 @@ void ARemotePlayMonitor::UpdateCasterSettings()
 		ThrottleKpS,
 		HandActor,
 
-		bStreamGeometry,
+		StreamGeometry,
 		GeometryTicksPerSecond,
 		GeometryBufferCutoffSize,
 		ConfirmationWaitTime,
 
-		bStreamVideo,
 		bOverrideTextureTarget,
 		SceneCaptureTextureTarget,
 		VideoEncodeFrequency,
@@ -178,7 +177,7 @@ void ARemotePlayMonitor::UpdateCasterSettings()
 		CullQuadIndex,
 		TargetFPS,
 		IDRInterval,
-		(SCServer::VideoEncoderRateControlMode)RateControlMode,
+		//rateControlMode,
 		AverageBitrate,
 		MaxBitrate,
 		bAutoBitRate,

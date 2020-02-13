@@ -142,7 +142,7 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 	// Therefore the rendering commands queued after this function call below directly follow the scene capture cube's commands in the queue.
 	Super::UpdateSceneCaptureContents(Scene);
 
-	if(Monitor->bStreamVideo && TextureTarget)
+	if(Monitor->StreamVideo && TextureTarget)
 	{
 		FTransform Transform = GetComponentTransform();
 

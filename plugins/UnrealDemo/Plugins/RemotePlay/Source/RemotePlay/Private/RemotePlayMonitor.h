@@ -63,7 +63,7 @@ public:
 	UBlueprint* HandActor;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Geometry)
-	bool bStreamGeometry;
+	bool StreamGeometry;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Geometry)
 	uint8 GeometryTicksPerSecond;
@@ -78,7 +78,7 @@ public:
 
 	// Determines if video will be encoded and streamed
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
-	bool bStreamVideo;
+	bool StreamVideo;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	bool bOverrideTextureTarget;
@@ -163,6 +163,7 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Camera)
 	bool bDisableMainCamera;
+
 
 	// In order:
 	virtual void PostInitProperties() override;

@@ -28,8 +28,7 @@
 #endif
 #include <algorithm>
 
-#include <SimulCasterServer/CasterContext.h>
-#include <SimulCasterServer/VideoEncodePipeline.h>
+#include "SimulCasterServer/CasterContext.h"
 
 DECLARE_FLOAT_COUNTER_STAT(TEXT("RemotePlayEncodePipelineMonoscopic"), Stat_GPU_RemotePlayEncodePipelineMonoscopic, STATGROUP_GPU);
 
@@ -260,33 +259,45 @@ void FEncodePipelineMonoscopic::EncodeFrame(FSceneInterface* InScene, UTexture* 
 	
 void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate& RHICmdList)
 {
+	const uint32_t NumStreams = (CasterContext->DepthQueue != nullptr) ? 2 : 1;
+	avs::Queue* const Outputs[] = {CasterContext->ColorQueue.get(), CasterContext->DepthQueue.get()};
+
 	FRemotePlayRHI RHI(RHICmdList);
 	FRemotePlayRHI::EDeviceType DeviceType;
 	void* DeviceHandle = RHI.GetNativeDevice(DeviceType);
 
-	SCServer::GraphicsDeviceType CasterDeviceType;
+	avs::DeviceType avsDeviceType;
 	avs::SurfaceBackendInterface* avsSurfaceBackends[2] = { nullptr };
 
+	avs::SurfaceFormat ColorFormat;
 	EPixelFormat PixelFormat;
 	if (Monitor->bUse10BitEncoding)
 	{
+		ColorFormat = avs::SurfaceFormat::ARGB10; 
+		//PixelFormat = EPixelFormat::PF_A2B10G10R10;
 		PixelFormat = EPixelFormat::PF_R16G16B16A16_UNORM;
 	}
 	else
 	{
+		ColorFormat = avs::SurfaceFormat::ARGB;
 		PixelFormat = EPixelFormat::PF_R8G8B8A8;
 	}
+
+	const avs::SurfaceFormat avsInputFormats[2] = {
+		ColorFormat,
+		avs::SurfaceFormat::NV12 // NV12 is needed for depth encoding
+	};
 
 	switch(DeviceType)
 	{
 	case FRemotePlayRHI::EDeviceType::Direct3D11:
-		CasterDeviceType = SCServer::GraphicsDeviceType::Direct3D11;
+		avsDeviceType = avs::DeviceType::Direct3D11;
 		break;
 	case FRemotePlayRHI::EDeviceType::Direct3D12:
-		CasterDeviceType = SCServer::GraphicsDeviceType::Direct3D12;
+		avsDeviceType = avs::DeviceType::Direct3D12;
 		break;
 	case FRemotePlayRHI::EDeviceType::OpenGL:
-		CasterDeviceType = SCServer::GraphicsDeviceType::OpenGL;
+		avsDeviceType = avs::DeviceType::OpenGL;
 		break;
 	default:
 		UE_LOG(LogRemotePlay, Error, TEXT("Failed to obtain native device handle"));
@@ -307,34 +318,110 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	}
 	ColorSurfaceTexture.Texture = RHI.CreateSurfaceTexture(streamWidth, streamHeight, PixelFormat);
 	D3D12_RESOURCE_DESC desc = ((ID3D12Resource*)ColorSurfaceTexture.Texture->GetNativeResource())->GetDesc();
-
 	if(ColorSurfaceTexture.Texture.IsValid())
 	{
 		ColorSurfaceTexture.UAV = RHI.CreateSurfaceUAV(ColorSurfaceTexture.Texture);
+#if PLATFORM_WINDOWS
+		if (avsDeviceType == avs::DeviceType::Direct3D11)
+		{
+			avsSurfaceBackends[0] = new avs::SurfaceDX11(reinterpret_cast<ID3D11Texture2D*>(ColorSurfaceTexture.Texture->GetNativeResource()));
+		}
+		if(avsDeviceType == avs::DeviceType::Direct3D12) 
+		{
+			avsSurfaceBackends[0] = new avs::SurfaceDX12(reinterpret_cast<ID3D12Resource*>(ColorSurfaceTexture.Texture->GetNativeResource()));
+		}
+#endif
+		if(avsDeviceType == avs::DeviceType::OpenGL)
+		{
+			// TODO: Implement
+		}
 	}
 	else
 	{
 		UE_LOG(LogRemotePlay, Error, TEXT("Failed to create encoder color input surface texture"));
 		return;
 	}
-
-	Pipeline.Reset(new SCServer::VideoEncodePipeline);
+	const avs::SurfaceFormat surfaceFormat = avsSurfaceBackends[0]->getFormat();
+	if(CasterContext->DepthQueue)
+	{
+		DepthSurfaceTexture.Texture = RHI.CreateSurfaceTexture(Settings.FrameWidth, Settings.FrameHeight, EPixelFormat::PF_R16F);
+		if(DepthSurfaceTexture.Texture.IsValid())
+		{
+			DepthSurfaceTexture.UAV = RHI.CreateSurfaceUAV(DepthSurfaceTexture.Texture);
+#if PLATFORM_WINDOWS
+			if(avsDeviceType == avs::DeviceType::Direct3D11)
+			{
+				avsSurfaceBackends[1] = new avs::SurfaceDX11(reinterpret_cast<ID3D11Texture2D*>(DepthSurfaceTexture.Texture->GetNativeResource()));
+			}
+			if (avsDeviceType == avs::DeviceType::Direct3D12)
+			{
+				avsSurfaceBackends[1] = new avs::SurfaceDX12(reinterpret_cast<ID3D12Resource*>(DepthSurfaceTexture.Texture->GetNativeResource()));
+			}
+#endif
+			if(avsDeviceType == avs::DeviceType::OpenGL)
+			{
+				// TODO: Implement
+			}
+		}
+		else
+		{
+			ColorSurfaceTexture.Texture.SafeRelease();
+			ColorSurfaceTexture.UAV.SafeRelease();
+			UE_LOG(LogRemotePlay, Error, TEXT("Failed to create encoder depth input surface texture"));
+			return;
+		}
+	}
 	
-	auto CasterSettings = Settings.GetAsCasterEncoderSettings();
-	SCServer::VideoEncodeParams params;
-	params.encodeWidth = CasterSettings.frameWidth;
-	params.encodeHeight = CasterSettings.frameHeight;
-	params.deviceHandle = DeviceHandle;
-	params.deviceType = CasterDeviceType;
-	params.inputSurfaceResource = ColorSurfaceTexture.Texture->GetNativeResource();
-	params.output = CasterContext->ColorQueue.get();
+	avs::EncoderParams EncoderParams = {};
+	EncoderParams.codec  = avs::VideoCodec::HEVC;
+	EncoderParams.preset = avs::VideoPreset::HighQuality;
+	EncoderParams.targetFrameRate = Monitor->TargetFPS;
+	EncoderParams.idrInterval = Monitor->IDRInterval;
+	EncoderParams.rateControlMode = static_cast<avs::RateControlMode>(Monitor->RateControlMode);
+	EncoderParams.averageBitrate = Monitor->AverageBitrate;
+	EncoderParams.maxBitrate = Monitor->MaxBitrate;
+	EncoderParams.autoBitRate = Monitor->bAutoBitRate;
+	EncoderParams.vbvBufferSizeInFrames = Monitor->vbvBufferSizeInFrames;
+	EncoderParams.deferOutput = Monitor->bDeferOutput;
+	EncoderParams.useAsyncEncoding = Monitor->bUseAsyncEncoding;
+	EncoderParams.use10BitEncoding = Monitor->bUse10BitEncoding;
 
-	Pipeline->initialize(*Monitor->GetCasterSettings(), params);
+	Pipeline.Reset(new avs::Pipeline);
+	Encoders.SetNum(NumStreams);
+	InputSurfaces.SetNum(NumStreams);
+
+	for(uint32_t i=0; i<NumStreams; ++i)
+	{ 
+		if(!InputSurfaces[i].configure(avsSurfaceBackends[i]))
+		{
+			UE_LOG(LogRemotePlay, Error, TEXT("Failed to configure input surface node #%d"), i);
+			return;
+		}
+		EncoderParams.inputFormat = avsInputFormats[i];
+		if(!Encoders[i].configure(avs::DeviceHandle{avsDeviceType, DeviceHandle}, Settings.FrameWidth, Settings.FrameHeight, EncoderParams))
+		{
+			UE_LOG(LogRemotePlay, Error, TEXT("Failed to configure encoder #%d"), i);
+			return;
+		}
+
+		if(!Pipeline->link({&InputSurfaces[i], &Encoders[i], Outputs[i]}))
+		{
+			UE_LOG(LogRemotePlay, Error, TEXT("Error configuring the encoding pipeline"));
+			return;
+		}
+		avs::Transform Transform = avs::Transform();
+		for (uint8 j = 0; j < Monitor->ExpectedLag; ++j)
+		{
+			Encoders[i].setCameraTransform(Transform);
+		}
+	}
 }
 	
 void FEncodePipelineMonoscopic::Release_RenderThread(FRHICommandListImmediate& RHICmdList)
 {
 	Pipeline.Reset();
+	Encoders.Empty();
+	InputSurfaces.Empty();
 
 	ColorSurfaceTexture.Texture.SafeRelease();
 	ColorSurfaceTexture.UAV.SafeRelease();
@@ -383,8 +470,13 @@ void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediat
 	CamTransform.scale = { s.X, s.Y, s.Z };
 
 	avs::ConvertTransform(avs::AxesStandard::UnrealStyle, CasterContext->axesStandard, CamTransform);
+	for (auto& Encoder : Encoders)
+	{
+		Encoder.setCameraTransform(CamTransform);
+		Encoder.setForceIDR(forceIDR);
+	}
 
-	SCServer::Result result = Pipeline->process(CamTransform, forceIDR);
+	avs::Result result = Pipeline->process();
 	if (!result)
 	{
 		UE_LOG(LogRemotePlay, Warning, TEXT("Encode pipeline processing encountered an error"));
