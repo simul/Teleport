@@ -43,6 +43,11 @@ void URemotePlayCaptureComponent::BeginPlay()
 	{
 		TextureTarget = Monitor->SceneCaptureTextureTarget;
 	}
+	else
+	{
+		Monitor->SceneCaptureTextureTarget = TextureTarget;
+		Monitor->UpdateCasterSettings();
+	}
 
 	// Make sure that there is enough time in the render queue.
 	UKismetSystemLibrary::ExecuteConsoleCommand(GetWorld(), FString("g.TimeoutForBlockOnRenderFence 300000"));

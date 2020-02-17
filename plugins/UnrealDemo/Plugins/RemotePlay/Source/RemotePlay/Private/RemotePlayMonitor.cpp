@@ -1,6 +1,7 @@
 #include "RemotePlayMonitor.h"
 
 #include "Engine/Classes/Components/MeshComponent.h"
+#include "Engine/Classes/Components/SceneCaptureComponentCube.h"
 #include "Engine/Light.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/TextureRenderTarget.h"
@@ -169,8 +170,7 @@ void ARemotePlayMonitor::UpdateCasterSettings()
 		ConfirmationWaitTime,
 
 		bStreamVideo,
-		bOverrideTextureTarget,
-		SceneCaptureTextureTarget,
+		bOverrideTextureTarget ? SceneCaptureTextureTarget->GetSurfaceWidth() : 0U,
 		VideoEncodeFrequency,
 		bDeferOutput,
 		bDoCubemapCulling,

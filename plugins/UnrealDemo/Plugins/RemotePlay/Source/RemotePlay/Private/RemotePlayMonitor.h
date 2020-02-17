@@ -172,6 +172,8 @@ public:
 	virtual void BeginPlay() override;
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 
+	void UpdateCasterSettings();
+
 	inline avs::uid GetServerID()
 	{
 		return ServerID;
@@ -187,6 +189,5 @@ private:
 
 	avs::uid ServerID = 0; //UID of the server; resets between sessions.
 
-	void UpdateCasterSettings();
 	void InitialiseGeometrySource();
 };
