@@ -294,20 +294,21 @@ void URemotePlaySessionComponent::StartStreaming()
 
 	const FUnrealCasterEncoderSettings& EncoderSettings = CaptureComponent->GetEncoderSettings();
 	avs::SetupCommand setupCommand;
+	setupCommand.port = ClientMessaging->getServerPort() + 1;
 	setupCommand.video_width	= EncoderSettings.FrameWidth;
 	setupCommand.video_height	= EncoderSettings.FrameHeight;
 	setupCommand.depth_height	= EncoderSettings.DepthHeight;
 	setupCommand.depth_width	= EncoderSettings.DepthWidth;
-	setupCommand.colour_cubemap_size = EncoderSettings.FrameWidth / 3;
-	setupCommand.compose_cube	= EncoderSettings.bDecomposeCube;
-	setupCommand.port = ClientMessaging->getServerPort() + 1;
-	setupCommand.debug_stream=Monitor->DebugStream;
-	setupCommand.debug_network_packets=Monitor->DebugNetworkPackets;
-	setupCommand.do_checksums = Monitor->Checksums?1:0;
-	setupCommand.server_id = Monitor->GetServerID();
 	setupCommand.use_10_bit_decoding = Monitor->bUse10BitEncoding;
 	setupCommand.use_yuv_444_decoding = Monitor->bUseYUV444Decoding;
-	setupCommand.requiredLatencyMs=Monitor->RequiredLatencyMs;
+	setupCommand.colour_cubemap_size = EncoderSettings.FrameWidth / 3;
+	setupCommand.compose_cube	= EncoderSettings.bDecomposeCube;
+	setupCommand.debug_stream=Monitor->DebugStream;
+	setupCommand.do_checksums = Monitor->Checksums ? 1 : 0;
+	setupCommand.debug_network_packets=Monitor->DebugNetworkPackets;
+	setupCommand.requiredLatencyMs = Monitor->RequiredLatencyMs;
+	setupCommand.server_id = Monitor->GetServerID();
+	setupCommand.is_bgr = true;
 
 	UE_CLOG(!EncoderSettings.bDecomposeCube, LogRemotePlay, Warning, TEXT("'Decompose Cube' is set to false on %s's capture component; this may cause a black video output on the client."), *GetOuter()->GetName());
 
@@ -455,15 +456,32 @@ void URemotePlaySessionComponent::ApplyPlayerInput(float DeltaTime)
 void URemotePlaySessionComponent::SetHeadPose(const avs::HeadPose* newHeadPose)
 {
 	if(!PlayerController.Get() || !PlayerPawn.Get()) return;
+
+	URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
+	if(!CaptureComponent) return;
 	
-	avs::vec4 orientation = newHeadPose->orientation;
 	avs::vec3 position = newHeadPose->position;
+	avs::vec4 orientation = newHeadPose->orientation;
+	
+	FVector OldActorPos = PlayerPawn->GetActorLocation();
+	//Convert back to millimetres.
+	FVector NewCameraPos = FVector(position.x, position.y, position.z) * 100.0f;
+
+	//We want the relative location between the player and the camera to stay the same, and the player's Z component to be unchanged.
+	FVector ActorToComponent = CaptureComponent->GetComponentLocation() - OldActorPos;
+	FVector newActorPos = NewCameraPos - ActorToComponent;
+	newActorPos.Z = OldActorPos.Z;
+	PlayerPawn->SetActorLocation(newActorPos);
 
 	// Here we set the angle of the player pawn.
-	// Convert quaternion from Simulcaster coordinate system (X right, Y forward, Z up) to UE4 coordinate system (left-handed, X left, Y forward, Z up).
-	FVector NewCameraPos(position.x, position.y, position.z);
-	// back to centimetres...
-	NewCameraPos *= 100.0f;
+	const FQuat HeadPoseUE(orientation.x, orientation.y, orientation.z, orientation.w);
+	PlayerController->SetControlRotation(HeadPoseUE.Rotator());		
+
+	SCServer::CameraInfo& ClientCamInfo = CaptureComponent->getClientCameraInfo();
+	ClientCamInfo.position = {NewCameraPos.X, NewCameraPos.Y, NewCameraPos.Z};
+	ClientCamInfo.orientation = orientation;
+
+	CaptureComponent->SetWorldLocation(NewCameraPos);
 
 	if(Monitor->GetCasterSettings()->enableDebugControlPackets)
 	{
@@ -474,31 +492,6 @@ void URemotePlaySessionComponent::SetHeadPose(const avs::HeadPose* newHeadPose)
 			UE_LOG(LogRemotePlay, Warning, TEXT("Received Head Pos: %3.2f %3.2f %3.2f"), position.x, position.y, position.z);
 		}
 	}
-	URemotePlayCaptureComponent* CaptureComponent = Cast<URemotePlayCaptureComponent>(PlayerPawn->GetComponentByClass(URemotePlayCaptureComponent::StaticClass()));
-	if(!CaptureComponent) return;
-
-	FVector CurrentActorPos = PlayerPawn->GetActorLocation();
-
-	//We want the Relative Location x and y to remain the same, while the z may vary.
-	FVector ActorToComponent = CaptureComponent->GetComponentLocation() - CurrentActorPos;
-
-	FVector newActorPos = NewCameraPos - ActorToComponent;
-	newActorPos.Z = CurrentActorPos.Z;
-	PlayerController->GetPawn()->SetActorLocation(newActorPos);
-
-	SCServer::CameraInfo& ClientCamInfo = CaptureComponent->getClientCameraInfo();
-
-	CaptureComponent->SetWorldLocation(NewCameraPos);
-	ClientCamInfo.position = {NewCameraPos.X, NewCameraPos.Y, NewCameraPos.Z};
-	const FQuat HeadPoseUE(orientation.x, orientation.y, orientation.z, orientation.w);
-	FVector Euler = HeadPoseUE.Euler();
-	Euler.X = Euler.Y = 0.0f;
-	// Unreal thinks the Euler angle starts from facing X, but actually it's Y.
-	//Euler.Z += 180.0f;
-	FQuat FlatPose = FQuat::MakeFromEuler(Euler);
-	ClientCamInfo.orientation = orientation;
-	check(PlayerController.IsValid());
-	PlayerController->SetControlRotation(FlatPose.Rotator());
 }
 
 void URemotePlaySessionComponent::ProcessNewInput(const avs::InputState* newInput)

@@ -180,7 +180,7 @@ avs::AttributeSemantic IndexToSemantic(int index)
 	return avs::AttributeSemantic::TEXCOORD_0;
 }
 
-bool GeometrySource::InitMesh(Mesh* mesh, uint8 lodIndex)
+bool GeometrySource::ExtractMesh(Mesh* mesh, uint8 lodIndex)
 {
 	if (mesh->staticMesh->GetClass()->IsChildOf(USkeletalMesh::StaticClass()))
 	{
@@ -189,83 +189,149 @@ bool GeometrySource::InitMesh(Mesh* mesh, uint8 lodIndex)
 
 	UStaticMesh *StaticMesh = Cast<UStaticMesh>(mesh->staticMesh);
 	auto &lods = StaticMesh->RenderData->LODResources;
-	if(!lods.Num()) return false;
+	if(lods.Num() == 0) return false;
 
+	ExtractMeshData(mesh, lods[lodIndex], avs::AxesStandard::EngineeringStyle);
+	ExtractMeshData(mesh, lods[lodIndex], avs::AxesStandard::GlStyle);
+	
+	return true;
+}
+
+void GeometrySource::ExtractMeshData(Mesh* mesh, FStaticMeshLODResources& lod, avs::AxesStandard extractToBasis)
+{
 	std::vector<avs::PrimitiveArray> primitiveArrays;
 	std::unordered_map<avs::uid, avs::Accessor> accessors;
 	std::map<avs::uid, avs::BufferView> bufferViews;
 	std::map<avs::uid, avs::GeometryBuffer> buffers;
 
-	auto AddBuffer = [this, &buffers](Mesh* mesh, avs::uid b_uid, size_t num, size_t stride, const void *data)
+	auto AddBuffer = [this, &buffers](avs::uid b_uid, size_t num, size_t stride, const void* data)
 	{
-		// Data may already exist:
-		if (buffers.find(b_uid) == buffers.end())
-		{
-			avs::GeometryBuffer& b = buffers[b_uid];
-			b.byteLength = num * stride;
-			b.data = (const uint8_t *)data;			// Remember, just a pointer: we don't own this data.
-		}
+		avs::GeometryBuffer& b = buffers[b_uid];
+		b.byteLength = num * stride;
+		b.data = (const uint8_t*)data; //Remember, just a pointer: we don't own this data.
 	};
-	auto AddBufferView = [this, &bufferViews](Mesh* mesh, avs::uid b_uid, avs::uid v_uid, size_t start_index, size_t num, size_t stride)
+
+	auto AddBufferView = [this, &bufferViews](avs::uid b_uid, avs::uid v_uid, size_t start_index, size_t num, size_t stride)
 	{
-		avs::BufferView &bv = bufferViews[v_uid];
+		avs::BufferView& bv = bufferViews[v_uid];
 		bv.byteOffset = start_index * stride;
 		bv.byteLength = num * stride;
 		bv.byteStride = stride;
 		bv.buffer = b_uid;
 	};
 
-	auto &lod = lods[lodIndex];
-	FPositionVertexBuffer &pb = lod.VertexBuffers.PositionVertexBuffer;
-	FStaticMeshVertexBuffer &vb = lod.VertexBuffers.StaticMeshVertexBuffer;
+	FPositionVertexBuffer& pb = lod.VertexBuffers.PositionVertexBuffer;
+	FStaticMeshVertexBuffer& vb = lod.VertexBuffers.StaticMeshVertexBuffer;
 
 	avs::uid positions_uid = avs::GenerateUid();
 	avs::uid normals_uid = avs::GenerateUid();
-	avs::uid tangents_uid = avs::GenerateUid();
+	//avs::uid tangents_uid = avs::GenerateUid();
 	avs::uid texcoords_uid = avs::GenerateUid();
 	avs::uid indices_uid = avs::GenerateUid();
 	avs::uid positions_view_uid = avs::GenerateUid();
 	avs::uid normals_view_uid = avs::GenerateUid();
-	avs::uid tangents_view_uid = avs::GenerateUid();
+	//avs::uid tangents_view_uid = avs::GenerateUid();
 	avs::uid texcoords_view_uid[8];
 
 	avs::uid indices_view_uid = avs::GenerateUid();
 	avs::Accessor::ComponentType componentType;
 	size_t istride;
 
+	//Switch components based on client.
+	int x, y, z, w;
+	switch(extractToBasis)
+	{
+		case avs::AxesStandard::GlStyle:
+			z = 0; x = 1; y = 2; w = 3;
+			break;
+		case avs::AxesStandard::EngineeringStyle:
+			y = 0; x = 1; z = 2; w = 3;
+			break;
+		default:
+			UE_LOG(LogRemotePlay, Error, TEXT("Attempting to extract mesh data from mesh \"%s\" using unsupported axes standard of %d!"), *mesh->staticMesh->GetName(), extractToBasis);
+			x = 0; y = 1; z = 2; w = 3;
+			break;
+	}
+
 	// First create the Buffers:
 	// Position:
 	{
-		std::vector<avs::vec3> &p = scaledPositionBuffers[positions_uid];
+		std::vector<avs::vec3>& p = scaledPositionBuffers[positions_uid];
 		p.resize(pb.GetNumVertices());
-		const avs::vec3 *orig = (const avs::vec3 *) pb.GetVertexData();
-		for (size_t j = 0; j < pb.GetNumVertices(); j++)
+		const float* orig = static_cast<const float*>(pb.GetVertexData());
+		for(size_t j = 0; j < pb.GetNumVertices(); j++)
 		{
-			p[j].x = orig[j].x *0.01f;
-			p[j].y = orig[j].y *0.01f;
-			p[j].z = orig[j].z *0.01f;
+			p[j].x = orig[j * 3 + x] * 0.01f;
+			p[j].y = orig[j * 3 + y] * 0.01f;
+			p[j].z = orig[j * 3 + z] * 0.01f;
 		}
 		size_t stride = pb.GetStride();
-		AddBuffer(mesh, positions_uid, pb.GetNumVertices(), stride, (const void*)p.data());
+		AddBuffer(positions_uid, pb.GetNumVertices(), stride, (const void*)p.data());
 		size_t position_stride = pb.GetStride();
 		// Offset is zero, because the sections are just lists of indices. 
-		AddBufferView(mesh, positions_uid, positions_view_uid, 0, pb.GetNumVertices(), position_stride);
+		AddBufferView(positions_uid, positions_view_uid, 0, pb.GetNumVertices(), position_stride);
 	}
 
-	size_t tangent_stride = vb.GetTangentSize() / vb.GetNumVertices();
-	// Normal:
 	{
-		size_t stride = vb.GetTangentSize() / vb.GetNumVertices();
-		AddBuffer(mesh, normals_uid, vb.GetNumVertices(), stride, vb.GetTangentData());
-		AddBufferView(mesh, normals_uid, normals_view_uid,  0, pb.GetNumVertices(), tangent_stride);
-	}
+		std::vector<avs::Vec4<signed char>>& tangents = tangentNormalBuffers[normals_uid];
+		tangents.resize(pb.GetNumVertices() * 2);
 
-	// Tangent:
-	if (vb.GetTangentData())
-	{
-		size_t stride = vb.GetTangentSize() / vb.GetNumVertices();
-		AddBuffer(mesh, tangents_uid, vb.GetNumVertices(), stride, vb.GetTangentData());
-		AddBufferView(mesh, tangents_uid, tangents_view_uid, 0, pb.GetNumVertices(), tangent_stride);
+		if(vb.GetUseHighPrecisionTangentBasis())
+		{
+			UE_LOG(LogRemotePlay, Warning, TEXT("High Precision Tangent Basis is untested, but in-use on mesh \"%s\"."), *mesh->staticMesh->GetName());
+
+			const signed short* original = static_cast<signed short*>(vb.GetTangentData());
+			//Create corrected version of the original tangent buffer for the PC client.
+			for(size_t i = 0; i < pb.GetNumVertices(); i++)
+			{
+				//Tangents
+				tangents[i * 2].x = original[i * 8 + x];
+				tangents[i * 2].y = original[i * 8 + y];
+				tangents[i * 2].z = original[i * 8 + z];
+				tangents[i * 2].w = original[i * 8 + w];
+
+				//Normals
+				tangents[i * 2 + 1].x = original[i * 8 + 4 + x];
+				tangents[i * 2 + 1].y = original[i * 8 + 4 + y];
+				tangents[i * 2 + 1].z = original[i * 8 + 4 + z];
+				tangents[i * 2 + 1].w = original[i * 8 + 4 + w];
+			}
+		}
+		else
+		{
+			//It won't actually swizzle/component-shift if the C-array isn't the correct data type.
+			const signed char* original = static_cast<signed char*>(vb.GetTangentData());
+			//Create corrected version of the original tangent buffer for the PC client.
+			for(size_t i = 0; i < pb.GetNumVertices(); i++)
+			{
+				//Tangents
+				tangents[i * 2].x = original[i * 8 + x];
+				tangents[i * 2].y = original[i * 8 + y];
+				tangents[i * 2].z = original[i * 8 + z];
+				tangents[i * 2].w = original[i * 8 + w];
+
+				//Normals
+				tangents[i * 2 + 1].x = original[i * 8 + 4 + x];
+				tangents[i * 2 + 1].y = original[i * 8 + 4 + y];
+				tangents[i * 2 + 1].z = original[i * 8 + 4 + z];
+				tangents[i * 2 + 1].w = original[i * 8 + 4 + w];
+			}
+		}
+
+		size_t tangent_stride = sizeof(signed char) * 8;
+		// Normal:
+		{
+			AddBuffer(normals_uid, vb.GetNumVertices(), tangent_stride, tangents.data());
+			AddBufferView(normals_uid, normals_view_uid, 0, pb.GetNumVertices(), tangent_stride);
+		}
+
+		// Tangent:
+		/*if(vb.GetTangentData())
+		{
+			size_t stride = vb.GetTangentSize() / vb.GetNumVertices();
+			AddBuffer(tangents_uid, vb.GetNumVertices(), stride, tangents.data());
+			AddBufferView(tangents_uid, tangents_view_uid, 0, pb.GetNumVertices(), tangent_stride);
+		}*/
 	}
 
 	// TexCoords:
@@ -283,12 +349,12 @@ bool GeometrySource::InitMesh(Mesh* mesh, uint8 lodIndex)
 				uvData.push_back(vb.GetVertexUV(k, j));
 			}
 		}
-		AddBuffer(mesh, texcoords_uid, vb.GetNumVertices() * vb.GetNumTexCoords(), texcoords_stride, uvData.data());
+		AddBuffer(texcoords_uid, vb.GetNumVertices() * vb.GetNumTexCoords(), texcoords_stride, uvData.data());
 		for(size_t j = 0; j < vb.GetNumTexCoords(); j++)
 		{
 			//bool IsFP32 = vb.GetUseFullPrecisionUVs(); //Not need vb.GetVertexUV() returns FP32 regardless. 
 			texcoords_view_uid[j] = avs::GenerateUid();
-			AddBufferView(mesh, texcoords_uid, texcoords_view_uid[j], j * pb.GetNumVertices(), pb.GetNumVertices(), texcoords_stride);
+			AddBufferView(texcoords_uid, texcoords_view_uid[j], j * pb.GetNumVertices(), pb.GetNumVertices(), texcoords_stride);
 		}
 	}
 
@@ -300,26 +366,27 @@ bool GeometrySource::InitMesh(Mesh* mesh, uint8 lodIndex)
 		componentType = ib.Is32Bit() ? avs::Accessor::ComponentType::UINT : avs::Accessor::ComponentType::USHORT;
 		istride = avs::GetComponentSize(componentType);
 
-		AddBuffer(mesh, indices_uid, ib.GetNumIndices(), istride, (const void*)((uint64*)&arr)[0]);
-		AddBufferView(mesh, indices_uid, indices_view_uid, 0, ib.GetNumIndices(), istride);
+		AddBuffer(indices_uid, ib.GetNumIndices(), istride, (const void*)((uint64*)&arr)[0]);
+		AddBufferView(indices_uid, indices_view_uid, 0, ib.GetNumIndices(), istride);
 	}
-	
+
 	// Now create the views:
 	size_t  num_elements = lod.Sections.Num();
 	primitiveArrays.resize(num_elements);
-	for (size_t i = 0; i < num_elements; i++)
+	for(size_t i = 0; i < num_elements; i++)
 	{
-		auto &section = lod.Sections[i];
-		auto &pa = primitiveArrays[i];
-		pa.attributeCount = 2 + (vb.GetTangentData() ? 1 : 0) + (vb.GetTexCoordData() ? vb.GetNumTexCoords() : 0);
+		auto& section = lod.Sections[i];
+		auto& pa = primitiveArrays[i];
+		//pa.attributeCount = 2 + (vb.GetTangentData() ? 1 : 0) + (vb.GetTexCoordData() ? vb.GetNumTexCoords() : 0);
+		pa.attributeCount = 2 + (vb.GetTexCoordData() ? vb.GetNumTexCoords() : 0);
 		pa.attributes = new avs::Attribute[pa.attributeCount];
 		size_t idx = 0;
 		// Position:
 		{
-			avs::Attribute &attr = pa.attributes[idx++];
+			avs::Attribute& attr = pa.attributes[idx++];
 			attr.accessor = avs::GenerateUid();
 			attr.semantic = avs::AttributeSemantic::POSITION;
-			avs::Accessor &a = accessors[attr.accessor];
+			avs::Accessor& a = accessors[attr.accessor];
 			a.byteOffset = 0;
 			a.type = avs::Accessor::DataType::VEC3;
 			a.componentType = avs::Accessor::ComponentType::FLOAT;
@@ -328,40 +395,37 @@ bool GeometrySource::InitMesh(Mesh* mesh, uint8 lodIndex)
 		}
 		// Normal:
 		{
-			avs::Attribute &attr = pa.attributes[idx++];
+			avs::Attribute& attr = pa.attributes[idx++];
 			attr.accessor = avs::GenerateUid();
 			attr.semantic = avs::AttributeSemantic::TANGENTNORMALXZ;
-			avs::Accessor &a = accessors[attr.accessor];
+			avs::Accessor& a = accessors[attr.accessor];
 			a.byteOffset = 0;
 			a.type = avs::Accessor::DataType::VEC4;
 			//GetUseHighPrecisionTangentBasis() ? PF_R16G16B16A16_SNORM : PF_R8G8B8A8_SNORM
-			if (vb.GetUseHighPrecisionTangentBasis())
-				a.componentType = avs::Accessor::ComponentType::UINT;
-			else
-				a.componentType = avs::Accessor::ComponentType::USHORT;
+			a.componentType = vb.GetUseHighPrecisionTangentBasis() ? avs::Accessor::ComponentType::UINT : avs::Accessor::ComponentType::USHORT;
 			a.count = vb.GetNumVertices();// same as pb???
 			a.bufferView = normals_view_uid;
 		}
 		// Tangent:
-		if (vb.GetTangentData())
-		{
-			avs::Attribute &attr = pa.attributes[idx++];
-			attr.accessor = avs::GenerateUid();
-			attr.semantic = avs::AttributeSemantic::TANGENT;
-			avs::Accessor &a = accessors[attr.accessor];
-			a.byteOffset = 0;
-			a.type = avs::Accessor::DataType::VEC4;
-			a.componentType = avs::Accessor::ComponentType::FLOAT;
-			a.count = vb.GetTangentSize() / 8;// same as pb???
-			a.bufferView = tangents_view_uid;
-		}
+		//if(vb.GetTangentData())
+		//{
+		//	avs::Attribute& attr = pa.attributes[idx++];
+		//	attr.accessor = avs::GenerateUid();
+		//	attr.semantic = avs::AttributeSemantic::TANGENT;
+		//	avs::Accessor& a = accessors[attr.accessor];
+		//	a.byteOffset = 0;
+		//	a.type = avs::Accessor::DataType::VEC4;
+		//	a.componentType = avs::Accessor::ComponentType::FLOAT;
+		//	a.count = vb.GetTangentSize() / 8;// same as pb???
+		//	a.bufferView = tangents_view_uid;
+		//}
 		// TexCoords:
-		for (size_t j = 0; j < vb.GetNumTexCoords(); j++)
+		for(size_t j = 0; j < vb.GetNumTexCoords(); j++)
 		{
-			avs::Attribute &attr = pa.attributes[idx++];
+			avs::Attribute& attr = pa.attributes[idx++];
 			attr.accessor = avs::GenerateUid();
 			attr.semantic = j == 0 ? avs::AttributeSemantic::TEXCOORD_0 : avs::AttributeSemantic::TEXCOORD_1;
-			avs::Accessor &a = accessors[attr.accessor];
+			avs::Accessor& a = accessors[attr.accessor];
 			// Offset into the global texcoord views
 			a.byteOffset = 0;
 			a.type = avs::Accessor::DataType::VEC2;
@@ -387,8 +451,7 @@ bool GeometrySource::InitMesh(Mesh* mesh, uint8 lodIndex)
 		pa.primitiveMode = avs::PrimitiveMode::TRIANGLES;
 	}
 
-	storage.storeMesh(mesh->id, avs::Mesh{primitiveArrays, accessors, bufferViews, buffers});
-	return true;
+	storage.storeMesh(mesh->id, extractToBasis, avs::Mesh{primitiveArrays, accessors, bufferViews, buffers});
 }
 
 avs::uid GeometrySource::AddMeshNode(UMeshComponent* meshComponent, avs::uid oldID)
@@ -525,7 +588,7 @@ avs::uid GeometrySource::AddMesh(UMeshComponent *MeshComponent)
 	mesh->staticMesh = staticMesh;
 	mesh->bulkDataIDString = idString;
 	PrepareMesh(mesh);
-	InitMesh(mesh, 0);
+	ExtractMesh(mesh, 0);
 	
 	return mesh->id;
 }
