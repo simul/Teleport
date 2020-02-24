@@ -61,14 +61,12 @@ void DecomposeCS(uint3 ThreadID : SV_DispatchThreadID)
 	RWInputCubeAsArray.GetDimensions(InputW, InputH, InputD);
 	uint OutputW, OutputH;
 	RWOutputColorTexture.GetDimensions(OutputW, OutputH);
-	if (ThreadID.x >= OutputW || ThreadID.y >= OutputH)
-		return;
-
 	int3 pos = int3(ThreadID);
-	int2 FaceOffsets[] = { {0,0},{1,0},{2,0},{0,1},{1,1},{2,1} };
 
-	if (!FragmentIsVisible(pos, InputW))
+	if (ThreadID.x >= OutputW || ThreadID.y >= OutputH || !FragmentIsVisible(pos, InputW))
 		return;
+
+	int2 FaceOffsets[] = { {0,0},{1,0},{2,0},{0,1},{1,1},{2,1} };
 
 	float4 SceneColor = RWInputCubeAsArray[pos];
 	SceneColor.x = sqrt(SceneColor.x);
@@ -99,14 +97,14 @@ void DecomposeDepthCS(uint3 ThreadID : SV_DispatchThreadID)
 	RWInputCubeAsArray.GetDimensions(InputW, InputH, InputD);
 	uint OutputW, OutputH;
 	RWOutputColorTexture.GetDimensions(OutputW, OutputH);
-	if (ThreadID.x >= OutputW || ThreadID.y >= OutputH)
-		return;
+
 	int3 pos = int3(ThreadID);
 	pos.xy *= 2;
-	int2 FaceOffsets[] = { {0,0},{1,0},{2,0},{0,1},{1,1},{2,1} };
 
-	if (!FragmentIsVisible(pos, InputW))
+	if (ThreadID.x >= OutputW || ThreadID.y >= OutputH || !FragmentIsVisible(pos, InputW))
 		return;
+	
+	int2 FaceOffsets[] = { {0,0},{1,0},{2,0},{0,1},{1,1},{2,1} };
 
 	float d00 = GetDepth(pos,InputW);
 	float d01 = GetDepth(pos+int3(1,0,0), InputW);
