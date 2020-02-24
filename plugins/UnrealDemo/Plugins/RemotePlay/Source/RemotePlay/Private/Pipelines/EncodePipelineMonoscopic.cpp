@@ -327,9 +327,8 @@ void FEncodePipelineMonoscopic::Initialize_RenderThread(FRHICommandListImmediate
 	params.deviceHandle = DeviceHandle;
 	params.deviceType = CasterDeviceType;
 	params.inputSurfaceResource = ColorSurfaceTexture.Texture->GetNativeResource();
-	params.output = CasterContext->ColorQueue.get();
 
-	Pipeline->initialize(*Monitor->GetCasterSettings(), params);
+	Pipeline->initialize(*Monitor->GetCasterSettings(), params, CasterContext->ColorQueue.get());
 }
 	
 void FEncodePipelineMonoscopic::Release_RenderThread(FRHICommandListImmediate& RHICmdList)
