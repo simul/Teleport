@@ -870,7 +870,7 @@ avs::uid GeometrySource::AddTexture(UTexture* texture)
 	}
 
 	FDateTime textureTimestamp = texture->AssetImportData->SourceData.SourceFiles[0].Timestamp;
-	storage.storeTexture(textureID, std::move(newTexture), textureTimestamp.ToUnixTimestamp(), basisFileLocation);
+	storage.storeTexture(textureID, std::move(newTexture), textureTimestamp.ToUnixTimestamp(), basisFileLocation, true);
 
 	return textureID;
 }
