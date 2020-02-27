@@ -9,10 +9,14 @@
 class UTextureRenderTargetCube;
 class FTextureRenderTargetResource;
 
+namespace SCServer
+{
+	class VideoEncodePipeline;
+}
+
 class FEncodePipelineMonoscopic : public IEncodePipeline
 {
 public:
-
 
 	/* Begin IEncodePipeline interface */
 	void Initialise(const FUnrealCasterEncoderSettings& InSettings, struct SCServer::CasterContext* context, ARemotePlayMonitor* InMonitor) override;
@@ -44,23 +48,18 @@ private:
 		uint32 pad0, pad1, pad2 = 0;
 	};
 
-	struct SCServer::CasterContext* CasterContext;
+	SCServer::CasterContext* CasterContext;
 
 	FUnrealCasterEncoderSettings Settings;
 	FSurfaceTexture ColorSurfaceTexture;
 	FSurfaceTexture DepthSurfaceTexture;
 
-	TUniquePtr<avs::Pipeline> Pipeline;
-	TArray<avs::Encoder> Encoders;
-	TArray<avs::Surface> InputSurfaces;
+	TUniquePtr<class SCServer::VideoEncodePipeline> Pipeline;
 
 	FVector2D WorldZToDeviceZTransform;
 
 	FTextureRHIRef				SourceCubemapRHI;
 	FUnorderedAccessViewRHIRef UnorderedAccessViewRHIRef;
-
-	FTextureCubeRHIRef LightingTextureCubeRHIRef;
-	FUnorderedAccessViewRHIRef LightingUnorderedAccessViewRHIRefs[8];
 
 	ARemotePlayMonitor* Monitor;
 };

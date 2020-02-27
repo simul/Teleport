@@ -63,7 +63,7 @@ public:
 	UBlueprint* HandActor;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Geometry)
-	bool StreamGeometry;
+	bool bStreamGeometry;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Geometry)
 	uint8 GeometryTicksPerSecond;
@@ -75,6 +75,10 @@ public:
 	//Seconds to wait before resending a resource.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Geometry, meta = (ClampMin = "0.5", ClampMax = "300.0"))
 	float ConfirmationWaitTime;
+
+	// Determines if video will be encoded and streamed
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	bool bStreamVideo;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	bool bOverrideTextureTarget;
@@ -160,7 +164,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Camera)
 	bool bDisableMainCamera;
 
-
 	// In order:
 	virtual void PostInitProperties() override;
 	virtual void PostLoad() override;
@@ -168,6 +171,8 @@ public:
 	virtual void PostInitializeComponents() override;
 	virtual void BeginPlay() override;
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+
+	void UpdateCasterSettings();
 
 	inline avs::uid GetServerID()
 	{
@@ -184,6 +189,5 @@ private:
 
 	avs::uid ServerID = 0; //UID of the server; resets between sessions.
 
-	void UpdateCasterSettings();
 	void InitialiseGeometrySource();
 };

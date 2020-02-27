@@ -1,6 +1,7 @@
 #include "RemotePlayMonitor.h"
 
 #include "Engine/Classes/Components/MeshComponent.h"
+#include "Engine/Classes/Components/SceneCaptureComponentCube.h"
 #include "Engine/Light.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/TextureRenderTarget.h"
@@ -26,13 +27,14 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 	{
 		ClientIP = RemotePlaySettings->ClientIP;
 		VideoEncodeFrequency = RemotePlaySettings->VideoEncodeFrequency;
-		StreamGeometry = RemotePlaySettings->StreamGeometry;
+		bStreamGeometry = RemotePlaySettings->StreamGeometry;
 	}
 	else
 	{
 		VideoEncodeFrequency = 2;
-		StreamGeometry = true;
+		bStreamGeometry = true;
 	}
+	bStreamVideo = true;
 	bOverrideTextureTarget = false;
 	SceneCaptureTextureTarget = nullptr;
 	bDeferOutput = false;
@@ -126,7 +128,7 @@ void ARemotePlayMonitor::BeginPlay()
 	ServerID = avs::GenerateUid();
 
 	//Decompose the geometry in the level, if we are streaming the geometry.
-	if(StreamGeometry)
+	if(bStreamGeometry)
 	{
 		InitialiseGeometrySource();
 	}
@@ -139,7 +141,7 @@ void ARemotePlayMonitor::PostEditChangeProperty(FPropertyChangedEvent& PropertyC
 	//We want to update when a value is set, not when they are dragging to their desired value.
 	if(PropertyChangedEvent.ChangeType != EPropertyChangeType::Interactive)
 	{
-		if(Settings.enableGeometryStreaming == false && StreamGeometry == true)
+		if(Settings.enableGeometryStreaming == false && bStreamGeometry == true)
 		{
 			InitialiseGeometrySource();
 		}
@@ -162,13 +164,13 @@ void ARemotePlayMonitor::UpdateCasterSettings()
 		ThrottleKpS,
 		HandActor,
 
-		StreamGeometry,
+		bStreamGeometry,
 		GeometryTicksPerSecond,
 		GeometryBufferCutoffSize,
 		ConfirmationWaitTime,
 
-		bOverrideTextureTarget,
-		SceneCaptureTextureTarget,
+		bStreamVideo,
+		bOverrideTextureTarget ? SceneCaptureTextureTarget->GetSurfaceWidth() : 0U,
 		VideoEncodeFrequency,
 		bDeferOutput,
 		bDoCubemapCulling,
@@ -176,7 +178,7 @@ void ARemotePlayMonitor::UpdateCasterSettings()
 		CullQuadIndex,
 		TargetFPS,
 		IDRInterval,
-		//rateControlMode,
+		(SCServer::VideoEncoderRateControlMode)RateControlMode,
 		AverageBitrate,
 		MaxBitrate,
 		bAutoBitRate,

@@ -52,6 +52,7 @@ protected:
 	SCServer::GeometryStore storage;
 
 	std::map<avs::uid, std::vector<avs::vec3>> scaledPositionBuffers;
+	std::map<avs::uid, std::vector<avs::Vec4<signed char>>> tangentNormalBuffers; //Stores data to the corrected tangent and normal buffers.
 	std::map<avs::uid, std::vector<FVector2D>> processedUVs;
 
 	std::map<FName, avs::uid> processedNodes; //Nodes we have already stored in the GeometrySource; <Level Unique Node Name, Node Identifier>.
@@ -61,7 +62,8 @@ protected:
 	std::unordered_map<const FStaticShadowDepthMapData*, avs::uid> processedShadowMaps;
 
 	void PrepareMesh(Mesh* mesh);
-	bool InitMesh(Mesh* mesh, uint8 lodIndex);
+	bool ExtractMesh(Mesh* mesh, uint8 lodIndex);
+	void ExtractMeshData(Mesh* mesh, FStaticMeshLODResources& lod, avs::AxesStandard extractToBasis);
 
 	//Add a node that represents a mesh.
 	//	meshComponent : Mesh the node will represent.

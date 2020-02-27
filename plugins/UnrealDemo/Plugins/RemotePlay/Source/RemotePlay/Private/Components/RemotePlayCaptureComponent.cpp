@@ -43,6 +43,11 @@ void URemotePlayCaptureComponent::BeginPlay()
 	{
 		TextureTarget = Monitor->SceneCaptureTextureTarget;
 	}
+	else
+	{
+		Monitor->SceneCaptureTextureTarget = TextureTarget;
+		Monitor->UpdateCasterSettings();
+	}
 
 	// Make sure that there is enough time in the render queue.
 	UKismetSystemLibrary::ExecuteConsoleCommand(GetWorld(), FString("g.TimeoutForBlockOnRenderFence 300000"));
@@ -142,7 +147,7 @@ void URemotePlayCaptureComponent::UpdateSceneCaptureContents(FSceneInterface* Sc
 	// Therefore the rendering commands queued after this function call below directly follow the scene capture cube's commands in the queue.
 	Super::UpdateSceneCaptureContents(Scene);
 
-	if(TextureTarget)
+	if(Monitor->bStreamVideo && TextureTarget)
 	{
 		FTransform Transform = GetComponentTransform();
 
@@ -395,8 +400,11 @@ void URemotePlayCaptureComponent::stopStreaming()
 	QuadsToRender.Empty();
 	FacesToRender.Empty();
 
-	EncodePipeline->Release();
-	EncodePipeline.reset();
+	if(EncodePipeline)
+	{
+		EncodePipeline->Release();
+		EncodePipeline.reset();
+	}
 
 	if (ViewportDrawnDelegateHandle.IsValid())
 	{

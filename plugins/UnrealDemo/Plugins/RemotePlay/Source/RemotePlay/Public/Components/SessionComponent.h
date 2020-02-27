@@ -50,7 +50,6 @@ public:
 
 private:
 	void SwitchPlayerPawn(APawn* NewPawn);
-	void ReleasePlayerPawn();
 	void ApplyPlayerInput(float DeltaTime);
 	void SetHeadPose(const avs::HeadPose* newHeadPose);
 	void ProcessNewInput(const avs::InputState* newInput);
