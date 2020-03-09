@@ -62,7 +62,7 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 	QualityLevel = 1;
 	CompressionLevel = 1;
 
-	ExpectedLag = 1;
+	ExpectedLag = 0;
 
 	bDisableMainCamera = false;
 }
