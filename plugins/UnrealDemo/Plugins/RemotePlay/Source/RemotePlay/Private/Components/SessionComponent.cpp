@@ -308,6 +308,7 @@ void URemotePlaySessionComponent::StartStreaming()
 	setupCommand.debug_network_packets=Monitor->DebugNetworkPackets;
 	setupCommand.requiredLatencyMs = Monitor->RequiredLatencyMs;
 	setupCommand.server_id = Monitor->GetServerID();
+	setupCommand.videoCodec = (avs::VideoCodec)Monitor->VideoCodec;
 
 	UE_CLOG(!EncoderSettings.bDecomposeCube, LogRemotePlay, Warning, TEXT("'Decompose Cube' is set to false on %s's capture component; this may cause a black video output on the client."), *GetOuter()->GetName());
 

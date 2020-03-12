@@ -20,7 +20,7 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 	: Super(ObjectInitializer), DetectionSphereRadius(1000), DetectionSphereBufferDistance(200), HandActor(nullptr),
 	GeometryTicksPerSecond(2), GeometryBufferCutoffSize(1048576) /*1MB*/, ConfirmationWaitTime(15.0f), EstimatedDecodingFrequency(10)
 {
-	RequiredLatencyMs=30;
+	RequiredLatencyMs = 30;
 	// Defaults from settings class.
 	const URemotePlaySettings *RemotePlaySettings = GetDefault<URemotePlaySettings>();
 	if (RemotePlaySettings)
@@ -43,6 +43,7 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 	TargetFPS = 60;
 	CullQuadIndex = -1;
 	IDRInterval = 0; // Value of 0 means only first frame will be IDR
+	VideoCodec = VideoCodec::HEVC;
 	RateControlMode = EncoderRateControlMode::RC_CBR_LOWDELAY_HQ;
 	AverageBitrate = 40000000; // 40mb/s
 	MaxBitrate = 80000000; // 80mb/s
@@ -53,7 +54,7 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 	bUseYUV444Decoding = false;
 
 	DebugStream = 0;
-	DebugNetworkPackets=false;
+	DebugNetworkPackets = false;
 	DebugControlPackets=false;
 	Checksums = false;
 	ResetCache = false;
@@ -178,6 +179,7 @@ void ARemotePlayMonitor::UpdateCasterSettings()
 		CullQuadIndex,
 		TargetFPS,
 		IDRInterval,
+		(avs::VideoCodec)VideoCodec,
 		(SCServer::VideoEncoderRateControlMode)RateControlMode,
 		AverageBitrate,
 		MaxBitrate,

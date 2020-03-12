@@ -29,7 +29,7 @@ bool FRemotePlayDiscoveryService::initialise(uint16_t inDiscoveryPort, uint16_t 
 	}
 	LastDiscoveryPort = inDiscoveryPort;
 
-	if(!inServicePort) inServicePort = ServicePort;
+	if (!inServicePort) inServicePort = ServicePort;
 	if(!inServicePort)
 	{
 		UE_LOG(LogRemotePlay, Error, TEXT("Discovery: No useable Service Port"));
