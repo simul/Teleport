@@ -1,12 +1,15 @@
 #include "GeometrySource.h"
-#include "StreamableGeometryComponent.h"
-#include "Components/StaticMeshComponent.h"
+
+//General Unreal Engine
 #include "Components/SkeletalMeshComponent.h"
-#include "Engine/StaticMesh.h"
-#include "Rendering/StaticMeshVertexBuffer.h"
-#include "Rendering/PositionVertexBuffer.h"
-#include "StaticMeshResources.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/Classes/EditorFramework/AssetImportData.h"
 #include "Engine/MapBuildDataRegistry.h"
+#include "Engine/StaticMesh.h"
+#include "Rendering/PositionVertexBuffer.h"
+#include "Rendering/StaticMeshVertexBuffer.h"
+#include "StaticMeshResources.h"
+#include "StreamableGeometryComponent.h"
 
 //Basis Universal
 #include "basisu_comp.h"
@@ -23,10 +26,10 @@
 #include "Engine/Classes/Materials/MaterialExpressionConstant.h"
 #include "Engine/Classes/Materials/MaterialExpressionConstant3Vector.h"
 #include "Engine/Classes/Materials/MaterialExpressionConstant4Vector.h"
-#include "Engine/Classes/Materials/MaterialExpressionScalarParameter.h"
-#include "Engine/Classes/Materials/MaterialExpressionVectorParameter.h"
-#include "Engine/Classes/Materials/MaterialExpressionTextureCoordinate.h"
 #include "Engine/Classes/Materials/MaterialExpressionMultiply.h"
+#include "Engine/Classes/Materials/MaterialExpressionScalarParameter.h"
+#include "Engine/Classes/Materials/MaterialExpressionTextureCoordinate.h"
+#include "Engine/Classes/Materials/MaterialExpressionVectorParameter.h"
 
 //For progress bar while compressing textures.
 #include "ScopedSlowTask.h"
@@ -149,10 +152,11 @@ void GeometrySource::Initialise(ARemotePlayMonitor* monitor, UWorld* world)
 
 		//Set the ID of the second hand, and create second hand's node by copying the first hand.
 		avs::uid secondHandID = isSameHandNode ? oldHands[1].second : avs::GenerateUid();
-		storage.storeNode(secondHandID, avs::DataNode{*firstHand});
+		avs::DataNode secondHand{*firstHand};
+		storage.storeNode(secondHandID, secondHand);
 
 		///Use data nodes rather than actors for pointers; there's little else they can point to.
-		storage.setHands({firstHand, firstHandID}, {storage.getNode(secondHandID), secondHandID});
+		storage.setHands({firstHand, firstHandID}, {&secondHand, secondHandID});
 	}
 }
 
@@ -204,11 +208,11 @@ void GeometrySource::ExtractMeshData(Mesh* mesh, FStaticMeshLODResources& lod, a
 	std::map<avs::uid, avs::BufferView> bufferViews;
 	std::map<avs::uid, avs::GeometryBuffer> buffers;
 
-	auto AddBuffer = [this, &buffers](avs::uid b_uid, size_t num, size_t stride, const void* data)
+	auto AddBuffer = [this, &buffers](avs::uid b_uid, size_t num, size_t stride, void* data)
 	{
 		avs::GeometryBuffer& b = buffers[b_uid];
 		b.byteLength = num * stride;
-		b.data = (const uint8_t*)data; //Remember, just a pointer: we don't own this data.
+		b.data = static_cast<uint8_t*>(data); //Remember, just a pointer: we don't own this data.
 	};
 
 	auto AddBufferView = [this, &bufferViews](avs::uid b_uid, avs::uid v_uid, size_t start_index, size_t num, size_t stride)
@@ -266,7 +270,7 @@ void GeometrySource::ExtractMeshData(Mesh* mesh, FStaticMeshLODResources& lod, a
 			p[j].z = orig[j * 3 + z] * 0.01f;
 		}
 		size_t stride = pb.GetStride();
-		AddBuffer(positions_uid, pb.GetNumVertices(), stride, (const void*)p.data());
+		AddBuffer(positions_uid, pb.GetNumVertices(), stride, p.data());
 		size_t position_stride = pb.GetStride();
 		// Offset is zero, because the sections are just lists of indices. 
 		AddBufferView(positions_uid, positions_view_uid, 0, pb.GetNumVertices(), position_stride);
@@ -366,7 +370,7 @@ void GeometrySource::ExtractMeshData(Mesh* mesh, FStaticMeshLODResources& lod, a
 		componentType = ib.Is32Bit() ? avs::Accessor::ComponentType::UINT : avs::Accessor::ComponentType::USHORT;
 		istride = avs::GetComponentSize(componentType);
 
-		AddBuffer(indices_uid, ib.GetNumIndices(), istride, (const void*)((uint64*)&arr)[0]);
+		AddBuffer(indices_uid, ib.GetNumIndices(), istride, reinterpret_cast<void*>(((uint64*)&arr)[0]));
 		AddBufferView(indices_uid, indices_view_uid, 0, ib.GetNumIndices(), istride);
 	}
 
@@ -451,7 +455,8 @@ void GeometrySource::ExtractMeshData(Mesh* mesh, FStaticMeshLODResources& lod, a
 		pa.primitiveMode = avs::PrimitiveMode::TRIANGLES;
 	}
 
-	storage.storeMesh(mesh->id, extractToBasis, avs::Mesh{primitiveArrays, accessors, bufferViews, buffers});
+	avs::Mesh newMesh = avs::Mesh{primitiveArrays, accessors, bufferViews, buffers};
+	storage.storeMesh(mesh->id, "DUD GUID", GetAssetImportTimestamp(mesh->staticMesh->AssetImportData), newMesh, extractToBasis);
 }
 
 avs::uid GeometrySource::AddMeshNode(UMeshComponent* meshComponent, avs::uid oldID)
@@ -488,8 +493,10 @@ avs::uid GeometrySource::AddMeshNode(UMeshComponent* meshComponent, avs::uid old
 	}
 
 	avs::uid nodeID = oldID == 0 ? avs::GenerateUid() : oldID;
+	avs::DataNode newNode{GetComponentTransform(meshComponent), dataID, avs::NodeDataType::Mesh, materialIDs, childIDs};
+
 	processedNodes[GetUniqueComponentName(meshComponent)] = nodeID;
-	storage.storeNode(nodeID, avs::DataNode{GetComponentTransform(meshComponent), dataID, avs::NodeDataType::Mesh, materialIDs, childIDs});
+	storage.storeNode(nodeID, newNode);
 
 	return nodeID;
 }
@@ -504,8 +511,10 @@ avs::uid GeometrySource::AddShadowMapNode(ULightComponent* lightComponent, avs::
 	}
 
 	avs::uid nodeID = oldID == 0 ? avs::GenerateUid() : oldID;
+	avs::DataNode newNode{GetComponentTransform(lightComponent), dataID, avs::NodeDataType::ShadowMap, {}, {}};
+
 	processedNodes[GetUniqueComponentName(lightComponent)] = nodeID;
-	storage.storeNode(nodeID, avs::DataNode{GetComponentTransform(lightComponent), dataID, avs::NodeDataType::ShadowMap, {}, {}});
+	storage.storeNode(nodeID, newNode);
 
 	return nodeID;
 }
@@ -691,7 +700,7 @@ avs::uid GeometrySource::AddMaterial(UMaterialInterface* materialInterface)
 		}
 	}
 
-	storage.storeMaterial(materialID, std::move(newMaterial));
+	storage.storeMaterial(materialID, "DUD GUID", 0, newMaterial);
 
 	UE_CLOG(newMaterial.pbrMetallicRoughness.metallicRoughnessTexture.index != newMaterial.occlusionTexture.index, LogRemotePlay, Warning, TEXT("Occlusion texture on material <%s> is not combined with metallic-roughness texture."), *materialInterface->GetName());
 
@@ -733,9 +742,8 @@ avs::uid GeometrySource::AddShadowMap(const FStaticShadowDepthMapData* shadowDep
 	memcpy(shadowTexture.data, (uint8_t*)shadowDepthMapData->DepthSamples.GetData(), shadowTexture.dataSize);
 	shadowTexture.sampler_uid = 0;
 
-	
 	processedShadowMaps[shadowDepthMapData] = shadow_uid;
-	storage.storeShadowMap(shadow_uid, std::move(shadowTexture));
+	storage.storeShadowMap(shadow_uid, "DUD GUID", 0, shadowTexture);
 	
 	return shadow_uid;
 }
@@ -854,6 +862,14 @@ avs::uid GeometrySource::AddTexture(UTexture* texture)
 
 	newTexture.dataSize = newTexture.width * newTexture.height * newTexture.depth * newTexture.bytesPerPixel;
 	newTexture.data = mipData.GetData();
+
+	//Flip red and blue channels from BGR to RGB, eventually we will do this in a compute shader.
+	for(uint32_t i = 0; i < newTexture.dataSize; i += 4)
+	{
+		unsigned char red = newTexture.data[i];
+		newTexture.data[i] = newTexture.data[i + 2];
+		newTexture.data[i + 2] = red;
+	}
 	
 	std::string basisFileLocation;
 	if(Monitor->UseCompressedTextures)
@@ -869,8 +885,7 @@ avs::uid GeometrySource::AddTexture(UTexture* texture)
 		basisFileLocation = TCHAR_TO_ANSI(*FPaths::Combine(GameSavedDir, uniqueName + FString(".basis")));
 	}
 
-	FDateTime textureTimestamp = texture->AssetImportData->SourceData.SourceFiles[0].Timestamp;
-	storage.storeTexture(textureID, std::move(newTexture), textureTimestamp.ToUnixTimestamp(), basisFileLocation, true);
+	storage.storeTexture(textureID, "DUD GUID", GetAssetImportTimestamp(texture->AssetImportData), newTexture, basisFileLocation);
 
 	return textureID;
 }
@@ -1131,4 +1146,11 @@ size_t GeometrySource::DecomposeTextureSampleExpression(UMaterialInterface* mate
 	}
 
 	return subExpressionsHandled;
+}
+
+int64 GeometrySource::GetAssetImportTimestamp(UAssetImportData* importData)
+{
+	check(importData);
+	
+	return (!importData || importData->SourceData.SourceFiles.Num() == 0 ? 0 : importData->SourceData.SourceFiles[0].Timestamp.ToUnixTimestamp());
 }

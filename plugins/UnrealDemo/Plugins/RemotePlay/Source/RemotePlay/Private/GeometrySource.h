@@ -106,6 +106,9 @@ protected:
 	//	outTexture : Texture related to the chain to output into.
 	//Returns the amount of expressions that were handled in the chain.
 	size_t DecomposeTextureSampleExpression(UMaterialInterface* materialInterface, class UMaterialExpressionTextureSample* textureSample, avs::TextureAccessor& outTexture);
+
+	//This will return 0 if there is no source data, or a nullptr is passed.
+	int64 GetAssetImportTimestamp(UAssetImportData* importData);
 };
 
 struct ShadowMapData
