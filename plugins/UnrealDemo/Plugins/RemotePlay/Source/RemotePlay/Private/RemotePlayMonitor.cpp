@@ -22,7 +22,7 @@ ARemotePlayMonitor::ARemotePlayMonitor(const class FObjectInitializer& ObjectIni
 {
 	RequiredLatencyMs = 30;
 	// Defaults from settings class.
-	const URemotePlaySettings *RemotePlaySettings = GetDefault<URemotePlaySettings>();
+	const URemotePlaySettings* RemotePlaySettings = GetDefault<URemotePlaySettings>();
 	if (RemotePlaySettings)
 	{
 		ClientIP = RemotePlaySettings->ClientIP;
