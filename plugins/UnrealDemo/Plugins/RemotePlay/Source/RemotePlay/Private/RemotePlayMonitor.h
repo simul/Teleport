@@ -6,13 +6,13 @@
 #include "UObject/ObjectMacros.h"
 #include "GameFramework/Actor.h"
 
-#include "libavstream/common.hpp" //uid
+#include "libavstream/common.hpp" 
 #include "SimulCasterServer/CasterSettings.h"
 
 #include "RemotePlayMonitor.generated.h"
 
 /**
- * Rate Control Modes
+ * Rate Control Mode
  */
 UENUM(BlueprintType)
 enum class EncoderRateControlMode : uint8
@@ -23,6 +23,16 @@ enum class EncoderRateControlMode : uint8
 	RC_CBR_LOWDELAY_HQ = 0x3 UMETA(DisplayName = "Constant Bitrate Low Delay HQ"), /**< low-delay CBR, high quality */
 	RC_CBR_HQ = 0x4 UMETA(DisplayName = "Constant Bitrate HQ (slower)"), /**< CBR, high quality (slower) */
 	RC_VBR_HQ = 0x5 UMETA(DisplayName = "Variable Bitrate HQ (slower)") /**< VBR, high quality (slower) */
+};
+
+/**
+ * Video Codex
+ */
+UENUM(BlueprintType)
+enum class VideoCodec : uint8
+{
+	H264 = 0x1 UMETA(DisplayName = "H.264 / AVC"), 
+	HEVC = 0x2 UMETA(DisplayName = "H.265 / HEVC)") 
 };
 
 // A runtime actor to enable control and monitoring of the global RemotePlay state.
@@ -106,8 +116,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	int32 TargetFPS;
 
+	// Value of 0 means only first frame will be an IDR unless a frame is lost
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	int32 IDRInterval;
+
+	// H264 DOES NOT SUPPORT 10-bit Encoding!!!
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
+	VideoCodec VideoCodec;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	EncoderRateControlMode RateControlMode;
@@ -127,6 +142,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	bool bUseAsyncEncoding;
 
+	// NOT SUPPORTED BY H264!!!
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Encoding)
 	bool bUse10BitEncoding;
 
