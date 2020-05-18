@@ -21,7 +21,8 @@ FRemotePlayDiscoveryService::FRemotePlayDiscoveryService(const SCServer::CasterS
 
 bool FRemotePlayDiscoveryService::initialise(uint16_t inDiscoveryPort, uint16_t inServicePort)
 {
-	if(!inDiscoveryPort) inDiscoveryPort = LastDiscoveryPort;
+	if(!inDiscoveryPort)
+		inDiscoveryPort = LastDiscoveryPort;
 	if(!inDiscoveryPort)
 	{
 		UE_LOG(LogRemotePlay, Error, TEXT("Discovery: No useable Discovery Port"));
