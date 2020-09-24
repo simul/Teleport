@@ -150,7 +150,7 @@ void ARemotePlayMonitor::PostEditChangeProperty(FPropertyChangedEvent& PropertyC
 		UpdateCasterSettings();
 	}
 }
-
+#include "Engine/TextureRenderTargetCube.h"
 void ARemotePlayMonitor::UpdateCasterSettings()
 {
 	Settings = SCServer::CasterSettings
@@ -163,7 +163,6 @@ void ARemotePlayMonitor::UpdateCasterSettings()
 		DetectionSphereBufferDistance,
 		ExpectedLag,
 		ThrottleKpS,
-		HandActor,
 
 		bStreamGeometry,
 		GeometryTicksPerSecond,
@@ -172,7 +171,8 @@ void ARemotePlayMonitor::UpdateCasterSettings()
 
 		bStreamVideo,
 		bOverrideTextureTarget ? SceneCaptureTextureTarget->GetSurfaceWidth() : 0U,
-		VideoEncodeFrequency,
+		0,		// pipelin? What is pipelin?
+		//VideoEncodeFrequency,
 		bDeferOutput,
 		bDoCubemapCulling,
 		BlocksPerCubeFaceAcross,
@@ -188,6 +188,14 @@ void ARemotePlayMonitor::UpdateCasterSettings()
 		bUseAsyncEncoding,
 		bUse10BitEncoding,
 		bUseYUV444Decoding,
+		false,//bUseusePerspectiveRendering,
+		0,//sceneCaptureWidth;
+		0,//sceneCaptureHeight;
+		0,
+		true,
+		1,
+
+		false,
 
 		DebugStream,
 		DebugNetworkPackets,
@@ -202,7 +210,12 @@ void ARemotePlayMonitor::UpdateCasterSettings()
 
 		bDisableMainCamera,
 
-		avs::AxesStandard::UnrealStyle
+		avs::AxesStandard::UnrealStyle,
+
+		64,
+		64,
+		64,
+		64
 	};
 }
 

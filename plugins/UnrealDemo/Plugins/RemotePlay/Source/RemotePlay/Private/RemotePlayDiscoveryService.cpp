@@ -87,7 +87,7 @@ void FRemotePlayDiscoveryService::tick()
 	}
 	uint32_t ClientID;
 	int32_t BytesRead;
-	while(Socket->RecvFrom(reinterpret_cast<uint8*>(&ClientID), sizeof(ClientID), BytesRead, *RecvAddr) && BytesRead == sizeof(ClientID))
+	while(Socket->RecvFrom(reinterpret_cast<uint8*>(&ClientID), sizeof(ClientID), BytesRead, *RecvAddr) && BytesRead >0)
 	{
 		uint32 ip_recv;
 		RecvAddr->GetIp(ip_recv);
@@ -117,4 +117,8 @@ void FRemotePlayDiscoveryService::tick()
 			LastFoundClientID=Client.ID;
 		}
 	}
+}
+
+void FRemotePlayDiscoveryService::discoveryCompleteForClient(uint64_t ClientID)
+{
 }

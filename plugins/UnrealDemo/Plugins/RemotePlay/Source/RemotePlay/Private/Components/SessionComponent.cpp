@@ -98,14 +98,14 @@ const avs::uid DUD_CLIENT_ID = 0;
 URemotePlaySessionComponent::URemotePlaySessionComponent()
 	: bAutoStartSession(true)
 	, AutoListenPort(10500)
-	, AutoDiscoveryPort(10607)
+	, AutoDiscoveryPort(10600)
 	, DisconnectTimeout(1000)
 	, InputTouchSensitivity(1.0f)
 	, GeometryStreamingService(std::make_shared<FGeometryStreamingService>())
 	, DiscoveryService(std::make_shared<FRemotePlayDiscoveryService>(ARemotePlayMonitor::GetCasterSettings()))
 	, ClientMessaging(std::make_unique<SCServer::ClientMessaging>(ARemotePlayMonitor::GetCasterSettings(), DiscoveryService, GeometryStreamingService,
 																  std::bind(&URemotePlaySessionComponent::SetHeadPose, this, std::placeholders::_2),
-																  [](avs::uid, int index, const avs::HeadPose*){},
+																  [](avs::uid, int index, const avs::Pose*){},
 																  std::bind(&URemotePlaySessionComponent::ProcessNewInput, this, std::placeholders::_2),
 																  std::bind(&URemotePlaySessionComponent::StopStreaming, this),
 																  DisconnectTimeout))
@@ -194,7 +194,7 @@ void URemotePlaySessionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 		DiscoveryService->tick();
 	}
 
-	ClientMessaging->handleEvents();
+	ClientMessaging->handleEvents(DeltaTime);
 	ApplyPlayerInput(DeltaTime);
 
 	if (GEngine)
@@ -265,7 +265,7 @@ void URemotePlaySessionComponent::StartStreaming()
 	delete CasterContext;
 	CasterContext = new SCServer::CasterContext;
 	CasterContext->ColorQueue.reset(new avs::Queue);
-	CasterContext->ColorQueue->configure(16);
+	CasterContext->ColorQueue->configure(16,"ColorQueue");
 
 #if 0
 
@@ -283,8 +283,7 @@ void URemotePlaySessionComponent::StartStreaming()
 		CasterContext->isCapturingDepth = false;
 	}
 	CasterContext->GeometryQueue.reset(new avs::Queue);
-	CasterContext->GeometryQueue->configure(16);
-
+	CasterContext->GeometryQueue->configure(16,"ColorQueue");
 	
 	ClientMessaging->initialise
 	(
@@ -293,22 +292,52 @@ void URemotePlaySessionComponent::StartStreaming()
 	);
 
 	const FUnrealCasterEncoderSettings& EncoderSettings = CaptureComponent->GetEncoderSettings();
+	const SCServer::CasterSettings *CasterSettings=Monitor->GetCasterSettings();
 	avs::SetupCommand setupCommand;
 	setupCommand.port = ClientMessaging->getServerPort() + 1;
-	setupCommand.video_width	= EncoderSettings.FrameWidth;
-	setupCommand.video_height	= EncoderSettings.FrameHeight;
-	setupCommand.depth_height	= EncoderSettings.DepthHeight;
-	setupCommand.depth_width	= EncoderSettings.DepthWidth;
-	setupCommand.use_10_bit_decoding = Monitor->bUse10BitEncoding;
-	setupCommand.use_yuv_444_decoding = Monitor->bUseYUV444Decoding;
-	setupCommand.colour_cubemap_size = EncoderSettings.FrameWidth / 3;
-	setupCommand.compose_cube	= EncoderSettings.bDecomposeCube;
+	setupCommand.video_config.video_width			= EncoderSettings.FrameWidth;
+	setupCommand.video_config.video_height			= EncoderSettings.FrameHeight;
+	setupCommand.video_config.depth_height			= EncoderSettings.DepthHeight;
+	setupCommand.video_config.depth_width			= EncoderSettings.DepthWidth;
+	setupCommand.video_config.use_10_bit_decoding	=Monitor->bUse10BitEncoding;
+	setupCommand.video_config.use_yuv_444_decoding	=Monitor->bUseYUV444Decoding;
+	setupCommand.video_config.colour_cubemap_size	=EncoderSettings.FrameWidth / 3;
+	setupCommand.video_config.compose_cube			=EncoderSettings.bDecomposeCube;
+
+
+	
+	setupCommand.video_config.use_cubemap			=!CasterSettings->usePerspectiveRendering;
+	
+	setupCommand.video_config.specular_cubemap_size	=CasterSettings->specularCubemapSize;
+	int depth_cubemap_size							=setupCommand.video_config.colour_cubemap_size/2;
+	// To the right of the depth cube, underneath the colour cube.
+	setupCommand.video_config.specular_x			=depth_cubemap_size*3;
+	setupCommand.video_config.specular_y			=setupCommand.video_config.colour_cubemap_size*2;
+	
+	setupCommand.video_config.rough_cubemap_size	=CasterSettings->roughCubemapSize;
+	// To the right of the specular cube, after 3 mips = 1 + 1/2 + 1/4
+	setupCommand.video_config.rough_x				=setupCommand.video_config.specular_x+(CasterSettings->specularCubemapSize*3*7)/4;
+	setupCommand.video_config.rough_y				=setupCommand.video_config.specular_y;
+	
+	setupCommand.video_config.diffuse_cubemap_size	=CasterSettings->diffuseCubemapSize;
+	// To the right of the depth map, under the specular map.
+	setupCommand.video_config.diffuse_x				=depth_cubemap_size*3;
+	setupCommand.video_config.diffuse_y				=setupCommand.video_config.specular_y+CasterSettings->specularCubemapSize*2;
+	
+	setupCommand.video_config.light_cubemap_size	=CasterSettings->lightCubemapSize;
+	// To the right of the diffuse map.
+	setupCommand.video_config.light_x				=setupCommand.video_config.diffuse_x+(CasterSettings->diffuseCubemapSize*3*7)/4;
+	setupCommand.video_config.light_y				=setupCommand.video_config.diffuse_y;
+	///TODO: Initialise actors in range.
+
+
+
 	setupCommand.debug_stream=Monitor->DebugStream;
 	setupCommand.do_checksums = Monitor->Checksums ? 1 : 0;
 	setupCommand.debug_network_packets=Monitor->DebugNetworkPackets;
 	setupCommand.requiredLatencyMs = Monitor->RequiredLatencyMs;
 	setupCommand.server_id = Monitor->GetServerID();
-	setupCommand.videoCodec = (avs::VideoCodec)Monitor->VideoCodec;
+	setupCommand.video_config.videoCodec = (avs::VideoCodec)Monitor->VideoCodec;
 
 	UE_CLOG(!EncoderSettings.bDecomposeCube, LogRemotePlay, Warning, TEXT("'Decompose Cube' is set to false on %s's capture component; this may cause a black video output on the client."), *GetOuter()->GetName());
 
@@ -324,7 +353,7 @@ void URemotePlaySessionComponent::StartStreaming()
 		}	
 	}
 
-	ClientMessaging->sendSetupCommand(std::move(setupCommand));
+	ClientMessaging->sendCommand(std::move(setupCommand));
 	IsStreaming = true;
 }
 
@@ -453,7 +482,7 @@ void URemotePlaySessionComponent::ApplyPlayerInput(float DeltaTime)
 	}  
 }
  
-void URemotePlaySessionComponent::SetHeadPose(const avs::HeadPose* newHeadPose)
+void URemotePlaySessionComponent::SetHeadPose(const avs::Pose* newHeadPose)
 {
 	if(!PlayerController.Get() || !PlayerPawn.Get()) return;
 
@@ -500,8 +529,8 @@ void URemotePlaySessionComponent::ProcessNewInput(const avs::InputState* newInpu
 	InputTouchAxis.Y = FMath::Clamp(newInput->trackpadAxisY * InputTouchSensitivity, -1.0f, 1.0f);
 	InputJoystick.X = newInput->joystickAxisX;
 	InputJoystick.Y = newInput->joystickAxisY;
-	TranslateButtons(newInput->buttonsPressed, InputQueue.ButtonsPressed);
-	TranslateButtons(newInput->buttonsReleased, InputQueue.ButtonsReleased);
+	TranslateButtons(newInput->buttonsDown, InputQueue.ButtonsPressed);
+	TranslateButtons(~newInput->buttonsDown, InputQueue.ButtonsReleased);
 }
 
 void URemotePlaySessionComponent::TranslateButtons(uint32_t ButtonMask, TArray<FKey>& OutKeys)

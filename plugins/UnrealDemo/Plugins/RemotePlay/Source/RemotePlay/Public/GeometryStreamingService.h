@@ -45,6 +45,6 @@ public:
 private:
 	GeometrySource* geometrySource;
 
-	virtual void showActor_Internal(void* actorPtr) override;
-	virtual void hideActor_Internal(void* actorPtr) override;
+	virtual void showActor_Internal(avs::uid clientID,void* actorPtr) override;
+	virtual void hideActor_Internal(avs::uid clientID,void* actorPtr) override;
 };

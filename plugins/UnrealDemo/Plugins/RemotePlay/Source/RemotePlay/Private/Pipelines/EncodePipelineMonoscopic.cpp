@@ -382,8 +382,8 @@ void FEncodePipelineMonoscopic::EncodeFrame_RenderThread(FRHICommandListImmediat
 	CamTransform.scale = { s.X, s.Y, s.Z };
 
 	avs::ConvertTransform(avs::AxesStandard::UnrealStyle, CasterContext->axesStandard, CamTransform);
-
-	SCServer::Result result = Pipeline->process(CamTransform, forceIDR);
+	// TODO: extra data...
+	SCServer::Result result = Pipeline->process(nullptr,0, forceIDR);
 	if (!result)
 	{
 		UE_LOG(LogRemotePlay, Warning, TEXT("Encode pipeline processing encountered an error"));

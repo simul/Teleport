@@ -493,7 +493,7 @@ avs::uid GeometrySource::AddMeshNode(UMeshComponent* meshComponent, avs::uid old
 	}
 
 	avs::uid nodeID = oldID == 0 ? avs::GenerateUid() : oldID;
-	avs::DataNode newNode{GetComponentTransform(meshComponent), dataID, avs::NodeDataType::Mesh, materialIDs, childIDs};
+	avs::DataNode newNode{GetComponentTransform(meshComponent), dataID, avs::NodeDataType::Mesh, materialIDs,avs::vec4(0,0,0,0),0.0f,avs::vec3(0,0,0),0, childIDs};
 
 	processedNodes[GetUniqueComponentName(meshComponent)] = nodeID;
 	storage.storeNode(nodeID, newNode);
@@ -531,7 +531,7 @@ avs::Transform GeometrySource::GetComponentTransform(USceneComponent* component)
 	FQuat r = transform.GetRotation();
 	const FVector s = transform.GetScale3D();
 
-	return avs::Transform{t.X, t.Y, t.Z, r.X, r.Y, r.Z, r.W, s.X, s.Y, s.Z};
+	return avs::Transform{{t.X, t.Y, t.Z}, {r.X, r.Y, r.Z, r.W}, {s.X, s.Y, s.Z}};
 }
 
 void GeometrySource::ClearData()

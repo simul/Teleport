@@ -53,13 +53,14 @@ bool FGeometryStreamingService::isStreamingActor(AActor* actor)
 	return GeometryStreamingService::isStreamingActor(actor);
 }
 
-void FGeometryStreamingService::showActor_Internal(void* actorPtr)
+void FGeometryStreamingService::showActor_Internal(avs::uid clientID,void* actorPtr)
 {
 	AActor* actor = static_cast<AActor*>(actorPtr);
+	//TODO: specific to client.
 	actor->SetActorHiddenInGame(false);
 }
 
-void FGeometryStreamingService::hideActor_Internal(void* actorPtr)
+void FGeometryStreamingService::hideActor_Internal(avs::uid clientID,void* actorPtr)
 {
 	AActor* actor = static_cast<AActor*>(actorPtr);
 	actor->SetActorHiddenInGame(true);

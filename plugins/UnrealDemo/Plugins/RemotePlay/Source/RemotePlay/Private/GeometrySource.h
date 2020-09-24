@@ -64,7 +64,7 @@ protected:
 	void PrepareMesh(Mesh* mesh);
 	bool ExtractMesh(Mesh* mesh, uint8 lodIndex);
 	void ExtractMeshData(Mesh* mesh, FStaticMeshLODResources& lod, avs::AxesStandard extractToBasis);
-
+	 
 	//Add a node that represents a mesh.
 	//	meshComponent : Mesh the node will represent.
 	//	oldID : ID being used by this node, if zero it will create a new ID.
